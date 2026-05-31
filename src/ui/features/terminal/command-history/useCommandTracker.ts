@@ -19,6 +19,7 @@ const SENSITIVE_PATTERNS = [
 interface UseCommandTrackerOptions {
   hostId?: number;
   enabled?: boolean;
+  persistHistory?: boolean;
   onCommandExecuted?: (command: string) => void;
 }
 
@@ -32,6 +33,7 @@ interface CommandTrackerResult {
 export function useCommandTracker({
   hostId,
   enabled = true,
+  persistHistory = enabled,
   onCommandExecuted,
 }: UseCommandTrackerOptions): CommandTrackerResult {
   const currentCommandRef = useRef<string>("");
@@ -39,7 +41,7 @@ export function useCommandTracker({
 
   const trackInput = useCallback(
     (data: string) => {
-      if (!enabled || !hostId) {
+      if (!enabled) {
         return;
       }
 
@@ -69,7 +71,7 @@ export function useCommandTracker({
           if (command.length > 0) {
             const isSensitive = SENSITIVE_PATTERNS.some((p) => p.test(command));
 
-            if (!isSensitive) {
+            if (persistHistory && hostId && !isSensitive) {
               saveCommandToHistory(hostId, command).catch((error) => {
                 console.error("Failed to save command to history:", error);
               });
@@ -106,7 +108,7 @@ export function useCommandTracker({
         }
       }
     },
-    [enabled, hostId, onCommandExecuted],
+    [enabled, hostId, onCommandExecuted, persistHistory],
   );
 
   const getCurrentCommand = useCallback(() => {

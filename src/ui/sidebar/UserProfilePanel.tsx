@@ -17,6 +17,7 @@ import {
 import type { UserRole } from "@/main-axios";
 import type React from "react";
 import { isElectron } from "@/lib/electron";
+import { isCommandAutocompleteEnabled } from "@/lib/terminal-autocomplete";
 import { C2STunnelPresetManager } from "@/user/C2STunnelPresetManager";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
@@ -453,7 +454,7 @@ export function UserProfilePanel({
 
   // Settings toggles — all backed by localStorage
   const [commandAutocomplete, setCommandAutocomplete] = useState(
-    () => localStorage.getItem("commandAutocomplete") === "true",
+    () => isCommandAutocompleteEnabled(),
   );
   const [commandHistoryTracking, setCommandHistoryTracking] = useState(
     () => localStorage.getItem("commandHistoryTracking") === "true",
@@ -924,6 +925,7 @@ export function UserProfilePanel({
                 onChange={(v) => {
                   setCommandAutocomplete(v);
                   localStorage.setItem("commandAutocomplete", v.toString());
+                  window.dispatchEvent(new Event("commandAutocompleteChanged"));
                 }}
               />
             </SettingRow>
