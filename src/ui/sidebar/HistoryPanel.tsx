@@ -8,6 +8,7 @@ import {
   deleteCommandFromHistory,
   clearCommandHistory,
 } from "@/main-axios";
+import { isUsefulAutocompleteHistoryCommand } from "@/lib/terminal-autocomplete.ts";
 import type { Tab } from "@/types/ui-types";
 
 export function HistoryPanel({
@@ -44,7 +45,9 @@ export function HistoryPanel({
       return;
     }
     getCommandHistory(hostId)
-      .then(setCommands)
+      .then((history) =>
+        setCommands(history.filter(isUsefulAutocompleteHistoryCommand)),
+      )
       .catch(() => setCommands([]));
   }, [hostId, trackingEnabled]);
 

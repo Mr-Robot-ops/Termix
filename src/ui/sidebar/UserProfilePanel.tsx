@@ -17,7 +17,10 @@ import {
 import type { UserRole } from "@/main-axios";
 import type React from "react";
 import { isElectron } from "@/lib/electron";
-import { isCommandAutocompleteEnabled } from "@/lib/terminal-autocomplete";
+import {
+  getTerminalAutocompleteSettings,
+  setTerminalAutocompleteSetting,
+} from "@/lib/terminal-autocomplete";
 import { C2STunnelPresetManager } from "@/user/C2STunnelPresetManager";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
@@ -453,8 +456,16 @@ export function UserProfilePanel({
   );
 
   // Settings toggles — all backed by localStorage
-  const [commandAutocomplete, setCommandAutocomplete] = useState(
-    () => isCommandAutocompleteEnabled(),
+  const [terminalAutocompleteGhost, setTerminalAutocompleteGhost] = useState(
+    () => getTerminalAutocompleteSettings().ghost,
+  );
+  const [terminalAutocompletePopup, setTerminalAutocompletePopup] = useState(
+    () => getTerminalAutocompleteSettings().popup,
+  );
+  const [terminalAutocompletePopupAuto, setTerminalAutocompletePopupAuto] =
+    useState(() => getTerminalAutocompleteSettings().popupAuto);
+  const [terminalAutocompleteHelp, setTerminalAutocompleteHelp] = useState(
+    () => getTerminalAutocompleteSettings().help,
   );
   const [commandHistoryTracking, setCommandHistoryTracking] = useState(
     () => localStorage.getItem("commandHistoryTracking") === "true",
@@ -915,17 +926,64 @@ export function UserProfilePanel({
               {t("newUi.sidebar.userProfile.settingsTerminal")}
             </span>
             <SettingRow
-              label={t("newUi.sidebar.userProfile.commandAutocomplete")}
+              label={t("newUi.sidebar.userProfile.ghostAutocomplete")}
+              description={t("newUi.sidebar.userProfile.ghostAutocompleteDesc")}
+            >
+              <FakeSwitch
+                checked={terminalAutocompleteGhost}
+                onChange={(v) => {
+                  setTerminalAutocompleteGhost(v);
+                  setTerminalAutocompleteSetting("ghost", v);
+                }}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.popupAutocomplete")}
+              description={t("newUi.sidebar.userProfile.popupAutocompleteDesc")}
+            >
+              <FakeSwitch
+                checked={terminalAutocompletePopup}
+                onChange={(v) => {
+                  setTerminalAutocompletePopup(v);
+                  setTerminalAutocompleteSetting("popup", v);
+                  if (!v) {
+                    setTerminalAutocompletePopupAuto(false);
+                    setTerminalAutocompleteSetting("popupAuto", false);
+                  }
+                }}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.popupAutocompleteAuto")}
               description={t(
-                "newUi.sidebar.userProfile.commandAutocompleteDesc",
+                "newUi.sidebar.userProfile.popupAutocompleteAutoDesc",
               )}
             >
               <FakeSwitch
-                checked={commandAutocomplete}
+                checked={terminalAutocompletePopupAuto}
                 onChange={(v) => {
-                  setCommandAutocomplete(v);
-                  localStorage.setItem("commandAutocomplete", v.toString());
-                  window.dispatchEvent(new Event("commandAutocompleteChanged"));
+                  setTerminalAutocompletePopupAuto(v);
+                  setTerminalAutocompleteSetting("popupAuto", v);
+                  if (v && !terminalAutocompletePopup) {
+                    setTerminalAutocompletePopup(true);
+                    setTerminalAutocompleteSetting("popup", true);
+                  }
+                }}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.autocompleteHelp")}
+              description={t("newUi.sidebar.userProfile.autocompleteHelpDesc")}
+            >
+              <FakeSwitch
+                checked={terminalAutocompleteHelp}
+                onChange={(v) => {
+                  setTerminalAutocompleteHelp(v);
+                  setTerminalAutocompleteSetting("help", v);
+                  if (v && !terminalAutocompletePopup) {
+                    setTerminalAutocompletePopup(true);
+                    setTerminalAutocompleteSetting("popup", true);
+                  }
                 }}
               />
             </SettingRow>
@@ -992,7 +1050,9 @@ export function UserProfilePanel({
                 onChange={(v) => {
                   onPrefsChange?.({ reopenTabsOnLogin: v });
                   import("@/main-axios").then(({ saveUserPreferences }) => {
-                    saveUserPreferences({ reopenTabsOnLogin: v }).catch(() => {});
+                    saveUserPreferences({ reopenTabsOnLogin: v }).catch(
+                      () => {},
+                    );
                   });
                 }}
               />

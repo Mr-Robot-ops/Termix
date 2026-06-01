@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getCommandHistory, saveCommandToHistory } from "@/main-axios.ts";
+import { isUsefulAutocompleteHistoryCommand } from "@/lib/terminal-autocomplete.ts";
 
 interface UseCommandHistoryOptions {
   hostId?: number;
@@ -40,8 +41,9 @@ export function useCommandHistory({
       setIsLoading(true);
       try {
         const history = await getCommandHistory(hostId);
-        setCommandHistory(history);
-        historyCache.current.set(hostId, history);
+        const safeHistory = history.filter(isUsefulAutocompleteHistoryCommand);
+        setCommandHistory(safeHistory);
+        historyCache.current.set(hostId, safeHistory);
       } catch (error) {
         console.error("Failed to fetch command history:", error);
         setCommandHistory([]);
@@ -60,8 +62,10 @@ export function useCommandHistory({
       }
 
       const trimmedInput = input.trim();
-      const matches = commandHistory.filter((cmd) =>
-        cmd.startsWith(trimmedInput),
+      const matches = commandHistory.filter(
+        (cmd) =>
+          isUsefulAutocompleteHistoryCommand(cmd) &&
+          cmd.startsWith(trimmedInput),
       );
 
       const filtered = matches
@@ -81,6 +85,9 @@ export function useCommandHistory({
       }
 
       const trimmedCommand = command.trim();
+      if (!isUsefulAutocompleteHistoryCommand(trimmedCommand)) {
+        return;
+      }
 
       if (commandHistory.length > 0 && commandHistory[0] === trimmedCommand) {
         return;

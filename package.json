@@ -16,6 +16,7 @@
     "prebuild": "node scripts/write-electron-build-info.cjs",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
+    "check:terminal-autocomplete": "node scripts/check-terminal-autocomplete.cjs",
     "type-check": "tsc --noEmit",
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.node.json && node -e \"require('fs').copyFileSync('src/backend/package.json','dist/backend/package.json')\"",
