@@ -62,10 +62,7 @@ import {
 import { useCommandHistory } from "@/features/terminal/command-history/CommandHistoryContext.tsx";
 import { CommandAutocomplete } from "./command-history/CommandAutocomplete.tsx";
 import { CommandAutocompleteHint } from "./command-history/CommandAutocompleteHint.tsx";
-import {
-  COMMAND_AUTOCOMPLETE_AUTOMATIC_VISIBLE_ROWS,
-  getCommandAutocompleteListHeight,
-} from "./command-history/commandAutocompleteLayout.ts";
+import { getCommandAutocompleteListHeight } from "./command-history/commandAutocompleteLayout.ts";
 import {
   getCommandAutocompleteGhostKeyAction,
   getCommandAutocompleteInputModeAfterTerminalData,
@@ -1149,7 +1146,6 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           currentCommand,
           autocompleteHistory.current,
           {
-            limit: COMMAND_AUTOCOMPLETE_AUTOMATIC_VISIBLE_ROWS,
             mode: "popup",
             systemdUnits: autocompleteSystemdUnitsRef.current,
           },
