@@ -186,11 +186,15 @@ export function CommandAutocomplete({
         selectedSuggestion,
       )
     : "";
+  const selectedSource =
+    rows[selectedIndex]?.source ?? rows[0]?.source ?? "catalog";
   const selectedHelpLabel = selectedHelp
-    ? getTerminalAutocompleteCatalogDisplayLabel(
-        currentCommand ?? "",
-        selectedSuggestion,
-      )
+    ? selectedSource === "history"
+      ? selectedSuggestion
+      : getTerminalAutocompleteCatalogDisplayLabel(
+          currentCommand ?? "",
+          selectedSuggestion,
+        )
     : "";
   const helpParameters = selectedHelp
     ? getHelpParameters(selectedHelp, selectedSuggestion, currentCommand)
