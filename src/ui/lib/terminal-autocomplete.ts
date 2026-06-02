@@ -985,6 +985,22 @@ const TERMINAL_AUTOCOMPLETE_PRIORITY: Record<string, string[]> = {
     "--no-pager",
     "-o",
   ],
+  ls: [
+    "-a",
+    "-la",
+    "-l",
+    "-lh",
+    "-h",
+    "-R",
+    "-t",
+    "-r",
+    "-S",
+    "-A",
+    "-d",
+  ],
+  cp: ["-r", "-R", "-a", "-v", "-i", "-n", "-u", "-p", "-L", "-P"],
+  mv: ["-v", "-i", "-n", "-f", "-u", "--backup"],
+  mkdir: ["-p", "-v", "-m", "--parents", "--mode"],
   systemctl: [
     "status",
     "start",
@@ -1191,10 +1207,26 @@ function scoreAutocompleteMatch(
       false,
     );
     const bareCommandTokenCount = getKnownCommandTokenCount(effectiveCurrent);
+    const queryCommandName = getKnownCommandName(effectiveCurrent);
+    const candidateCommandName = getKnownCommandName(effectiveCandidate);
+    const queryIsKnownProvider =
+      TERMINAL_AUTOCOMPLETE_HELP_BY_COMMAND.has(queryCommandName);
+    const candidateUsesSameProvider =
+      queryIsKnownProvider && candidateCommandName === queryCommandName;
     const candidateLabelTokenCount =
       bareCommandTokenCount > 0
         ? Math.max(0, candidateTokens.length - bareCommandTokenCount)
         : 0;
+
+    if (candidateUsesSameProvider && candidateLabelTokenCount > 0) {
+      score -= 34;
+    } else if (
+      queryIsKnownProvider &&
+      candidateCommandName !== queryCommandName &&
+      candidateLabelTokenCount === 0
+    ) {
+      score += 24;
+    }
 
     if (loosePriorityIndex !== -1 && exactPriorityIndex === -1) {
       score += 28;
