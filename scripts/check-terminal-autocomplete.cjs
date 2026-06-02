@@ -1310,6 +1310,11 @@ assertIncludes("git gr", "git grep <pattern>");
 assertIncludes("git ta", "git tag");
 assertIncludes("git status --", "git status --short");
 assertIncludes("git status --", "git status --branch");
+assertIncludes("git --", "git --help");
+assertIncludes("git --", "git --no-pager");
+assertIncludes("git --", "git --git-dir");
+assertIncludes("git -", "git -C");
+assertIncludes("git -", "git -c");
 assertIncludes("git log --", "git log --oneline");
 assertIncludes("git diff --", "git diff --staged");
 assertIncludes("git branch --", "git branch --merged");
@@ -1347,6 +1352,17 @@ assertSuggestionDescription(
   "git clean",
   "git clean -n",
   "nur anzeigen, was entfernt würde",
+);
+
+assertSuggestionDescription(
+  "git --",
+  "git --no-pager",
+  "Pager deaktivieren",
+);
+assertSuggestionDescription(
+  "git -",
+  "git -C",
+  "Befehl in anderem Pfad ausführen",
 );
 
 assertSuggestionDescription(
