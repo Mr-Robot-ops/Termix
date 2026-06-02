@@ -6008,6 +6008,96 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "--value": "nur Werte ausgeben",
     "--user": "User-Manager-Kontext verwenden",
   },
+  localectl: {
+    status: "aktuelle Locale- und Tastatureinstellungen anzeigen",
+    "list-locales": "verfügbare Locales auflisten",
+    "set-locale": "System-Locale setzen",
+    "list-keymaps": "verfügbare Konsolen-Keymaps auflisten",
+    "set-keymap": "Konsolen-Keymap setzen",
+    "set-x11-keymap": "X11-Tastaturlayout setzen",
+    "--no-pager": "ohne Pager ausgeben",
+    "--no-legend": "Legende ausblenden",
+    "--property": "nur bestimmte Eigenschaft anzeigen",
+    "--value": "nur Werte ausgeben",
+  },
+  networkctl: {
+    list: "Netzwerklinks auflisten",
+    status: "Status aller Links oder eines Links anzeigen",
+    lldp: "LLDP-Nachbarn anzeigen",
+    label: "Adresslabels anzeigen",
+    delete: "virtuellen Netzwerklink löschen",
+    up: "Link aktivieren",
+    down: "Link deaktivieren",
+    renew: "DHCP-Lease erneuern",
+    reconfigure: "Link-Konfiguration neu laden",
+    "--no-pager": "ohne Pager ausgeben",
+    "--no-legend": "Legende ausblenden",
+    "--all": "auch inaktive Links anzeigen",
+    "--json": "Ausgabe als JSON erzeugen",
+    "--type": "nach Link-Typ filtern",
+  },
+  busctl: {
+    list: "D-Bus Services auflisten",
+    tree: "Objektbaum eines Services anzeigen",
+    introspect: "Interfaces und Methoden eines Objekts anzeigen",
+    monitor: "D-Bus Nachrichten live beobachten",
+    status: "Status eines D-Bus Services anzeigen",
+    call: "D-Bus Methode aufrufen",
+    "get-property": "D-Bus Eigenschaft lesen",
+    "set-property": "D-Bus Eigenschaft setzen",
+    "--system": "System-Bus verwenden",
+    "--user": "User-Bus verwenden",
+    "--no-pager": "ohne Pager ausgeben",
+    "--json": "Ausgabe als JSON erzeugen",
+    "--xml-interface": "Introspection als XML ausgeben",
+  },
+  coredumpctl: {
+    list: "Coredumps auflisten",
+    info: "Details zu einem Coredump anzeigen",
+    dump: "Coredump-Datei ausgeben",
+    debug: "Coredump im Debugger öffnen",
+    "--no-pager": "ohne Pager ausgeben",
+    "--json": "Ausgabe als JSON erzeugen",
+    "--since": "Startzeit für Suche setzen",
+    "--until": "Endzeit für Suche setzen",
+    "-1": "nur neuesten passenden Coredump verwenden",
+    "--reverse": "Sortierung umkehren",
+  },
+  "systemd-cgls": {
+    "--user": "User-Control-Groups anzeigen",
+    "--system": "System-Control-Groups anzeigen",
+    "--all": "auch leere Control-Groups anzeigen",
+    "--no-pager": "ohne Pager ausgeben",
+    "--unit": "Control-Group einer Unit anzeigen",
+    "--machine": "Control-Groups einer Maschine anzeigen",
+  },
+  "systemd-cgtop": {
+    "--user": "User-Control-Groups beobachten",
+    "--system": "System-Control-Groups beobachten",
+    "--depth": "Baumtiefe begrenzen",
+    "--order": "Sortierspalte wählen",
+    "--iterations": "Anzahl der Aktualisierungen begrenzen",
+    "--batch": "Batch-Ausgabe ohne interaktive Steuerung",
+  },
+  machinectl: {
+    list: "laufende Maschinen auflisten",
+    status: "Status einer Maschine anzeigen",
+    show: "Eigenschaften einer Maschine anzeigen",
+    shell: "Shell in einer Maschine öffnen",
+    login: "Login in einer Maschine starten",
+    terminate: "Maschine beenden",
+    kill: "Signal an Maschinenprozesse senden",
+    "list-images": "lokale Maschinen-Images auflisten",
+    "image-status": "Image-Details anzeigen",
+    clone: "Image klonen",
+    remove: "Image entfernen",
+    "--no-pager": "ohne Pager ausgeben",
+    "--no-legend": "Legende ausblenden",
+    "--all": "auch versteckte Einträge anzeigen",
+    "--full": "Werte nicht kürzen",
+    "--kill-whom": "Zielprozesse für kill wählen",
+    "--signal": "Signal für kill setzen",
+  },
   logrotate: {
     "-d": "Konfiguration prüfen, ohne Rotation auszuführen",
     "--debug": "Konfiguration prüfen, ohne Rotation auszuführen",
@@ -7318,11 +7408,17 @@ function getSuggestionDetailLookupKeys(label: string) {
       : "";
   const lastOptionName =
     lastOptionIndex !== -1 ? tokens[lastOptionIndex] : "";
+  const lastOptionAssignmentName = lastOptionName.includes("=")
+    ? lastOptionName.split("=", 1)[0]
+    : "";
   const optionValue =
     optionIndex !== -1
       ? tokens.slice(optionIndex, optionIndex + 2).join(" ")
       : "";
   const optionName = optionIndex !== -1 ? tokens[optionIndex] : "";
+  const optionAssignmentName = optionName.includes("=")
+    ? optionName.split("=", 1)[0]
+    : "";
 
   return [
     normalized,
@@ -7330,8 +7426,10 @@ function getSuggestionDetailLookupKeys(label: string) {
     sshOptionValue,
     lastOptionValue,
     lastOptionName,
+    lastOptionAssignmentName,
     optionValue,
     optionName,
+    optionAssignmentName,
     tokens.slice(0, 2).join(" "),
     tokens[0] ?? "",
   ].filter(Boolean);
@@ -7381,6 +7479,7 @@ function getValueSuggestionDescription(command: string, label: string) {
     sort: "Datei zeilenweise sortieren",
     stat: "Dateistatus dieses Pfads anzeigen",
     sysctl: "Kernel-Parameter auswählen",
+    "systemd-cgls": "Control-Group-Pfad als Baum anzeigen",
     tail: "Ende dieser Datei anzeigen",
     traceroute: "Route zu diesem Host verfolgen",
     uniq: "benachbarte Duplikate in Datei filtern",

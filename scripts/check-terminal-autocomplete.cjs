@@ -1053,6 +1053,13 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "nmap ",
   "service ",
   "loginctl ",
+  "localectl ",
+  "networkctl ",
+  "busctl ",
+  "coredumpctl ",
+  "systemd-cgls ",
+  "systemd-cgtop ",
+  "machinectl ",
   "findmnt ",
   "sysctl ",
   "dmesg ",
@@ -1654,6 +1661,50 @@ assertSource("sudo service ", "sudo service custom-app", "history");
 assertFirst("sudo service ", "sudo service custom-app");
 assertIncludes("loginctl show-user ", "loginctl show-user $USER");
 assertIncludes("loginctl session-status ", "loginctl session-status $XDG_SESSION_ID");
+assertIncludes("localectl ", "localectl list-locales");
+assertIncludes("localectl ", "localectl set-keymap de");
+assertIncludes("networkctl ", "networkctl status <link>");
+assertIncludes("networkctl ", "networkctl lldp");
+assertIncludes("busctl i", "busctl introspect <service> <path>");
+assertIncludes("coredumpctl ", "coredumpctl debug <match>");
+assertIncludes("systemd-cgls --", "systemd-cgls --unit");
+assertIncludes("systemd-cgtop --", "systemd-cgtop --order");
+assertIncludes("machinectl ", "machinectl list-images");
+assertSuggestionDescription(
+  "localectl ",
+  "localectl list-locales",
+  "verfügbare Locales auflisten",
+);
+assertSuggestionDescription(
+  "networkctl ",
+  "networkctl lldp",
+  "LLDP-Nachbarn anzeigen",
+);
+assertSuggestionDescription(
+  "busctl i",
+  "busctl introspect <service> <path>",
+  "Interfaces und Methoden eines Objekts anzeigen",
+);
+assertSuggestionDescription(
+  "coredumpctl ",
+  "coredumpctl debug <match>",
+  "Coredump im Debugger öffnen",
+);
+assertSuggestionDescription(
+  "systemd-cgls --",
+  "systemd-cgls --unit",
+  "Control-Group einer Unit anzeigen",
+);
+assertSuggestionDescription(
+  "systemd-cgtop --",
+  "systemd-cgtop --order",
+  "Sortierspalte wählen",
+);
+assertSuggestionDescription(
+  "machinectl ",
+  "machinectl list-images",
+  "lokale Maschinen-Images auflisten",
+);
 assertIncludes("systemd-analyze verify ", "systemd-analyze verify nginx");
 assertIncludes("nmcli connection up ", "nmcli connection up 'Wired connection 1'");
 assertIncludes("nmcli device show ", "nmcli device show eth0");
