@@ -48,6 +48,7 @@ import { useCommandTracker } from "@/features/terminal/command-history/useComman
 import { highlightTerminalOutput } from "@/lib/terminal-syntax-highlighter.ts";
 import {
   buildTerminalAutocompleteMatchItems,
+  extractSystemdUnitsFromTerminalOutput,
   getTerminalAutocompleteCatalogDisplayLabel,
   getTerminalAutocompleteCompletion,
   getTerminalAutocompleteHelp,
@@ -443,6 +444,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       lineHeightPx?: number;
     } | null>(null);
     const autocompleteHistory = useRef<string[]>([]);
+    const autocompleteSystemdUnitsRef = useRef<string[]>([]);
     const currentAutocompleteCommand = useRef<string>("");
     const pendingAutocompleteCommandRef = useRef<{
       command: string;
@@ -514,6 +516,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     }, [showHistoryDialog, hostConfig.id]);
 
     useEffect(() => {
+      autocompleteSystemdUnitsRef.current = [];
+
       if (hostConfig.id && commandAutocompleteEnabled) {
         getCommandHistory(hostConfig.id!)
           .then((history) => {
@@ -653,6 +657,29 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       },
       [removeAutocompleteHistoryCommand],
     );
+
+    const rememberAutocompleteSystemdUnits = useCallback((data: string) => {
+      const units = extractSystemdUnitsFromTerminalOutput(data);
+      if (units.length === 0) {
+        return;
+      }
+
+      const seen = new Set<string>();
+      autocompleteSystemdUnitsRef.current = [
+        ...units,
+        ...autocompleteSystemdUnitsRef.current,
+      ]
+        .filter((unit) => {
+          const normalizedUnit = unit.trim().toLowerCase();
+          if (!normalizedUnit || seen.has(normalizedUnit)) {
+            return false;
+          }
+
+          seen.add(normalizedUnit);
+          return true;
+        })
+        .slice(0, 80);
+    }, []);
 
     const closeAutocompleteRef = useRef(closeAutocomplete);
 
@@ -1076,7 +1103,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const matches = buildTerminalAutocompleteMatchItems(
         currentCommand,
         autocompleteHistory.current,
-        { mode: "popup" },
+        {
+          mode: "popup",
+          systemdUnits: autocompleteSystemdUnitsRef.current,
+        },
       );
 
       if (matches.length === 0) {
@@ -1120,6 +1150,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           {
             limit: COMMAND_AUTOCOMPLETE_AUTOMATIC_VISIBLE_ROWS,
             mode: "popup",
+            systemdUnits: autocompleteSystemdUnitsRef.current,
           },
         );
 
@@ -1135,7 +1166,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const matches = buildTerminalAutocompleteMatchItems(
         currentCommand,
         autocompleteHistory.current,
-        { mode: "ghost" },
+        {
+          mode: "ghost",
+          systemdUnits: autocompleteSystemdUnitsRef.current,
+        },
       );
 
       if (matches.length === 0) {
@@ -1914,6 +1948,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
           if (msg.type === "data") {
             if (typeof msg.data === "string") {
+              rememberAutocompleteSystemdUnits(msg.data);
               observeAutocompleteCommandOutput(msg.data);
               const syntaxHighlightingEnabled =
                 localStorage.getItem("terminalSyntaxHighlighting") === "true";
@@ -1985,6 +2020,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 localStorage.getItem("terminalSyntaxHighlighting") === "true";
 
               const stringData = String(msg.data);
+              rememberAutocompleteSystemdUnits(stringData);
               observeAutocompleteCommandOutput(stringData);
               const outputData = syntaxHighlightingEnabled
                 ? highlightTerminalOutput(stringData)

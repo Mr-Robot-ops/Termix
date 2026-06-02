@@ -101,6 +101,14 @@ const history = [
   "sudo systemctl status cert.bot",
 ];
 
+const runtimeSystemdOutput = `
+  certbot.service certbot.timer
+  ssh.service nginx.service docker.socket
+  custom-runtime.service loaded active running Runtime Service
+`;
+const runtimeSystemdUnits =
+  autocomplete.extractSystemdUnitsFromTerminalOutput(runtimeSystemdOutput);
+
 function fail(message) {
   throw new Error(message);
 }
@@ -160,6 +168,43 @@ function commandsForMode(command, mode) {
 
 function itemsForOptions(command, options) {
   return autocomplete.buildTerminalAutocompleteMatchItems(command, history, options);
+}
+
+function runtimeItemsFor(command) {
+  return itemsForOptions(command, {
+    mode: "popup",
+    systemdUnits: runtimeSystemdUnits,
+  });
+}
+
+function runtimeCommandsFor(command) {
+  return runtimeItemsFor(command).map((item) => item.command);
+}
+
+function assertRuntimeIncludes(command, expected) {
+  const commands = runtimeCommandsFor(command);
+  if (!commands.includes(expected)) {
+    fail(`Expected runtime ${JSON.stringify(command)} to include ${expected}`);
+  }
+}
+
+function assertRuntimeFirst(command, expected) {
+  const first = runtimeCommandsFor(command)[0];
+  if (first !== expected) {
+    fail(`Expected first runtime ${JSON.stringify(command)} to be ${expected}, got ${first}`);
+  }
+}
+
+function assertRuntimeSource(command, expectedCommand, source) {
+  const match = runtimeItemsFor(command).find((item) => item.command === expectedCommand);
+  if (!match) {
+    fail(`Expected runtime ${JSON.stringify(command)} to include ${expectedCommand}`);
+  }
+  if (match.source !== source) {
+    fail(
+      `Expected runtime ${expectedCommand} from ${JSON.stringify(command)} to be ${source}, got ${match.source}`,
+    );
+  }
 }
 
 function assertIncludes(command, expected) {
@@ -1050,6 +1095,28 @@ assertIncludes("sudo systemctl status ", "sudo systemctl status custom-app.servi
 assertSource("sudo systemctl status ", "sudo systemctl status custom-app.service", "history");
 assertFirst("sudo systemctl status ", "sudo systemctl status custom-app.service");
 assertNotIncludes("sudo systemctl status ", "sudo systemctl status cert.bot");
+assertDeepEqual(runtimeSystemdUnits, [
+  "certbot.service",
+  "certbot.timer",
+  "ssh.service",
+  "nginx.service",
+  "docker.socket",
+  "custom-runtime.service",
+], "runtime systemd unit extraction");
+assertRuntimeFirst("systemctl status ", "systemctl status certbot.service");
+assertRuntimeIncludes("systemctl status c", "systemctl status certbot.service");
+assertRuntimeIncludes("systemctl status c", "systemctl status certbot.timer");
+assertRuntimeIncludes("sudo systemctl stop ", "sudo systemctl stop ssh.service");
+assertRuntimeIncludes("systemctl restart n", "systemctl restart nginx.service");
+assertRuntimeIncludes("systemctl reload ", "systemctl reload custom-runtime.service");
+assertRuntimeIncludes("journalctl -u c", "journalctl -u custom-runtime.service");
+assertRuntimeSource(
+  "sudo systemctl stop ",
+  "sudo systemctl stop ssh.service",
+  "catalog",
+);
+assertIncludes("systemctl stop ", "systemctl stop ssh");
+assertIncludes("systemctl restart ", "systemctl restart ssh");
 
 assertNotIncludes("sudo s", "sudo ssh pi@192.168.178.20");
 assertFirst("sudo s", "sudo systemctl");

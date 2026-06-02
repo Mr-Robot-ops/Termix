@@ -29,6 +29,7 @@ const PROMPT_PREFIX_RE =
   /^(?:PS\s+[A-Z]:\\.*>|\w[\w.-]*@[\w.-]+(?::[^\s#$>]*)?[$#]|[\w./~-]+[$#>])\s+/i;
 const OPTION_SMEAR_RE = /\s-{3,}\S/;
 const EXECUTABLE_REPEAT_RE = /([A-Za-z])\1{2,}/;
+const ANSI_ESCAPE_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const UNSAFE_AUTOCOMPLETE_RE =
   /\b(?:rm(?:\s+\S+|$)|mkfs(?:\.\w+)?|dd\s+(?:if=|of=)|shutdown|poweroff|reboot|halt|systemctl\s+(?:suspend|hibernate|hybrid-sleep|suspend-then-hibernate)|iptables\s+-F|nft\s+flush|docker\s+system\s+prune|history\s+-c|userdel\s+-r|find\b[^\n]*\s-delete\b|xargs\b[^\n]*\brm\b)\b/i;
 const PLACEHOLDER_RE = /(?:<[^>\n]+>|\{\{[^}\n]+\}\})/;
@@ -72,6 +73,10 @@ const SYSTEMCTL_QUERY_UNIT_SUBCOMMANDS = new Set([
   "list-dependencies",
   "show",
   "status",
+]);
+const SYSTEMCTL_UNIT_VALUE_SUBCOMMANDS = new Set([
+  ...SYSTEMCTL_UNIT_SUBCOMMANDS,
+  ...SYSTEMCTL_QUERY_UNIT_SUBCOMMANDS,
 ]);
 const SYSTEMCTL_CATALOG_FIRST_SUBCOMMANDS = new Set([
   "add-requires",
@@ -881,6 +886,7 @@ type TerminalAutocompleteMode = "ghost" | "popup";
 interface TerminalAutocompleteMatchOptions {
   limit?: number;
   mode?: TerminalAutocompleteMode;
+  systemdUnits?: string[];
 }
 
 export type TerminalAutocompleteSource = "catalog" | "history";
@@ -1852,7 +1858,7 @@ function getSystemctlUnitSuggestionPrefix(command: string) {
   }
 
   const subcommand = tokens[index]?.toLowerCase();
-  if (!subcommand || !SYSTEMCTL_QUERY_UNIT_SUBCOMMANDS.has(subcommand)) {
+  if (!subcommand || !SYSTEMCTL_UNIT_VALUE_SUBCOMMANDS.has(subcommand)) {
     return null;
   }
 
@@ -2959,8 +2965,22 @@ function getOpenSslPostConnectSuggestionContext(command: string) {
 
 function buildContextualCatalogSuggestions(
   context: TerminalAutocompleteContext,
+  systemdUnits: string[] = [],
 ) {
   const suggestions: string[] = [];
+  const availableSystemdUnits = uniqueDerivedValues(
+    systemdUnits.filter(isLikelySystemdUnitTarget),
+  );
+  const systemdUnitTargets = uniqueDerivedValues([
+    ...availableSystemdUnits,
+    ...COMMON_SYSTEMD_UNIT_TARGETS,
+  ]);
+  const serviceNames = uniqueDerivedValues([
+    ...availableSystemdUnits
+      .map(getServiceNameFromSystemdUnit)
+      .filter(isLikelyServiceName),
+    ...COMMON_SERVICE_NAMES,
+  ]);
   const isBarePrivilegeWrapperContext =
     context.prefix &&
     !context.matchCommand.trim() &&
@@ -3363,13 +3383,13 @@ function buildContextualCatalogSuggestions(
   );
 
   if (systemctlUnitPrefix) {
-    COMMON_SYSTEMD_UNIT_TARGETS.forEach((unit) => {
+    systemdUnitTargets.forEach((unit) => {
       suggestions.push(`${systemctlUnitPrefix}${unit}`);
     });
   }
 
   if (journalctlUnitPrefix) {
-    COMMON_SYSTEMD_UNIT_TARGETS.forEach((unit) => {
+    systemdUnitTargets.forEach((unit) => {
       suggestions.push(`${journalctlUnitPrefix}${unit}`);
     });
   }
@@ -3499,7 +3519,7 @@ function buildContextualCatalogSuggestions(
   }
 
   if (serviceNamePrefix) {
-    COMMON_SERVICE_NAMES.forEach((service) => {
+    serviceNames.forEach((service) => {
       suggestions.push(`${serviceNamePrefix}${service}`);
     });
   }
@@ -3517,7 +3537,7 @@ function buildContextualCatalogSuggestions(
   }
 
   if (systemdAnalyzeUnitPrefix) {
-    COMMON_SYSTEMD_UNIT_TARGETS.forEach((unit) => {
+    systemdUnitTargets.forEach((unit) => {
       suggestions.push(`${systemdAnalyzeUnitPrefix}${unit}`);
     });
   }
@@ -4665,6 +4685,25 @@ function extractSystemdUnitsFromHistory(history: string[]) {
   return uniqueDerivedValues(units);
 }
 
+export function extractSystemdUnitsFromTerminalOutput(output: string) {
+  const units: string[] = [];
+  const normalizedOutput = output.replace(ANSI_ESCAPE_RE, " ");
+  const suffixPattern = [...SYSTEMD_UNIT_SUFFIXES].join("|");
+  const unitPattern = new RegExp(
+    `\\b([A-Za-z0-9][A-Za-z0-9@_.:+-]*\\.(?:${suffixPattern}))\\b`,
+    "gi",
+  );
+
+  for (const match of normalizedOutput.matchAll(unitPattern)) {
+    const unit = match[1] ?? "";
+    if (isLikelySystemdUnitTarget(unit)) {
+      units.push(unit);
+    }
+  }
+
+  return uniqueDerivedValues(units);
+}
+
 function getServiceNameFromSystemdUnit(unit: string) {
   const normalizedUnit = stripShellQuotes(unit).trim();
   if (!normalizedUnit || normalizedUnit.startsWith("-")) {
@@ -5604,8 +5643,9 @@ export function buildTerminalAutocompleteMatchItems(
     }
   };
 
-  buildContextualCatalogSuggestions(context).forEach((candidate) =>
-    appendMatch(candidate, "catalog"),
+  const availableSystemdUnits = options.systemdUnits ?? [];
+  buildContextualCatalogSuggestions(context, availableSystemdUnits).forEach(
+    (candidate) => appendMatch(candidate, "catalog"),
   );
   TERMINAL_AUTOCOMPLETE_COMMANDS.forEach((candidate) =>
     appendMatch(candidate, "catalog"),
@@ -5655,8 +5695,16 @@ export function buildTerminalAutocompleteMatchItems(
   );
   const preferContextualHistoryValues =
     shouldPreferContextualHistoryValues(context);
+  const preferCurrentSystemdUnits =
+    availableSystemdUnits.length > 0 &&
+    Boolean(
+      getSystemctlUnitSuggestionPrefix(context.matchCommand) ||
+        getJournalctlUnitSuggestionPrefix(context.matchCommand),
+    );
   const rankedMatches = preferHistoryOnly
     ? historyMatches.map((match) => ({ ...match, source: "history" as const }))
+    : preferCurrentSystemdUnits
+      ? uniqueAutocompleteMatches([...catalogMatches, ...historyMatches])
     : preferContextualHistoryValues
       ? uniqueAutocompleteMatches([...historyMatches, ...catalogMatches])
       : mode === "popup" &&
