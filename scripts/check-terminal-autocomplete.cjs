@@ -913,7 +913,60 @@ assertSuggestionDescription(
   "ps aux",
   "alle Prozesse mit Benutzer und Ressourcen anzeigen",
 );
+assertSuggestionDescription(
+  "cat ",
+  "cat /var/log/syslog",
+  "Dateiinhalt ausgeben",
+);
+assertSuggestionDescription("tail ", "tail -f", "Dateiende live verfolgen");
+assertSuggestionDescription("wc ", "wc file.txt", "Zeilen, Wörter oder Bytes für Datei zählen");
+assertSuggestionDescription("sort ", "sort -nr numbers.txt", "numerisch absteigend sortieren");
+assertSuggestionDescription("df ", "df -hT", "Größen menschenlesbar mit Dateisystemtyp anzeigen");
+assertSuggestionDescription("du ", "du -sh /var/log", "Gesamtsumme menschenlesbar anzeigen");
+assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
+assertSuggestionDescription("lsof ", "lsof -nP -iTCP -sTCP:LISTEN", "TCP-Ports numerisch anzeigen");
+assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
 assertTopSuggestionsHaveSpecificDescriptions([
+  "cat ",
+  "less ",
+  "head ",
+  "tail ",
+  "wc ",
+  "sort ",
+  "uniq ",
+  "cut ",
+  "tr ",
+  "nl ",
+  "split ",
+  "column ",
+  "file ",
+  "stat ",
+  "readlink ",
+  "basename ",
+  "dirname ",
+  "df ",
+  "du ",
+  "free ",
+  "top ",
+  "htop ",
+  "kill ",
+  "pgrep ",
+  "pkill ",
+  "netstat ",
+  "lsof ",
+  "ping ",
+  "dig ",
+  "host ",
+  "traceroute ",
+  "nmap ",
+  "service ",
+  "loginctl ",
+  "findmnt ",
+  "sysctl ",
+  "dmesg ",
+  "systemd-analyze ",
+  "diff ",
+  "patch ",
   "clear ",
   "printf ",
   "pwd ",
