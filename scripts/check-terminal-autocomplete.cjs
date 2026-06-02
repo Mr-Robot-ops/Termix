@@ -818,6 +818,11 @@ assertSuggestionDescription(
   "rekursiv suchen",
 );
 assertSuggestionDescription(
+  "rg -",
+  "rg --files",
+  "Dateipfade statt Treffer ausgeben",
+);
+assertSuggestionDescription(
   "curl -",
   "curl -H",
   "HTTP-Header setzen",
@@ -837,6 +842,16 @@ assertSuggestionDescription(
   "jq -r",
   "Strings roh ohne JSON-Anführungszeichen ausgeben",
 );
+assertSuggestionDescription("yq -", "yq -i", "Datei direkt bearbeiten");
+assertSuggestionDescription("gzip ", "gzip -k", "Originaldatei behalten");
+assertSuggestionDescription("gunzip ", "gunzip -l", "komprimierte Dateigrößen anzeigen");
+assertSuggestionDescription("bzip2 ", "bzip2 -t", "komprimierte Datei prüfen");
+assertSuggestionDescription("bunzip2 ", "bunzip2 -c", "entpackten Inhalt auf stdout schreiben");
+assertSuggestionDescription("xz ", "xz -T", "Anzahl Kompressionsthreads setzen");
+assertSuggestionDescription("unxz ", "unxz -k", "Originaldatei behalten");
+assertSuggestionDescription("zstd ", "zstd --long", "Long-Range-Modus für große Dateien nutzen");
+assertSuggestionDescription("zcat ", "zcat -l", "komprimierte Dateigrößen anzeigen");
+assertSuggestionDescription("zgrep ", "zgrep -n", "Zeilennummern anzeigen");
 assertSuggestionDescription(
   "ssh-keygen -",
   "ssh-keygen -t",
@@ -1077,6 +1092,21 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "wget ",
   "sed ",
   "jq ",
+  "yq ",
+  "rg ",
+  "rg -",
+  "gzip ",
+  "gunzip ",
+  "bzip2 ",
+  "bunzip2 ",
+  "xz ",
+  "unxz ",
+  "zstd ",
+  "zcat ",
+  "zgrep ",
+  "zip ",
+  "unzip ",
+  "vi ",
   "ip ",
   "ss ",
   "ps ",
@@ -1623,6 +1653,26 @@ assertIncludes("tar --", "tar --one-file-system");
 assertSuggestionDescription("tar --", "tar --directory", "vor Aktion in Verzeichnis wechseln");
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
+assertMinCount("rg ", 20);
+assertIncludes("rg ", "rg TODO");
+assertIncludes("rg -", "rg --files");
+assertIncludes("rg -g ", "rg -g '*.ts' autocomplete");
+assertIncludes("rg --", "rg --no-ignore");
+assertIncludes("yq ", "yq '.metadata.name' file.yml");
+assertIncludes("yq -", "yq -o");
+assertIncludes("yq -", "yq -o json file.yml");
+assertIncludes("yq --", "yq --output-format");
+assertIncludes("gzip ", "gzip --stdout");
+assertIncludes("gunzip ", "gunzip --list");
+assertIncludes("bzip2 ", "bzip2 -k");
+assertIncludes("bunzip2 ", "bunzip2 -c");
+assertIncludes("xz ", "xz -T");
+assertIncludes("unxz ", "unxz -k");
+assertIncludes("zstd ", "zstd -T");
+assertIncludes("zcat ", "zcat file.log.gz");
+assertIncludes("zgrep ", "zgrep -n");
+assertSuggestionDescription("zip ", "zip -r", "Verzeichnisse rekursiv einpacken");
+assertSuggestionDescription("unzip ", "unzip -l", "Archivinhalt anzeigen");
 assertIncludes("head -n ", "head -n 100");
 assertIncludes("tail -n ", "tail -n 100");
 assertIncludes("ip route get ", "ip route get 8.8.8.8");
