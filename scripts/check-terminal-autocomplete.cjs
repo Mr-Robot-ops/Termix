@@ -1216,6 +1216,37 @@ assertSuggestionDescription(
   "nur anzeigen, was entfernt würde",
 );
 
+assertSuggestionDescription(
+  "service ",
+  "service nginx restart",
+  "Dienst neu starten",
+);
+assertSuggestionDescription(
+  "sudo service ",
+  "sudo service nginx restart",
+  "Dienst neu starten",
+);
+assertSuggestionDescription(
+  "docker logs ",
+  "docker logs nginx -f",
+  "Logs live verfolgen",
+);
+assertSuggestionDescription(
+  "docker logs ",
+  "docker logs --tail 100 nginx",
+  "Anzahl der letzten Logzeilen begrenzen",
+);
+assertSuggestionDescription(
+  "docker compose logs ",
+  "docker compose logs payments -f",
+  "Logs live verfolgen",
+);
+assertSuggestionDescription(
+  "docker compose logs ",
+  "docker compose logs --follow",
+  "Logs live verfolgen",
+);
+
 assertIncludes("docker logs ", "docker logs nginx");
 assertStartsWithSequence("docker ", [
   "docker ps",

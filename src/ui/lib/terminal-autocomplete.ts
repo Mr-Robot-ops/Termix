@@ -7061,6 +7061,36 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
   },
 };
 
+const TERMINAL_AUTOCOMPLETE_CONTEXTUAL_SUGGESTION_DETAILS: Record<
+  string,
+  Record<string, Record<string, string>>
+> = {
+  docker: {
+    logs: {
+      "-f": "Logs live verfolgen",
+      "--follow": "Logs live verfolgen",
+      "--tail": "Anzahl der letzten Logzeilen begrenzen",
+    },
+    exec: {
+      "-i": "STDIN offen halten",
+      "-t": "Pseudo-TTY zuweisen",
+      "-it": "interaktive TTY-Sitzung öffnen",
+    },
+  },
+  "docker compose": {
+    logs: {
+      "-f": "Logs live verfolgen",
+      "--follow": "Logs live verfolgen",
+      "--tail": "Anzahl der letzten Logzeilen begrenzen",
+    },
+    exec: {
+      "-i": "STDIN offen halten",
+      "-t": "Pseudo-TTY zuweisen",
+      "-it": "interaktive TTY-Sitzung öffnen",
+    },
+  },
+};
+
 function getSuggestionDetailLookupKeys(label: string) {
   const normalized = label.trim().replace(/\s+/g, " ");
   if (!normalized) {
@@ -7156,6 +7186,39 @@ function getValueSuggestionDescription(command: string, label: string) {
   return valueDescriptions[command] ?? "";
 }
 
+function getServiceActionSuggestionDescription(
+  label: string,
+  detailMap: Record<string, string>,
+) {
+  const tokens = label.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) {
+    return "";
+  }
+
+  const action = tokens[tokens.length - 1] ?? "";
+  return detailMap[action] ?? "";
+}
+
+function getContextualSuggestionDescription(command: string, label: string) {
+  const tokens = label.trim().split(/\s+/).filter(Boolean);
+  const subcommand = tokens[0] ?? "";
+  const contextualDetails =
+    TERMINAL_AUTOCOMPLETE_CONTEXTUAL_SUGGESTION_DETAILS[command]?.[subcommand];
+
+  if (!contextualDetails) {
+    return "";
+  }
+
+  for (const key of getSuggestionDetailLookupKeys(label)) {
+    const detail = contextualDetails[key];
+    if (detail) {
+      return detail;
+    }
+  }
+
+  return "";
+}
+
 export function getTerminalAutocompleteSuggestionDescription(
   currentCommand: string,
   suggestion: string,
@@ -7172,6 +7235,24 @@ export function getTerminalAutocompleteSuggestionDescription(
   const detailMap = TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS[help.command];
 
   if (detailMap) {
+    const contextualDescription = getContextualSuggestionDescription(
+      help.command,
+      displayLabel,
+    );
+    if (contextualDescription) {
+      return contextualDescription;
+    }
+
+    if (help.command === "service") {
+      const serviceActionDescription = getServiceActionSuggestionDescription(
+        displayLabel,
+        detailMap,
+      );
+      if (serviceActionDescription) {
+        return serviceActionDescription;
+      }
+    }
+
     for (const key of getSuggestionDetailLookupKeys(displayLabel)) {
       const detail = detailMap[key];
       if (detail) {
