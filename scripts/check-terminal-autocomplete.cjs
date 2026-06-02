@@ -895,6 +895,24 @@ assertSuggestionDescription(
   "ssh-add -L",
   "öffentliche Schlüssel des Agents ausgeben",
 );
+assertSuggestionDescription("wget ", "wget -c", "abgebrochenen Download fortsetzen");
+assertSuggestionDescription("sed ", "sed -i", "Dateien direkt bearbeiten");
+assertSuggestionDescription(
+  "jq ",
+  "jq .[].name",
+  "Feld name aus jedem Array-Element ausgeben",
+);
+assertSuggestionDescription(
+  "ip ",
+  "ip route",
+  "Routing-Tabelle anzeigen oder ändern",
+);
+assertSuggestionDescription("ss ", "ss -t", "TCP-Sockets anzeigen");
+assertSuggestionDescription(
+  "ps ",
+  "ps aux",
+  "alle Prozesse mit Benutzer und Ressourcen anzeigen",
+);
 assertTopSuggestionsHaveSpecificDescriptions([
   "clear ",
   "printf ",
@@ -904,6 +922,12 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "passwd ",
   "ssh-agent ",
   "ssh-add ",
+  "wget ",
+  "sed ",
+  "jq ",
+  "ip ",
+  "ss ",
+  "ps ",
   "git ",
   "git re",
   "git co",
