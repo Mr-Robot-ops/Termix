@@ -398,6 +398,32 @@ function assertTopSuggestionsHaveSpecificDescriptions(commands, limit = 10) {
   }
 }
 
+function assertCompactPopupSourceLabels() {
+  const componentPath = path.join(
+    root,
+    "src/ui/features/terminal/command-history/CommandAutocomplete.tsx",
+  );
+  const source = fs.readFileSync(componentPath, "utf8");
+  const forbiddenLabels = [
+    "HISTORY",
+    "History",
+    "COMMANDS",
+    "Commands",
+    "COMMANDS AND OPTIONS",
+    "Commands and options",
+    "Befehle",
+    "Verlauf",
+  ];
+
+  for (const label of forbiddenLabels) {
+    if (source.includes(`>${label}<`) || source.includes(`\"${label}\"`)) {
+      fail(
+        `Autocomplete popup should use icons instead of visible source label ${label}`,
+      );
+    }
+  }
+}
+
 function assertRenderedCommand(line, trackedCommand, expectedCommand) {
   const actual = renderedCommand.extractRenderedCommandFromLine(
     line,
@@ -539,6 +565,7 @@ assertEqual(
   5,
   "Automatic autocomplete popup visible row count",
 );
+assertCompactPopupSourceLabels();
 assertEqual(
   autocompleteLayout.getCommandAutocompleteListHeight(
     Array.from({ length: 20 }, (_, index) => ({
