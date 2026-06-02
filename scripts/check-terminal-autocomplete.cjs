@@ -1094,6 +1094,21 @@ assertNotIncludes("journalctl -u ssh ", "journalctl -u sshd");
 assertIncludes("journalctl --unit=ssh ", "journalctl --unit=ssh -f");
 assertFirst("systemctl --type=s", "systemctl --type=service");
 assertIncludes("systemctl --state=", "systemctl --state=failed");
+assertSuggestionDescription(
+  "systemctl --",
+  "systemctl --all",
+  "auch inaktive oder sonst ausgeblendete Units anzeigen",
+);
+assertSuggestionDescription(
+  "systemctl --",
+  "systemctl --value",
+  "nur Eigenschaftswerte ohne Namen ausgeben",
+);
+assertSuggestionDescription(
+  "systemctl --",
+  "systemctl --since",
+  "Startzeit für zeitraumbezogene Ausgabe setzen",
+);
 assertFirst("systemctl list-", "systemctl list-units");
 assertBefore("systemctl list-", "systemctl list-unit-files", "systemctl list-jobs");
 assertBefore(

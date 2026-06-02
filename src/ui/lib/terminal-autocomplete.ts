@@ -7015,6 +7015,13 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "--system": "System-Manager verwenden",
     "--now": "zusätzlich sofort starten/stoppen",
     "--no-pager": "ohne Pager ausgeben",
+    "--all": "auch inaktive oder sonst ausgeblendete Units anzeigen",
+    "--plain": "Ausgabe ohne Baum-/Bullets formatieren",
+    "--quiet": "nur knappe Ausgabe oder Statuscode verwenden",
+    "--property": "nur bestimmte Eigenschaften anzeigen",
+    "--value": "nur Eigenschaftswerte ohne Namen ausgeben",
+    "--since": "Startzeit für zeitraumbezogene Ausgabe setzen",
+    "--until": "Endzeit für zeitraumbezogene Ausgabe setzen",
   },
   tar: {
     "-c": "Archiv erstellen",
