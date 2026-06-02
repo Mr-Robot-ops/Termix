@@ -186,6 +186,12 @@ export function CommandAutocomplete({
         selectedSuggestion,
       )
     : "";
+  const selectedHelpLabel = selectedHelp
+    ? getTerminalAutocompleteCatalogDisplayLabel(
+        currentCommand ?? "",
+        selectedSuggestion,
+      )
+    : "";
   const helpParameters = selectedHelp
     ? getHelpParameters(selectedHelp, selectedSuggestion, currentCommand)
     : [];
@@ -239,8 +245,11 @@ export function CommandAutocomplete({
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-popover-foreground">
               {selectedDescription || selectedHelp.description}
             </span>
-            <span className="shrink-0 font-mono text-[10px] text-accent-brand">
-              {selectedHelp.command}
+            <span
+              className="min-w-0 max-w-[44%] shrink truncate font-mono text-[10px] text-accent-brand"
+              title={selectedHelpLabel || selectedHelp.command}
+            >
+              {selectedHelpLabel || selectedHelp.command}
             </span>
           </div>
           {helpParameters.length > 0 && (
