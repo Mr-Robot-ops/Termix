@@ -57,12 +57,7 @@ function getHelpParameters(
   selectedSuggestion: string,
   currentCommand = "",
 ) {
-  const selectedParts = getTerminalAutocompleteCatalogDisplayLabel(
-    currentCommand,
-    selectedSuggestion,
-  )
-    .trim()
-    .split(/\s+/);
+  const selectedParts = getDisplayParts(selectedSuggestion, currentCommand);
   const activeSubcommand = selectedParts[0] ?? "";
   const commandOptions =
     help.commandOptions?.[activeSubcommand] ??
@@ -78,13 +73,44 @@ function getHelpParameters(
   ]);
 }
 
+function getDisplayParts(selectedSuggestion: string, currentCommand = "") {
+  return getTerminalAutocompleteCatalogDisplayLabel(
+    currentCommand,
+    selectedSuggestion,
+  )
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
 function getHelpExamples(
   help: NonNullable<ReturnType<typeof getTerminalAutocompleteHelp>>,
+  selectedSuggestion: string,
+  currentCommand = "",
 ) {
-  return uniqueItems([
+  const selectedParts = getDisplayParts(selectedSuggestion, currentCommand);
+  const activeSubcommand = selectedParts[0] ?? "";
+  const selectedLabel = selectedParts.join(" ");
+  const commandPrefix = `${help.command} ${activeSubcommand}`.trim();
+  const allExamples = uniqueItems([
     ...help.examples,
     ...Object.values(help.commonPatterns ?? {}).flat(),
   ]);
+  const relevantExamples = allExamples.filter((example) => {
+    const normalizedExample = example.trim().toLowerCase();
+    const unwrappedExample = normalizedExample.replace(
+      /^(sudo|doas|pkexec)\s+/,
+      "",
+    );
+    return (
+      Boolean(activeSubcommand) &&
+      (normalizedExample.startsWith(commandPrefix.toLowerCase()) ||
+        unwrappedExample.startsWith(commandPrefix.toLowerCase()) ||
+        normalizedExample.includes(` ${selectedLabel.toLowerCase()}`))
+    );
+  });
+
+  return uniqueItems([...relevantExamples, ...allExamples]);
 }
 
 function isHistorySuggestion(suggestion: string, historySuggestions: string[]) {
@@ -154,10 +180,18 @@ export function CommandAutocomplete({
   const selectedHelp = helpEnabled
     ? getTerminalAutocompleteHelp(selectedSuggestion)
     : null;
+  const selectedDescription = selectedHelp
+    ? getTerminalAutocompleteSuggestionDescription(
+        currentCommand ?? "",
+        selectedSuggestion,
+      )
+    : "";
   const helpParameters = selectedHelp
     ? getHelpParameters(selectedHelp, selectedSuggestion, currentCommand)
     : [];
-  const helpExamples = selectedHelp ? getHelpExamples(selectedHelp) : [];
+  const helpExamples = selectedHelp
+    ? getHelpExamples(selectedHelp, selectedSuggestion, currentCommand)
+    : [];
   const listHeight = getCommandAutocompleteListHeight(rows, automatic);
   const helpMaxHeight = selectedHelp ? 160 : 0;
   const maxHeight = listHeight + helpMaxHeight;
@@ -203,7 +237,7 @@ export function CommandAutocomplete({
         <div className="border-t border-border bg-surface/80 px-3 py-2">
           <div className="flex items-start gap-2">
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-popover-foreground">
-              {selectedHelp.description}
+              {selectedDescription || selectedHelp.description}
             </span>
             <span className="shrink-0 font-mono text-[10px] text-accent-brand">
               {selectedHelp.command}
