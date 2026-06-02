@@ -296,6 +296,15 @@ function assertMinCount(command, minCount) {
   }
 }
 
+function assertManualPopupExceedsTen(command) {
+  const count = itemsForOptions(command, { mode: "popup" }).length;
+  if (count <= 10) {
+    fail(
+      `Expected manual popup ${JSON.stringify(command)} to return more than 10 suggestions, got ${count}`,
+    );
+  }
+}
+
 function assertCountForOptions(command, options, expectedCount) {
   const count = itemsForOptions(command, options).length;
   if (count !== expectedCount) {
@@ -1161,6 +1170,10 @@ assertNotIncludes("sudo ", "sudo sudo");
 assertNotIncludes("sudo ", "sudo <command>");
 assertSource("sudo ", "sudo systemctl", "catalog");
 assertNoModeSuggestions("sudo su", "ghost");
+assertManualPopupExceedsTen("git");
+assertManualPopupExceedsTen("sudo git");
+assertManualPopupExceedsTen("sudo systemctl ");
+assertManualPopupExceedsTen("docker ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");

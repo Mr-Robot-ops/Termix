@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { getCommandHistory, saveCommandToHistory } from "@/main-axios.ts";
 import { isUsefulAutocompleteHistoryCommand } from "@/lib/terminal-autocomplete.ts";
 
+const MAX_COMMAND_HISTORY_SUGGESTIONS = 160;
+
 interface UseCommandHistoryOptions {
   hostId?: number;
   enabled?: boolean;
@@ -70,7 +72,7 @@ export function useCommandHistory({
 
       const filtered = matches
         .filter((cmd) => cmd !== trimmedInput)
-        .slice(0, 10);
+        .slice(0, MAX_COMMAND_HISTORY_SUGGESTIONS);
 
       setSuggestions(filtered);
       return filtered;
