@@ -165,15 +165,15 @@ export function CommandAutocomplete({
   return (
     <div
       ref={containerRef}
-      className="fixed z-[2147483647] flex min-w-[240px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-accent-brand/50 bg-popover text-popover-foreground shadow-[0_18px_60px_rgba(0,0,0,0.85)] ring-1 ring-black/60"
+      className="fixed z-[2147483647] flex min-w-[280px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-accent-brand/50 bg-popover text-popover-foreground shadow-[0_18px_60px_rgba(0,0,0,0.85)] ring-1 ring-black/60"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
         width: "fit-content",
-        minWidth: "260px",
+        minWidth: "280px",
         maxWidth: automatic
-          ? "min(560px, calc(100vw - 16px))"
-          : "min(760px, calc(100vw - 16px))",
+          ? "min(640px, calc(100vw - 16px))"
+          : "min(820px, calc(100vw - 16px))",
         maxHeight: `${maxHeight}px`,
         backgroundColor: "var(--popover)",
         color: "var(--popover-foreground)",
@@ -292,7 +292,7 @@ const SuggestionRow = React.forwardRef<HTMLDivElement, SuggestionRowProps>(
       >
         <div
           className={cn(
-            "flex h-8 cursor-pointer items-center gap-2 overflow-hidden border-l-2 border-transparent px-3 font-mono text-[13px] transition-colors",
+            "grid h-8 cursor-pointer grid-cols-[20px_minmax(96px,1fr)_minmax(0,1.15fr)_20px] items-center gap-2 overflow-hidden border-l-2 border-transparent px-3 font-mono text-[13px] transition-colors",
             "hover:bg-accent-brand/10 hover:text-popover-foreground",
             source === "history" && "bg-muted/15",
             selected &&
@@ -309,7 +309,7 @@ const SuggestionRow = React.forwardRef<HTMLDivElement, SuggestionRowProps>(
           >
             <SourceIcon className="size-3.5" />
           </span>
-          <span className="min-w-0 flex-1 truncate">
+          <span className="min-w-0 truncate">
             {prefix && (
               <span className="bg-muted px-0.5 text-popover-foreground">
                 {prefix}
@@ -317,11 +317,9 @@ const SuggestionRow = React.forwardRef<HTMLDivElement, SuggestionRowProps>(
             )}
             <span>{rest}</span>
           </span>
-          {description && (
-            <span className="hidden min-w-0 max-w-[46%] flex-1 truncate text-[11px] text-muted-foreground md:inline">
-              {description}
-            </span>
-          )}
+          <span className="min-w-0 truncate text-[11px] leading-none text-muted-foreground">
+            {description}
+          </span>
           <span className="flex size-5 shrink-0 items-center justify-center">
             {selected && (
               <CornerDownLeft

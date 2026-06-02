@@ -53,6 +53,7 @@ import {
   getTerminalAutocompleteHelp,
   getTerminalAutocompleteInsertCommand,
   getTerminalAutocompleteSettings,
+  getTerminalAutocompleteSuggestionDescription,
   isUsefulAutocompleteHistoryCommand,
   type TerminalAutocompleteSource,
   type TerminalAutocompleteSettings,
@@ -822,12 +823,23 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           },
           0,
         );
+        const longestDescriptionLength = displayedSuggestions.reduce(
+          (length, suggestion) => {
+            const description = getTerminalAutocompleteSuggestionDescription(
+              currentAutocompleteCommand.current,
+              suggestion,
+            );
+            return Math.max(length, Math.min(description.length, 44));
+          },
+          0,
+        );
         const menuWidth = Math.min(
-          isAutomaticPopup ? 560 : 760,
+          isAutomaticPopup ? 640 : 820,
           Math.max(
-            isAutomaticPopup ? 360 : 420,
+            isAutomaticPopup ? 400 : 460,
             longestSuggestionLength * cellWidth +
-              (isAutomaticPopup ? 180 : 260),
+              longestDescriptionLength * Math.min(cellWidth, 8) +
+              (isAutomaticPopup ? 110 : 160),
           ),
           window.innerWidth - 16,
         );
