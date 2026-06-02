@@ -737,6 +737,11 @@ assertSuggestionDescription(
   "HTTP-Header setzen",
 );
 assertSuggestionDescription(
+  "curl --",
+  "curl --retry",
+  "fehlgeschlagene Requests erneut versuchen",
+);
+assertSuggestionDescription(
   "rsync -",
   "rsync --dry-run",
   "Änderungen nur simulieren",
@@ -896,6 +901,7 @@ assertSuggestionDescription(
   "öffentliche Schlüssel des Agents ausgeben",
 );
 assertSuggestionDescription("wget ", "wget -c", "abgebrochenen Download fortsetzen");
+assertSuggestionDescription("watch ", "watch --interval", "Intervall in Sekunden setzen");
 assertSuggestionDescription("sed ", "sed -i", "Dateien direkt bearbeiten");
 assertSuggestionDescription(
   "jq ",
@@ -1314,6 +1320,16 @@ assertIncludes("apt-get remove ", "apt-get remove nginx");
 assertIncludes("apt-cache policy d", "apt-cache policy docker.io");
 assertIncludes("apt-cache policy ", "apt-cache policy termix-agent");
 assertSource("apt-cache policy ", "apt-cache policy termix-agent", "history");
+assertSuggestionDescription(
+  "apt-cache ",
+  "apt-cache --names-only",
+  "nur Paketnamen durchsuchen",
+);
+assertSuggestionDescription(
+  "apt-get ",
+  "apt-get --simulate",
+  "Aktion nur simulieren",
+);
 assertIncludes("dpkg -s n", "dpkg -s nginx");
 assertIncludes("dpkg -s ", "dpkg -s raspberrypi-kernel");
 assertSource("dpkg -s ", "dpkg -s raspberrypi-kernel", "history");
@@ -1381,6 +1397,16 @@ assertIncludes("find . -perm ", "find . -perm 755");
 assertIncludes("find . -user ", "find . -user www-data");
 assertIncludes("ssh-keygen -t ", "ssh-keygen -t ed25519");
 assertIncludes("ssh-keygen -b ", "ssh-keygen -b 4096");
+assertSuggestionDescription(
+  "ssh-keygen ",
+  "ssh-keygen -F",
+  "Host in known_hosts suchen",
+);
+assertSuggestionDescription(
+  "ssh-keygen ",
+  "ssh-keygen -lf ~/.ssh/id_ed25519.pub",
+  "Fingerprint einer Public-Key-Datei anzeigen",
+);
 assertMinCount("ssh-copy-id ", 12);
 assertIncludes("ssh-copy-id ", "ssh-copy-id -s");
 assertIncludes("ssh-copy-id ", "ssh-copy-id --help");
@@ -1388,6 +1414,11 @@ assertSuggestionDescription(
   "ssh-copy-id ",
   "ssh-copy-id -s",
   "sftp statt Shell-Kommandos verwenden",
+);
+assertSuggestionDescription(
+  "ssh-copy-id ",
+  "ssh-copy-id user@host",
+  "Public Key für diesen Login installieren",
 );
 assertMinCount("sftp ", 18);
 assertIncludes("sftp ", "sftp -J");
