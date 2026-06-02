@@ -385,6 +385,35 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
     options: ["-f", "-u <user>", "-x", "-9", "-TERM", "-HUP"],
   },
   {
+    command: "killall",
+    description: "Prozesse per Programmnamen beenden",
+    category: "system",
+    risk: "caution",
+    examples: [
+      "killall nginx",
+      "killall -TERM nginx",
+      "killall -u www-data php-fpm",
+      "killall -i firefox",
+    ],
+    options: [
+      "-e",
+      "--exact",
+      "-i",
+      "--interactive",
+      "-I",
+      "--ignore-case",
+      "-u <user>",
+      "--user <user>",
+      "-v",
+      "--verbose",
+      "-w",
+      "--wait",
+      "-TERM",
+      "-KILL",
+      "-HUP",
+    ],
+  },
+  {
     command: "pgrep",
     description: "Prozess-IDs suchen",
     examples: ["pgrep nginx", "pgrep -af python", "pgrep -u www-data"],
@@ -1431,6 +1460,7 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   {
     command: "nc",
     description: "Netcat: TCP/UDP-Verbindungen testen",
+    aliases: ["netcat"],
     examples: ["nc -vz host 22", "nc -l -p 8080", "nc -u host 53"],
     options: [
       "-l",
@@ -3267,6 +3297,39 @@ function appendHelpSuggestion(
   candidates.push(trimmedCandidate);
 }
 
+function withHelpSuggestionCommand(
+  command: string,
+  commandName: string,
+  candidate: string,
+) {
+  const trimmedCandidate = candidate.trim();
+  if (commandName === command) {
+    return trimmedCandidate;
+  }
+
+  if (trimmedCandidate === command) {
+    return commandName;
+  }
+
+  if (trimmedCandidate.startsWith(`${command} `)) {
+    return `${commandName}${trimmedCandidate.slice(command.length)}`;
+  }
+
+  const privilegePrefix = trimmedCandidate.match(/^(sudo|doas|pkexec)\s+/);
+  if (privilegePrefix) {
+    const prefix = privilegePrefix[0];
+    const unwrappedCandidate = trimmedCandidate.slice(prefix.length);
+    if (unwrappedCandidate === command) {
+      return `${prefix}${commandName}`;
+    }
+    if (unwrappedCandidate.startsWith(`${command} `)) {
+      return `${prefix}${commandName}${unwrappedCandidate.slice(command.length)}`;
+    }
+  }
+
+  return "";
+}
+
 function buildHelpSuggestions() {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -3276,57 +3339,65 @@ function buildHelpSuggestions() {
       continue;
     }
 
-    appendHelpSuggestion(candidates, seen, entry.command);
+    const commandNames = [entry.command, ...(entry.aliases ?? [])];
 
-    for (const alias of entry.aliases ?? []) {
-      appendHelpSuggestion(candidates, seen, alias);
-    }
+    for (const commandName of commandNames) {
+      appendHelpSuggestion(candidates, seen, commandName);
 
-    for (const subcommand of entry.subcommands ?? []) {
-      appendHelpSuggestion(candidates, seen, `${entry.command} ${subcommand}`);
-    }
-
-    for (const option of entry.options ?? []) {
-      const suffix = optionToHelpSuggestionSuffix(option);
-      if (suffix) {
-        appendHelpSuggestion(candidates, seen, `${entry.command} ${suffix}`);
+      for (const subcommand of entry.subcommands ?? []) {
+        appendHelpSuggestion(candidates, seen, `${commandName} ${subcommand}`);
       }
-    }
 
-    for (const option of entry.globalOptions ?? []) {
-      const suffix = optionToHelpSuggestionSuffix(option);
-      if (suffix) {
-        appendHelpSuggestion(candidates, seen, `${entry.command} ${suffix}`);
-      }
-    }
-
-    for (const format of entry.commonFormats ?? []) {
-      appendHelpSuggestion(candidates, seen, `${entry.command} -o ${format}`);
-    }
-
-    for (const [subcommand, options] of Object.entries(
-      entry.commandOptions ?? {},
-    )) {
-      const normalizedSubcommand = subcommand.replace(/_/g, " ");
-      for (const option of options) {
+      for (const option of entry.options ?? []) {
         const suffix = optionToHelpSuggestionSuffix(option);
         if (suffix) {
+          appendHelpSuggestion(candidates, seen, `${commandName} ${suffix}`);
+        }
+      }
+
+      for (const option of entry.globalOptions ?? []) {
+        const suffix = optionToHelpSuggestionSuffix(option);
+        if (suffix) {
+          appendHelpSuggestion(candidates, seen, `${commandName} ${suffix}`);
+        }
+      }
+
+      for (const format of entry.commonFormats ?? []) {
+        appendHelpSuggestion(candidates, seen, `${commandName} -o ${format}`);
+      }
+
+      for (const [subcommand, options] of Object.entries(
+        entry.commandOptions ?? {},
+      )) {
+        const normalizedSubcommand = subcommand.replace(/_/g, " ");
+        for (const option of options) {
+          const suffix = optionToHelpSuggestionSuffix(option);
+          if (suffix) {
+            appendHelpSuggestion(
+              candidates,
+              seen,
+              `${commandName} ${normalizedSubcommand} ${suffix}`,
+            );
+          }
+        }
+      }
+
+      for (const example of entry.examples) {
+        appendHelpSuggestion(
+          candidates,
+          seen,
+          withHelpSuggestionCommand(entry.command, commandName, example),
+        );
+      }
+
+      for (const examples of Object.values(entry.commonPatterns ?? {})) {
+        for (const example of examples) {
           appendHelpSuggestion(
             candidates,
             seen,
-            `${entry.command} ${normalizedSubcommand} ${suffix}`,
+            withHelpSuggestionCommand(entry.command, commandName, example),
           );
         }
-      }
-    }
-
-    for (const example of entry.examples) {
-      appendHelpSuggestion(candidates, seen, example);
-    }
-
-    for (const examples of Object.values(entry.commonPatterns ?? {})) {
-      for (const example of examples) {
-        appendHelpSuggestion(candidates, seen, example);
       }
     }
   }
