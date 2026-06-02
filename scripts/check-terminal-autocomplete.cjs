@@ -135,6 +135,14 @@ function assertPopupKeyAction(message, event, state, expected) {
   );
 }
 
+function assertGhostKeyAction(message, event, state, expected) {
+  assertDeepEqual(
+    autocompleteKeys.getCommandAutocompleteGhostKeyAction(event, state),
+    expected,
+    message,
+  );
+}
+
 function assertInputModeAfterTerminalData(message, data, currentMode, expected) {
   assertEqual(
     autocompleteKeys.getCommandAutocompleteInputModeAfterTerminalData(
@@ -559,6 +567,30 @@ assertPopupKeyAction(
   { key: "Tab" },
   { selectedIndex: 0, selectionActive: false, suggestionCount: 5 },
   { type: "accept", selectedIndex: 0 },
+);
+assertGhostKeyAction(
+  "ghost hint Tab accepts inline suggestion",
+  { key: "Tab" },
+  { cursorAtEnd: true, suggestionCount: 1 },
+  { type: "accept", selectedIndex: 0 },
+);
+assertGhostKeyAction(
+  "ghost hint ArrowRight no longer accepts inline suggestion",
+  { key: "ArrowRight" },
+  { cursorAtEnd: true, suggestionCount: 1 },
+  { type: "pass-through" },
+);
+assertGhostKeyAction(
+  "ghost hint Shift+Tab remains shell reverse-tab",
+  { key: "Tab", shiftKey: true },
+  { cursorAtEnd: true, suggestionCount: 1 },
+  { type: "pass-through" },
+);
+assertGhostKeyAction(
+  "ghost hint Tab does not accept away from command end",
+  { key: "Tab" },
+  { cursorAtEnd: false, suggestionCount: 1 },
+  { type: "pass-through" },
 );
 assertPopupKeyAction(
   "visible popup ArrowUp without active selection keeps shell history navigation",

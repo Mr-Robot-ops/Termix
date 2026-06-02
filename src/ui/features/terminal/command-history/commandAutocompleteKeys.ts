@@ -13,6 +13,11 @@ export interface CommandAutocompleteKeyState {
   suggestionCount: number;
 }
 
+export interface CommandAutocompleteGhostKeyState {
+  cursorAtEnd: boolean;
+  suggestionCount: number;
+}
+
 export type CommandAutocompleteInputMode =
   | "idle"
   | "typing"
@@ -25,6 +30,11 @@ export type CommandAutocompleteKeyAction =
   | { type: "close-and-pass-through" }
   | { type: "deactivate-and-pass-through" }
   | { type: "move"; selectedIndex: number }
+  | { type: "pass-through" };
+
+export type CommandAutocompleteGhostKeyAction =
+  | { type: "accept"; selectedIndex: number }
+  | { type: "close" }
   | { type: "pass-through" };
 
 function hasPlainModifierState(event: CommandAutocompleteKeyEvent) {
@@ -61,6 +71,26 @@ export function getCommandAutocompleteInputModeAfterTerminalData(
   }
 
   return currentMode;
+}
+
+export function getCommandAutocompleteGhostKeyAction(
+  event: CommandAutocompleteKeyEvent,
+  state: CommandAutocompleteGhostKeyState,
+): CommandAutocompleteGhostKeyAction {
+  if (event.key === "Escape") {
+    return { type: "close" };
+  }
+
+  if (
+    event.key === "Tab" &&
+    hasPlainModifierState(event) &&
+    state.cursorAtEnd &&
+    state.suggestionCount > 0
+  ) {
+    return { type: "accept", selectedIndex: 0 };
+  }
+
+  return { type: "pass-through" };
 }
 
 export function getCommandAutocompletePopupKeyAction(

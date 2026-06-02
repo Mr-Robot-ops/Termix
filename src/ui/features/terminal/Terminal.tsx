@@ -67,6 +67,7 @@ import {
   getCommandAutocompleteListHeight,
 } from "./command-history/commandAutocompleteLayout.ts";
 import {
+  getCommandAutocompleteGhostKeyAction,
   getCommandAutocompleteInputModeAfterTerminalData,
   getCommandAutocompletePopupKeyAction,
   type CommandAutocompleteInputMode,
@@ -3222,22 +3223,21 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         }
 
         if (autocompleteHintRef.current) {
-          if (e.key === "Escape") {
+          const action = getCommandAutocompleteGhostKeyAction(e, {
+            cursorAtEnd: isCursorAtEndRef.current(),
+            suggestionCount: autocompleteSuggestionsRef.current.length,
+          });
+
+          if (action.type === "close") {
             e.preventDefault();
             e.stopPropagation();
             closeAutocomplete();
             return false;
           }
 
-          if (
-            e.key === "ArrowRight" &&
-            !e.ctrlKey &&
-            !e.altKey &&
-            !e.metaKey &&
-            !e.shiftKey &&
-            isCursorAtEndRef.current()
-          ) {
-            const selectedCommand = autocompleteSuggestionsRef.current[0];
+          if (action.type === "accept") {
+            const selectedCommand =
+              autocompleteSuggestionsRef.current[action.selectedIndex];
 
             if (selectedCommand) {
               e.preventDefault();
