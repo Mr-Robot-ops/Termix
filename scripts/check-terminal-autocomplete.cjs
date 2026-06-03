@@ -1691,11 +1691,13 @@ assertIncludes("tar --", "tar --one-file-system");
 assertSuggestionDescription("tar --", "tar --directory", "vor Aktion in Verzeichnis wechseln");
 assertIncludes("ncdu ", "ncdu /var/log");
 assertIncludes("ncdu ", "ncdu --one-file-system");
+assertStartsWithSequence("ncdu ", ["ncdu /var/log", "ncdu -x"]);
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
 assertMinCount("rg ", 20);
 assertIncludes("rg ", "rg TODO");
 assertIncludes("rg -", "rg --files");
+assertStartsWithSequence("rg ", ["rg TODO", "rg -n", "rg -g", "rg --files"]);
 assertIncludes("rg -g ", "rg -g '*.ts' autocomplete");
 assertIncludes("rg --", "rg --no-ignore");
 assertIncludes("yq ", "yq '.metadata.name' file.yml");
@@ -1806,6 +1808,11 @@ assertIncludes("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42");
 assertSource("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42", "history");
 assertIncludes("iftop ", "iftop -i");
 assertIncludes("sudo iftop ", "sudo iftop -P");
+assertStartsWithSequence("sudo iftop ", [
+  "sudo iftop -i",
+  "sudo iftop -P",
+  "sudo iftop -n",
+]);
 assertSuggestionDescription("iftop ", "iftop -P", "Ports anzeigen");
 assertIncludes("nload ", "nload eth0");
 assertIncludes("nload -u ", "nload -u M -t 500 eth0");
@@ -1816,6 +1823,11 @@ assertSuggestionDescription("vnstat ", "vnstat -l", "Live-Verkehr anzeigen");
 assertIncludes("iperf3 ", "iperf3 -s");
 assertIncludes("iperf3 -c ", "iperf3 -c 192.168.1.10");
 assertIncludes("iperf3 ", "iperf3 -R");
+assertStartsWithSequence("iperf3 ", [
+  "iperf3 -s",
+  "iperf3 -c",
+  "iperf3 -R",
+]);
 assertSuggestionDescription("iperf3 ", "iperf3 -R", "Reverse-Test vom Server zum Client");
 assertIncludes("ping -c ", "ping -c 4");
 assertIncludes("ping -I ", "ping -I eth0");

@@ -1007,6 +1007,31 @@ const TERMINAL_AUTOCOMPLETE_PRIORITY: Record<string, string[]> = {
   cp: ["-r", "-R", "-a", "-v", "-i", "-n", "-u", "-p", "-L", "-P"],
   mv: ["-v", "-i", "-n", "-f", "-u", "--backup"],
   mkdir: ["-p", "-v", "-m", "--parents", "--mode"],
+  rg: [
+    "todo",
+    "-n",
+    "-g",
+    "--files",
+    "-i",
+    "-S",
+    "-t",
+    "--hidden",
+    "--no-ignore",
+    "-C",
+  ],
+  ncdu: [
+    "/var/log",
+    "-x",
+    "/",
+    "--one-file-system",
+    "-r",
+    "--read-only",
+    "--exclude",
+  ],
+  iftop: ["-i", "-P", "-n", "-N", "-B", "-t", "-s", "-F", "-f"],
+  nload: ["eth0", "-m", "-u", "-t", "-a", "-i", "-o"],
+  vnstat: ["-i", "-l", "-d", "-m", "-h", "-5", "--json"],
+  iperf3: ["-s", "-c", "-R", "-P", "-t", "-p", "-u", "-b", "-J"],
   systemctl: [
     "status",
     "start",
@@ -1074,14 +1099,16 @@ function getAutocompletePriorityIndex(
   ].filter(Boolean);
 
   const exactIndex = priorities.findIndex((priority) =>
-    exactPriorityKeys.includes(priority),
+    exactPriorityKeys.includes(normalizePriorityKey(priority)),
   );
   if (exactIndex !== -1 || !allowFirstTokenFallback) {
     return exactIndex;
   }
 
   const firstTokenKey = normalizePriorityKey(labelTokens[0] ?? "");
-  return priorities.findIndex((priority) => priority === firstTokenKey);
+  return priorities.findIndex(
+    (priority) => normalizePriorityKey(priority) === firstTokenKey,
+  );
 }
 
 function getAutocompletePriorityAdjustment(candidate: string) {
