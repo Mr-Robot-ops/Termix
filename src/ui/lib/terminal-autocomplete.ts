@@ -164,24 +164,6 @@ const COMMON_SUFFIXLESS_SYSTEMD_UNITS = new Set([
   "sshd",
   "ufw",
 ]);
-const COMMON_SYSTEMD_UNIT_TARGETS = [
-  "ssh",
-  "sshd",
-  "nginx",
-  "apache2",
-  "docker",
-  "cron",
-  "ufw",
-  "certbot.timer",
-  "certbot.service",
-  "pihole-FTL.service",
-  "lightdm",
-  "mysql",
-  "mariadb",
-  "postgresql",
-  "redis",
-  "rsyslog",
-];
 const COMMON_SERVICE_NAMES = [
   "ssh",
   "sshd",
@@ -1177,6 +1159,174 @@ const TERMINAL_AUTOCOMPLETE_PRIORITY: Record<string, string[]> = {
     "-v npm",
     "-v",
     "-V",
+  ],
+  sed: [
+    "'s/foo/bar/g' file.txt",
+    "-i 's/foo/bar/g' file.txt",
+    "-n '1,20p' file.txt",
+    "-n '/error/p' /var/log/syslog",
+    "-E 's/[0-9]+/NUM/g' file.txt",
+    "-n '10,20p' file.txt",
+    "'/^#/d' config.conf",
+    "-e",
+    "-f",
+    "-n",
+    "-i",
+  ],
+  cut: [
+    "-d ':' -f 1 /etc/passwd",
+    "-d ':' -f 1,3 /etc/passwd",
+    "-d ',' -f 1,2 data.csv",
+    "-f 1 file.tsv",
+    "-c 1-10 file.txt",
+    "-b 1-16 file.bin",
+    "--complement",
+    "--output-delimiter",
+    "-d",
+    "-f",
+  ],
+  tr: [
+    "a-z A-Z",
+    "-d '\\r' < windows.txt > unix.txt",
+    "-s ' ' < file.txt",
+    "'[:lower:]' '[:upper:]' < file.txt",
+    "-d '[:digit:]' < file.txt",
+    "-cd '[:print:]\\n' < file.txt",
+    "-s '\\n' < file.txt",
+    "'\\t' ',' < table.tsv",
+    "-d",
+    "-s",
+  ],
+  wc: [
+    "-l file.txt",
+    "-w file.txt",
+    "-c file.txt",
+    "-m file.txt",
+    "-L file.txt",
+    "-l *.log",
+    "-l",
+    "--lines",
+    "-w",
+    "--words",
+  ],
+  uniq: [
+    "file.txt",
+    "-c",
+    "-d",
+    "-u",
+    "-i names.txt",
+    "-c access.log | sort -nr",
+    "-f 1 data.txt",
+    "-s 4 data.txt",
+    "--count",
+    "--repeated",
+  ],
+  base64: [
+    "file.bin",
+    "-d encoded.txt",
+    "--decode encoded.txt",
+    "-w 0 file.bin",
+    "--wrap 76 file.bin",
+    "-i dirty.txt",
+    "-d",
+    "--decode",
+    "-w",
+    "--wrap",
+  ],
+  cmp: [
+    "file-a file-b",
+    "-s file-a file-b",
+    "-l file-a file-b",
+    "-b file-a file-b",
+    "--quiet file-a file-b",
+    "--print-bytes file-a file-b",
+    "-i",
+    "-n",
+    "-s",
+    "-l",
+  ],
+  column: [
+    "-t table.txt",
+    "-t -s ':' /etc/passwd",
+    "-N USER,UID,SHELL -t users.tsv",
+    "-o ' | ' -t table.txt",
+    "-s, -t",
+    "-t",
+    "--table",
+    "-s",
+    "-N",
+    "-o",
+  ],
+  nl: [
+    "file.txt",
+    "-ba file.txt",
+    "-bt file.txt",
+    "-w1 -s': ' file.txt",
+    "-n rz -w3 file.txt",
+    "-v 100 file.txt",
+    "-i 10 file.txt",
+    "-b",
+    "-n",
+    "-w",
+  ],
+  paste: [
+    "names.txt values.txt",
+    "-d ',' a.txt b.txt",
+    "-s file.txt",
+    "-d ':' users.txt shells.txt",
+    "-d '\\t' col1.txt col2.txt",
+    "-s -d ',' file.txt",
+    "-z names.txt values.txt",
+    "-d",
+    "-s",
+    "-z",
+  ],
+  seq: [
+    "5",
+    "1 10",
+    "1 2 10",
+    "-w 001 010",
+    "-s ',' 1 5",
+    "-f 'host%02g' 1 5",
+    "10 -1 1",
+    "0 .5 2",
+    "--equal-width 1 12",
+    "-w",
+  ],
+  yes: [
+    "y | head",
+    "n | head",
+    "'test' | head",
+    "| head -n 5",
+    "'' | head -n 3",
+    "ok | head -n 10",
+    "n | command",
+    "--help",
+    "--version",
+  ],
+  printenv: [
+    "PATH",
+    "HOME",
+    "SHELL",
+    "USER",
+    "LANG",
+    "HOME SHELL",
+    "| sort",
+    "| grep PATH",
+    "-0",
+    "--null",
+  ],
+  whereis: [
+    "nginx",
+    "bash",
+    "python",
+    "systemctl",
+    "-b bash",
+    "-m systemctl",
+    "-s bash",
+    "-u nginx",
+    "-B /usr/bin -f bash",
+    "-M /usr/share/man -f systemctl",
   ],
   cp: ["-r", "-R", "-a", "-v", "-i", "-n", "-u", "-p", "-L", "-P"],
   mv: ["-v", "-i", "-n", "-f", "-u", "--backup"],
@@ -4099,16 +4249,16 @@ function buildContextualCatalogSuggestions(
   const availableSystemdUnits = uniqueDerivedValues(
     systemdUnits.filter(isLikelySystemdUnitTarget),
   );
-  const systemdUnitTargets = uniqueDerivedValues([
-    ...availableSystemdUnits,
-    ...COMMON_SYSTEMD_UNIT_TARGETS,
-  ]);
-  const serviceNames = uniqueDerivedValues([
-    ...availableSystemdUnits
+  const systemdUnitTargets = availableSystemdUnits;
+  const runtimeServiceNames = uniqueDerivedValues(
+    availableSystemdUnits
       .map(getServiceNameFromSystemdUnit)
       .filter(isLikelyServiceName),
-    ...COMMON_SERVICE_NAMES,
-  ]);
+  );
+  const serviceNames =
+    runtimeServiceNames.length > 0
+      ? runtimeServiceNames
+      : COMMON_SERVICE_NAMES;
   const isBarePrivilegeWrapperContext =
     context.prefix &&
     !context.matchCommand.trim() &&
@@ -5785,7 +5935,8 @@ function extractSystemdUnitsFromHistory(history: string[]) {
       const systemctlTarget = getSystemctlUnitTarget(command);
       if (
         systemctlTarget &&
-        isLikelySystemdUnitTarget(systemctlTarget)
+        isLikelySystemdUnitTarget(systemctlTarget) &&
+        systemdUnitHasExplicitSuffix(systemctlTarget)
       ) {
         units.push(stripShellQuotes(systemctlTarget));
       }
@@ -5822,14 +5973,31 @@ export function extractSystemdUnitsFromTerminalOutput(output: string) {
     "gi",
   );
 
-  for (const match of normalizedOutput.matchAll(unitPattern)) {
-    const unit = match[1] ?? "";
-    if (isLikelySystemdUnitTarget(unit)) {
-      units.push(unit);
+  for (const line of normalizedOutput.split(/\r?\n/)) {
+    if (lineLooksLikeMissingSystemdUnit(line)) {
+      continue;
+    }
+
+    for (const match of line.matchAll(unitPattern)) {
+      const unit = match[1] ?? "";
+      if (isLikelySystemdUnitTarget(unit)) {
+        units.push(unit);
+      }
     }
   }
 
   return uniqueDerivedValues(units);
+}
+
+function lineLooksLikeMissingSystemdUnit(line: string) {
+  const normalizedLine = line.toLowerCase();
+  return (
+    normalizedLine.includes("could not be found") ||
+    normalizedLine.includes("unit not found") ||
+    normalizedLine.includes("unit file not found") ||
+    normalizedLine.includes("loaded: not-found") ||
+    normalizedLine.includes("not loaded")
+  );
 }
 
 function getServiceNameFromSystemdUnit(unit: string) {
@@ -6338,6 +6506,62 @@ function isSystemctlUnitCommandPrefix(command: string) {
   return Boolean(subcommand && SYSTEMCTL_UNIT_SUBCOMMANDS.has(subcommand));
 }
 
+export function isSystemdUnitAutocompleteContext(command: string) {
+  const context = getAutocompleteContext(command);
+  return Boolean(
+    getSystemctlUnitSuggestionPrefix(context.matchCommand) ||
+      getJournalctlUnitSuggestionPrefix(context.matchCommand) ||
+      getServiceNameSuggestionPrefix(context.matchCommand) ||
+      getSubcommandValueSuggestionPrefix(context.matchCommand, "systemd-analyze", [
+        "verify",
+        "critical-chain",
+      ]),
+  );
+}
+
+function systemdUnitHasExplicitSuffix(target: string) {
+  const normalizedTarget = stripShellQuotes(target).toLowerCase();
+  const dotIndex = normalizedTarget.lastIndexOf(".");
+  if (dotIndex === -1) {
+    return false;
+  }
+
+  return SYSTEMD_UNIT_SUFFIXES.has(normalizedTarget.slice(dotIndex + 1));
+}
+
+function shouldSuppressCatalogSystemctlUnitCandidate(
+  candidate: string,
+  context: TerminalAutocompleteContext,
+  availableSystemdUnits: string[],
+) {
+  const contextTokens = getEffectiveCommandTokens(context.matchCommand);
+  if (contextTokens[0]?.toLowerCase() !== "systemctl") {
+    return false;
+  }
+
+  const unitTarget = getSystemctlUnitTarget(candidate);
+  if (!unitTarget || hasPlaceholder(candidate)) {
+    return false;
+  }
+
+  const currentUnitTarget = getSystemctlUnitTarget(context.matchCommand);
+  if (
+    currentUnitTarget &&
+    normalizeAutocompleteCommand(candidate).startsWith(
+      `${normalizeAutocompleteCommand(context.matchCommand.trim())} `,
+    )
+  ) {
+    return false;
+  }
+
+  const normalizedUnitTarget = stripShellQuotes(unitTarget).toLowerCase();
+  const availableUnitNames = new Set(
+    availableSystemdUnits.map((unit) => stripShellQuotes(unit).toLowerCase()),
+  );
+
+  return !availableUnitNames.has(normalizedUnitTarget);
+}
+
 function stripShellQuotes(value: string) {
   return value.replace(/^(['"])(.*)\1$/, "$2");
 }
@@ -6394,7 +6618,10 @@ export function isUsefulAutocompleteHistoryCommand(command: string) {
 
   const systemctlTarget = getSystemctlUnitTarget(command);
   if (systemctlTarget) {
-    return isLikelySystemdUnitTarget(systemctlTarget);
+    return (
+      isLikelySystemdUnitTarget(systemctlTarget) &&
+      systemdUnitHasExplicitSuffix(systemctlTarget)
+    );
   }
 
   return true;
@@ -6654,6 +6881,7 @@ export function buildTerminalAutocompleteMatchItems(
   );
   const matches: TerminalAutocompleteMatch[] = [];
   const seen = new Set<string>();
+  const availableSystemdUnits = options.systemdUnits ?? [];
   const historyCommands = new Set(
     history.flatMap((command) => {
       const normalizedCommand = normalizeAutocompleteCommand(command);
@@ -6680,6 +6908,12 @@ export function buildTerminalAutocompleteMatchItems(
         isOverlongSingleValueCandidate(trimmedCandidate, context)) ||
       (source === "catalog" &&
         isOverlongOpenSslConnectCatalogCandidate(trimmedCandidate, context)) ||
+      (source === "catalog" &&
+        shouldSuppressCatalogSystemctlUnitCandidate(
+          trimmedCandidate,
+          context,
+          availableSystemdUnits,
+        )) ||
       (source === "history"
         ? !isUsefulAutocompleteHistoryCommand(trimmedCandidate)
         : !isValidAutocompleteCommand(trimmedCandidate)) ||
@@ -6771,7 +7005,6 @@ export function buildTerminalAutocompleteMatchItems(
     }
   };
 
-  const availableSystemdUnits = options.systemdUnits ?? [];
   buildContextualCatalogSuggestions(context, availableSystemdUnits).forEach(
     (candidate) => appendMatch(candidate, "catalog"),
   );
@@ -7010,6 +7243,20 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-v": "Entpackdetails anzeigen",
     "--verbose": "Entpackdetails anzeigen",
   },
+  base64: {
+    "file.bin": "Datei als Base64 ausgeben",
+    "-d encoded.txt": "Base64-Datei dekodieren",
+    "--decode encoded.txt": "Base64-Datei dekodieren",
+    "-w 0 file.bin": "Base64 ohne Zeilenumbruch ausgeben",
+    "--wrap 76 file.bin": "Base64-Ausgabe nach 76 Zeichen umbrechen",
+    "-i dirty.txt": "ungueltige Zeichen beim Dekodieren ignorieren",
+    "-d": "Base64 dekodieren",
+    "--decode": "Base64 dekodieren",
+    "-w": "Zeilenbreite fuer Ausgabe setzen",
+    "--wrap": "Zeilenbreite fuer Ausgabe setzen",
+    "-i": "ungueltige Zeichen ignorieren",
+    "--ignore-garbage": "ungueltige Zeichen ignorieren",
+  },
   cat: {
     "-n": "alle Ausgabezeilen nummerieren",
     "-b": "nichtleere Ausgabezeilen nummerieren",
@@ -7019,6 +7266,11 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-s": "mehrere Leerzeilen zusammenfassen",
   },
   column: {
+    "-t table.txt": "Datei als Tabelle ausrichten",
+    "-t -s ':' /etc/passwd": "Doppelpunkt-getrennte Spalten ausrichten",
+    "-N USER,UID,SHELL -t users.tsv": "Spaltennamen setzen und Tabelle ausrichten",
+    "-o ' | ' -t table.txt": "Tabelle mit sichtbarem Trenner ausgeben",
+    "-s, -t": "CSV-Text am Komma trennen und ausrichten",
     "-t": "Eingabe als Tabelle ausrichten",
     "--table": "Eingabe als Tabelle ausrichten",
     "-s": "Eingabetrenner setzen",
@@ -7027,6 +7279,26 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "--table-columns": "Spaltennamen setzen",
     "-o": "Ausgabetrenner setzen",
     "--output-separator": "Ausgabetrenner setzen",
+    "-R": "Spalten rechtsbuendig ausrichten",
+    "--table-right": "Spalten rechtsbuendig ausrichten",
+    "-J": "Tabellen-Ausgabe als JSON erzeugen",
+    "--json": "Tabellen-Ausgabe als JSON erzeugen",
+  },
+  cmp: {
+    "file-a file-b": "zwei Dateien bytegenau vergleichen",
+    "-s file-a file-b": "nur Exit-Code fuer Vergleich verwenden",
+    "-l file-a file-b": "alle abweichenden Bytes ausgeben",
+    "-b file-a file-b": "abweichende Bytes als Zeichen ausgeben",
+    "--quiet file-a file-b": "nur Exit-Code fuer Vergleich verwenden",
+    "--print-bytes file-a file-b": "abweichende Bytes als Zeichen ausgeben",
+    "-i": "Bytes am Dateianfang ueberspringen",
+    "--ignore-initial": "Bytes am Dateianfang ueberspringen",
+    "-n": "nur bestimmte Byteanzahl vergleichen",
+    "--bytes": "nur bestimmte Byteanzahl vergleichen",
+    "-s": "stille Ausgabe, nur Exit-Code",
+    "--quiet": "stille Ausgabe, nur Exit-Code",
+    "-l": "alle Byte-Unterschiede ausgeben",
+    "--verbose": "alle Byte-Unterschiede ausgeben",
   },
   command: {
     "-v docker": "Pfad zu docker anzeigen",
@@ -7044,7 +7316,15 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "--help": "Hilfe anzeigen",
   },
   cut: {
+    "-d ':' -f 1 /etc/passwd": "Benutzernamen aus passwd ausgeben",
+    "-d ':' -f 1,3 /etc/passwd": "Benutzername und UID aus passwd ausgeben",
+    "-d ',' -f 1,2 data.csv": "erste zwei CSV-Felder ausgeben",
+    "-f 1 file.tsv": "erstes Tab-getrenntes Feld ausgeben",
+    "-c 1-10 file.txt": "erste zehn Zeichen je Zeile ausgeben",
+    "-b 1-16 file.bin": "erste 16 Bytes je Zeile ausgeben",
+    "--complement -d ':' -f 2 /etc/passwd": "ausgewaehltes Feld ausschliessen",
     "-d": "Feldtrenner setzen",
+    "--delimiter": "Feldtrenner setzen",
     "-f": "Felder auswählen",
     "-c": "Zeichenpositionen auswählen",
     "-b": "Bytepositionen auswählen",
@@ -7784,6 +8064,18 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-rn": "Routing-Tabelle numerisch anzeigen",
   },
   nl: {
+    "file.txt": "Datei mit Standard-Zeilennummern ausgeben",
+    "-ba file.txt": "alle Zeilen in Datei nummerieren",
+    "-bt file.txt": "nur nichtleere Zeilen nummerieren",
+    "-n rz -w3 file.txt": "rechtsbuendige dreistellige Zeilennummern ausgeben",
+    "-v 100 file.txt": "Zeilennummern bei 100 starten",
+    "-i 10 file.txt": "Zeilennummern in Zehnerschritten erhoehen",
+    "-n": "Format der Zeilennummer setzen",
+    "--number-format": "Format der Zeilennummer setzen",
+    "-v": "Startnummer setzen",
+    "--starting-line-number": "Startnummer setzen",
+    "-i": "Zeilennummer-Inkrement setzen",
+    "--line-increment": "Zeilennummer-Inkrement setzen",
     "-ba": "alle Zeilen nummerieren",
     "-b": "Zeilennummerierung für Body setzen",
     "--body-numbering": "Zeilennummerierung für Body setzen",
@@ -7840,6 +8132,21 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-d": "vorher in Verzeichnis wechseln",
     "--directory": "vorher in Verzeichnis wechseln",
   },
+  paste: {
+    "names.txt values.txt": "Dateien zeilenweise nebeneinander ausgeben",
+    "-d ',' a.txt b.txt": "Dateien mit Komma als Trenner zusammenfuehren",
+    "-s file.txt": "Zeilen einer Datei seriell zusammenfuehren",
+    "-d ':' users.txt shells.txt": "Dateien mit Doppelpunkt als Trenner verbinden",
+    "-d '\\t' col1.txt col2.txt": "Dateien mit Tabulator als Trenner verbinden",
+    "-s -d ',' file.txt": "Dateizeilen mit Komma in eine Zeile schreiben",
+    "-z names.txt values.txt": "NUL-getrennte Eingabe verarbeiten",
+    "-d": "Trennerliste setzen",
+    "--delimiters": "Trennerliste setzen",
+    "-s": "jede Datei seriell statt parallel ausgeben",
+    "--serial": "jede Datei seriell statt parallel ausgeben",
+    "-z": "NUL-getrennte Zeilen verwenden",
+    "--zero-terminated": "NUL-getrennte Zeilen verwenden",
+  },
   pgrep: {
     "-af": "PID und komplette Kommandozeile durchsuchen und anzeigen",
     "-f": "gesamte Kommandozeile durchsuchen",
@@ -7889,6 +8196,9 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-v": "Fehler ausführlicher melden",
   },
   service: {
+    "--status-all": "Status aller SysV-Dienste anzeigen",
+    "--help": "Hilfe zu service anzeigen",
+    "--version": "service-Version anzeigen",
     status: "Dienststatus anzeigen",
     start: "Dienst starten",
     stop: "Dienst stoppen",
@@ -8045,6 +8355,16 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-w": "Ausgabebreite setzen",
   },
   tr: {
+    "a-z A-Z": "kleine Buchstaben in grosse umwandeln",
+    "-d '\\r' < windows.txt > unix.txt": "Windows-Zeilenenden entfernen",
+    "-s ' ' < file.txt": "mehrfache Leerzeichen zusammenfassen",
+    "'[:lower:]' '[:upper:]' < file.txt": "Text in Grossbuchstaben umwandeln",
+    "-d '[:digit:]' < file.txt": "Ziffern aus Eingabe entfernen",
+    "-cd '[:print:]\\n' < file.txt": "nur druckbare Zeichen und Zeilenumbrueche behalten",
+    "-s '\\n' < file.txt": "mehrfache Leerzeilen zusammenfassen",
+    "'\\t' ',' < table.tsv": "Tabs in Kommas umwandeln",
+    "-C": "Zeichenauswahl byteweise invertieren",
+    "--truncate-set1": "erstes Zeichenset auf Laenge des zweiten kuerzen",
     "-d": "Zeichen löschen",
     "--delete": "Zeichen löschen",
     "-s": "wiederholte Zeichen zusammenfassen",
@@ -8062,6 +8382,16 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-q": "Queries pro Hop setzen",
   },
   uniq: {
+    "file.txt": "benachbarte Duplikate aus Datei entfernen",
+    "-i names.txt": "Namen ohne Gross-/Kleinschreibung vergleichen",
+    "-c access.log | sort -nr": "Haeufigkeiten zaehlen und absteigend sortieren",
+    "-f 1 data.txt": "erstes Feld beim Vergleich ignorieren",
+    "-s 4 data.txt": "erste vier Zeichen beim Vergleich ignorieren",
+    "--count": "Wiederholungen zaehlen",
+    "--repeated": "nur doppelte Zeilen ausgeben",
+    "--unique": "nur eindeutige Zeilen ausgeben",
+    "--ignore-case": "Gross-/Kleinschreibung ignorieren",
+    "-w": "nur diese Zeichenanzahl vergleichen",
     "-c": "Wiederholungen zählen",
     "-d": "nur doppelte Zeilen ausgeben",
     "-u": "nur eindeutige Zeilen ausgeben",
@@ -8070,6 +8400,18 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-s": "Zeichen am Zeilenanfang überspringen",
   },
   wc: {
+    "file.txt": "Zeilen, Wörter oder Bytes für Datei zählen",
+    "-l file.txt": "Zeilen in Datei zaehlen",
+    "-w file.txt": "Woerter in Datei zaehlen",
+    "-c file.txt": "Bytes in Datei zaehlen",
+    "-m file.txt": "Zeichen in Datei zaehlen",
+    "-L file.txt": "laengste Zeile in Datei messen",
+    "-l *.log": "Zeilen ueber Logdateien zaehlen",
+    "--lines": "Zeilen zaehlen",
+    "--words": "Woerter zaehlen",
+    "--bytes": "Bytes zaehlen",
+    "--chars": "Zeichen zaehlen",
+    "--max-line-length": "Laenge der laengsten Zeile anzeigen",
     "-l": "Zeilen zählen",
     "-w": "Wörter zählen",
     "-c": "Bytes zählen",
@@ -9068,6 +9410,14 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "-o": "ausgehende Maximalrate für Skala setzen",
   },
   printenv: {
+    PATH: "PATH-Variable anzeigen",
+    HOME: "Home-Verzeichnisvariable anzeigen",
+    SHELL: "Login-Shell-Variable anzeigen",
+    USER: "Benutzername aus Umgebung anzeigen",
+    LANG: "Locale-Variable anzeigen",
+    "HOME SHELL": "mehrere Umgebungsvariablen anzeigen",
+    "| sort": "Umgebung sortiert anzeigen",
+    "| grep PATH": "Umgebung nach PATH filtern",
     "-0": "Ausgabe mit NUL statt Zeilenumbruch trennen",
     "--null": "Ausgabe mit NUL statt Zeilenumbruch trennen",
     "--help": "Hilfe anzeigen",
@@ -9269,6 +9619,15 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "--no-headers": "Spaltenüberschriften ausblenden",
   },
   sed: {
+    "-E 's/[0-9]+/NUM/g' file.txt": "Zahlen per erweitertem Regex ersetzen",
+    "-n '/error/p' /var/log/syslog": "nur Zeilen mit error ausgeben",
+    "-n '10,20p' file.txt": "Zeilen 10 bis 20 ausgeben",
+    "'/^#/d' config.conf": "Kommentarzeilen aus Konfiguration entfernen",
+    "-e 's/foo/bar/' -e 's/baz/qux/' file.txt": "mehrere sed-Ausdruecke anwenden",
+    "-f script.sed file.txt": "sed-Skriptdatei auf Datei anwenden",
+    "--follow-symlinks": "beim direkten Bearbeiten Symlinks folgen",
+    "--sandbox": "sed im Sandbox-Modus ausfuehren",
+    "--posix": "GNU-Erweiterungen deaktivieren",
     "-n": "automatische Ausgabe unterdrücken",
     "-i": "Dateien direkt bearbeiten",
     "-E": "erweiterte reguläre Ausdrücke verwenden",
@@ -9279,6 +9638,23 @@ const TERMINAL_AUTOCOMPLETE_SUGGESTION_DETAILS: Record<
     "'s/foo/bar/g' file.txt": "Text in Datei ersetzen und ausgeben",
     "-i 's/foo/bar/g'": "Ersetzung direkt in Datei schreiben",
     "-n '1,20p'": "nur Zeilenbereich ausgeben",
+  },
+  seq: {
+    "5": "Zahlen 1 bis 5 ausgeben",
+    "1 10": "Zahlen 1 bis 10 ausgeben",
+    "1 2 10": "Zahlen von 1 bis 10 in Zweierschritten ausgeben",
+    "-w 001 010": "Zahlen mit fuehrenden Nullen ausgeben",
+    "-s ',' 1 5": "Zahlen mit Komma trennen",
+    "-f 'host%02g' 1 5": "Zahlen in Hostnamenformat einsetzen",
+    "10 -1 1": "absteigende Zahlenfolge ausgeben",
+    "0 .5 2": "Dezimal-Schritte ausgeben",
+    "--equal-width 1 12": "Zahlen gleich breit mit fuehrenden Nullen ausgeben",
+    "-f": "Ausgabeformat setzen",
+    "--format": "Ausgabeformat setzen",
+    "-s": "Trennzeichen setzen",
+    "--separator": "Trennzeichen setzen",
+    "-w": "Zahlen gleich breit ausgeben",
+    "--equal-width": "Zahlen gleich breit ausgeben",
   },
   su: {
     "-": "Login-Shell als Zielbenutzer starten",

@@ -163,6 +163,118 @@ const authManager = AuthManager.getInstance();
 const userCrypto = UserCrypto.getInstance();
 
 const userConnections = new Map<string, Set<WebSocket>>();
+const SYSTEMD_UNIT_SUFFIXES = [
+  "automount",
+  "device",
+  "mount",
+  "path",
+  "scope",
+  "service",
+  "slice",
+  "socket",
+  "swap",
+  "target",
+  "timer",
+];
+const SYSTEMD_UNIT_QUERY_TIMEOUT_MS = 5000;
+const SYSTEMD_UNIT_QUERY_MAX_BYTES = 128 * 1024;
+const SYSTEMD_UNIT_QUERY_LIMIT = 200;
+const SYSTEMD_UNIT_QUERY = [
+  "if command -v systemctl >/dev/null 2>&1; then",
+  "systemctl list-units --all --no-legend --no-pager --full 2>/dev/null;",
+  "systemctl list-unit-files --no-legend --no-pager --full 2>/dev/null;",
+  "fi",
+].join(" ");
+
+function extractSystemdUnitsForAutocomplete(output: string): string[] {
+  const suffixPattern = SYSTEMD_UNIT_SUFFIXES.join("|");
+  const unitPattern = new RegExp(
+    `\\b([A-Za-z0-9][A-Za-z0-9@_.:+-]*\\.(?:${suffixPattern}))\\b`,
+    "gi",
+  );
+  const units: string[] = [];
+  const seen = new Set<string>();
+
+  for (const match of output.matchAll(unitPattern)) {
+    const unit = match[1] ?? "";
+    const normalizedUnit = unit.toLowerCase();
+    if (seen.has(normalizedUnit)) {
+      continue;
+    }
+
+    seen.add(normalizedUnit);
+    units.push(unit);
+
+    if (units.length >= SYSTEMD_UNIT_QUERY_LIMIT) {
+      break;
+    }
+  }
+
+  return units;
+}
+
+function querySystemdUnitsForAutocomplete(
+  conn: SSHClientType,
+): Promise<string[]> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = "";
+    let streamRef: ClientChannel | null = null;
+
+    function finish(units: string[]) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      resolve(units);
+    }
+
+    const timeout = setTimeout(() => {
+      try {
+        streamRef?.close();
+      } catch {
+        /* ignore */
+      }
+      finish([]);
+    }, SYSTEMD_UNIT_QUERY_TIMEOUT_MS);
+
+    conn.exec(SYSTEMD_UNIT_QUERY, { pty: false }, (err, stream) => {
+      if (err) {
+        finish([]);
+        return;
+      }
+
+      streamRef = stream;
+      stream.on("data", (chunk: Buffer) => {
+        if (stdout.length < SYSTEMD_UNIT_QUERY_MAX_BYTES) {
+          stdout += chunk.toString("utf-8");
+        }
+      });
+      stream.stderr.on("data", () => {
+        // systemctl errors are intentionally ignored for autocomplete metadata.
+      });
+      stream.on("error", () => finish([]));
+      stream.on("close", () => {
+        finish(extractSystemdUnitsForAutocomplete(stdout));
+      });
+    });
+  });
+}
+
+function sendSystemdUnitsForAutocomplete(ws: WebSocket, units: string[]) {
+  if (ws.readyState !== WebSocket.OPEN || units.length === 0) {
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
+      type: "autocomplete_systemd_units",
+      units,
+    }),
+  );
+}
 
 interface JumpHostConfig {
   id: number;
@@ -590,6 +702,46 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
   let wsAlive = true;
 
+  async function refreshAutocompleteSystemdUnits(
+    conn: SSHClientType | null | undefined,
+    sessionIdForCache: string | null,
+  ) {
+    if (!conn) {
+      return;
+    }
+
+    try {
+      const units = await querySystemdUnitsForAutocomplete(conn);
+      if (units.length === 0) {
+        return;
+      }
+
+      const session = sessionManager.getSession(sessionIdForCache);
+      if (session) {
+        session.autocompleteSystemdUnits = units;
+      }
+
+      const targetWs = session?.attachedWs ?? ws;
+      sendSystemdUnitsForAutocomplete(targetWs, units);
+    } catch (error) {
+      sshLogger.warn("Failed to refresh systemd unit autocomplete metadata", {
+        operation: "terminal_autocomplete_systemd_units",
+        sessionId: sessionIdForCache,
+        userId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  function sendCachedAutocompleteSystemdUnits(sessionIdForCache: string | null) {
+    const session = sessionManager.getSession(sessionIdForCache);
+    if (!session) {
+      return;
+    }
+
+    sendSystemdUnitsForAutocomplete(ws, session.autocompleteSystemdUnits);
+  }
+
   ws.on("pong", () => {
     wsAlive = true;
   });
@@ -784,6 +936,11 @@ wss.on("connection", async (ws: WebSocket, req) => {
               message: "Session reattached",
             }),
           );
+          sendCachedAutocompleteSystemdUnits(attachData.sessionId);
+          void refreshAutocompleteSystemdUnits(
+            session.sshConn,
+            attachData.sessionId,
+          );
         } else {
           sshLogger.warn(
             "Session attachment failed - will create new connection",
@@ -851,6 +1008,13 @@ wss.on("connection", async (ws: WebSocket, req) => {
         // Split the sentinel across shell variables so the echoed command
         // itself never contains "TERMIX_CWD:" — only the output line does.
         activeStream.write('a=TERMIX_CWD; echo "$a:$(pwd)"\r');
+        break;
+      }
+
+      case "refresh_systemd_units": {
+        const activeSession = sessionManager.getSession(currentSessionId);
+        const activeConn = activeSession?.sshConn ?? sshConn;
+        void refreshAutocompleteSystemdUnits(activeConn, currentSessionId);
         break;
       }
 
@@ -1487,6 +1651,11 @@ wss.on("connection", async (ws: WebSocket, req) => {
         ws.send(
           JSON.stringify({ type: "connected", message: "Session reattached" }),
         );
+        sendCachedAutocompleteSystemdUnits(currentSessionId);
+        void refreshAutocompleteSystemdUnits(
+          existingSession.sshConn,
+          currentSessionId,
+        );
 
         cleanupAuthState(connectionTimeout);
         return;
@@ -1890,6 +2059,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           ws.send(
             JSON.stringify({ type: "connected", message: "SSH connected" }),
           );
+          void refreshAutocompleteSystemdUnits(conn, boundSessionId);
 
           if (id && hostConfig.userId) {
             (async () => {

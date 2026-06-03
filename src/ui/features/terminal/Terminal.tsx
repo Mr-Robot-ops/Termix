@@ -656,8 +656,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       [removeAutocompleteHistoryCommand],
     );
 
-    const rememberAutocompleteSystemdUnits = useCallback((data: string) => {
-      const units = extractSystemdUnitsFromTerminalOutput(data);
+    const rememberAutocompleteSystemdUnitList = useCallback((units: string[]) => {
       if (units.length === 0) {
         return;
       }
@@ -678,6 +677,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         })
         .slice(0, 80);
     }, []);
+
+    const rememberAutocompleteSystemdUnits = useCallback(
+      (data: string) => {
+        rememberAutocompleteSystemdUnitList(
+          extractSystemdUnitsFromTerminalOutput(data),
+        );
+      },
+      [rememberAutocompleteSystemdUnitList],
+    );
 
     const closeAutocompleteRef = useRef(closeAutocomplete);
 
@@ -2028,6 +2036,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 queueAutocompleteRefreshAfterTerminalWrite,
               );
             }
+          } else if (msg.type === "autocomplete_systemd_units") {
+            const units = Array.isArray(msg.units)
+              ? msg.units.filter((unit: unknown): unit is string =>
+                  typeof unit === "string",
+                )
+              : [];
+            rememberAutocompleteSystemdUnitList(units);
+            refreshAutocompleteSuggestionsRef.current();
           } else if (msg.type === "error") {
             const errorMessage = msg.message || t("terminal.unknownError");
 

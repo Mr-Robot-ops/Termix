@@ -108,6 +108,18 @@ const runtimeSystemdOutput = `
 `;
 const runtimeSystemdUnits =
   autocomplete.extractSystemdUnitsFromTerminalOutput(runtimeSystemdOutput);
+const missingSystemdUnitOutput = `
+  Unit mariadb.service could not be found.
+  Loaded: not-found (Reason: Unit mariadb.service not found.)
+`;
+const raspberryPiSystemdOutput = `
+  avahi-daemon.service loaded active running Avahi mDNS/DNS-SD Stack
+  dbus.service loaded active running D-Bus System Message Bus
+  dhcpcd.service loaded active running DHCP Client Daemon
+  ssh.service loaded active running OpenBSD Secure Shell server
+`;
+const raspberryPiSystemdUnits =
+  autocomplete.extractSystemdUnitsFromTerminalOutput(raspberryPiSystemdOutput);
 
 function fail(message) {
   throw new Error(message);
@@ -189,6 +201,13 @@ function runtimeCommandsFor(command) {
   return runtimeItemsFor(command).map((item) => item.command);
 }
 
+function commandsForSystemdUnits(command, systemdUnits) {
+  return itemsForOptions(command, {
+    mode: "popup",
+    systemdUnits,
+  }).map((item) => item.command);
+}
+
 function assertRuntimeIncludes(command, expected) {
   const commands = runtimeCommandsFor(command);
   if (!commands.includes(expected)) {
@@ -211,6 +230,24 @@ function assertRuntimeSource(command, expectedCommand, source) {
   if (match.source !== source) {
     fail(
       `Expected runtime ${expectedCommand} from ${JSON.stringify(command)} to be ${source}, got ${match.source}`,
+    );
+  }
+}
+
+function assertSystemdUnitsIncludes(command, systemdUnits, expected) {
+  const commands = commandsForSystemdUnits(command, systemdUnits);
+  if (!commands.includes(expected)) {
+    fail(
+      `Expected ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} to include ${expected}`,
+    );
+  }
+}
+
+function assertSystemdUnitsNotIncludes(command, systemdUnits, unwanted) {
+  const commands = commandsForSystemdUnits(command, systemdUnits);
+  if (commands.includes(unwanted)) {
+    fail(
+      `Expected ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} not to include ${unwanted}`,
     );
   }
 }
@@ -1592,7 +1629,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
 
 assertMinCount("sudo systemctl ", 50);
 assertMinCount("sudo systemctl ", 65);
-assertSameEffectiveSuggestions("systemctl s", "sudo systemctl s", 12);
+assertSameEffectiveSuggestions("systemctl s", "sudo systemctl s", 10);
 assertSameEffectiveSuggestions(
   "systemctl status ",
   "sudo systemctl status ",
@@ -1604,15 +1641,22 @@ assertBefore(
   "sudo systemctl show <unit>",
   "sudo systemctl set-environment <VARIABLE=VALUE>",
 );
-assertIncludes("systemctl s", "systemctl status nginx");
+assertNotIncludes("systemctl s", "systemctl status nginx");
 assertIncludes("systemctl status ", "systemctl status certbot.timer");
-assertFirst("systemctl status ", "systemctl status custom-app.service");
-assertIncludes("sudo systemctl status ", "sudo systemctl status nginx");
+assertFirst("systemctl status ", "systemctl status certbot.timer");
+assertNotIncludes("sudo systemctl status ", "sudo systemctl status nginx");
+assertNotIncludes("sudo systemctl status ", "sudo systemctl status ssh");
+assertNotIncludes("sudo systemctl status ", "sudo systemctl status sshd");
+assertNotIncludes("sudo systemctl status ", "sudo systemctl status apache2");
+assertNotIncludes(
+  "sudo systemctl status ",
+  "sudo systemctl status ssh | tee status.txt",
+);
 assertIncludes("sudo systemctl status ", "sudo systemctl status certbot.timer");
-assertSource("sudo systemctl status ", "sudo systemctl status certbot.timer", "catalog");
+assertSource("sudo systemctl status ", "sudo systemctl status certbot.timer", "history");
 assertIncludes("sudo systemctl status ", "sudo systemctl status custom-app.service");
 assertSource("sudo systemctl status ", "sudo systemctl status custom-app.service", "history");
-assertFirst("sudo systemctl status ", "sudo systemctl status custom-app.service");
+assertFirst("sudo systemctl status ", "sudo systemctl status certbot.timer");
 assertNotIncludes("sudo systemctl status ", "sudo systemctl status cert.bot");
 assertDeepEqual(runtimeSystemdUnits, [
   "certbot.service",
@@ -1622,6 +1666,31 @@ assertDeepEqual(runtimeSystemdUnits, [
   "docker.socket",
   "custom-runtime.service",
 ], "runtime systemd unit extraction");
+assertDeepEqual(
+  autocomplete.extractSystemdUnitsFromTerminalOutput(missingSystemdUnitOutput),
+  [],
+  "missing systemd units are not learned from error output",
+);
+assertDeepEqual(
+  raspberryPiSystemdUnits,
+  [
+    "avahi-daemon.service",
+    "dbus.service",
+    "dhcpcd.service",
+    "ssh.service",
+  ],
+  "real systemd service output extraction",
+);
+assertEqual(
+  autocomplete.isSystemdUnitAutocompleteContext("sudo systemctl status "),
+  true,
+  "sudo systemctl status requests systemd unit metadata",
+);
+assertEqual(
+  autocomplete.isSystemdUnitAutocompleteContext("systemctl list-units "),
+  false,
+  "systemctl list-units does not request a unit value",
+);
 assertRuntimeFirst("systemctl status ", "systemctl status certbot.service");
 assertRuntimeIncludes("systemctl status c", "systemctl status certbot.service");
 assertRuntimeIncludes("systemctl status c", "systemctl status certbot.timer");
@@ -1634,8 +1703,28 @@ assertRuntimeSource(
   "sudo systemctl stop ssh.service",
   "catalog",
 );
-assertIncludes("systemctl stop ", "systemctl stop ssh");
-assertIncludes("systemctl restart ", "systemctl restart ssh");
+assertSystemdUnitsIncludes(
+  "sudo systemctl status d",
+  raspberryPiSystemdUnits,
+  "sudo systemctl status dbus.service",
+);
+assertSystemdUnitsIncludes(
+  "systemctl restart av",
+  raspberryPiSystemdUnits,
+  "systemctl restart avahi-daemon.service",
+);
+assertSystemdUnitsIncludes(
+  "systemctl stop ",
+  raspberryPiSystemdUnits,
+  "systemctl stop dhcpcd.service",
+);
+assertSystemdUnitsNotIncludes(
+  "sudo systemctl status m",
+  autocomplete.extractSystemdUnitsFromTerminalOutput(missingSystemdUnitOutput),
+  "sudo systemctl status mariadb.service",
+);
+assertNotIncludes("systemctl stop ", "systemctl stop ssh");
+assertNotIncludes("systemctl restart ", "systemctl restart ssh");
 
 assertNotIncludes("sudo s", "sudo ssh pi@192.168.178.20");
 assertFirst("sudo s", "sudo systemctl");
@@ -1746,10 +1835,11 @@ assertNotIncludes("ssh ", "ssh-keygen");
 assertIncludes("ssh -o ", "ssh -o StrictHostKeyChecking=accept-new");
 assertSource("ssh -o ", "ssh -o StrictHostKeyChecking=accept-new", "catalog");
 
-assertIncludes("journalctl -u n", "journalctl -u nginx");
+assertNotIncludes("journalctl -u n", "journalctl -u nginx");
+assertRuntimeIncludes("journalctl -u n", "journalctl -u nginx.service");
 assertIncludes("journalctl -u ", "journalctl -u backup.timer");
 assertSource("journalctl -u ", "journalctl -u backup.timer", "history");
-assertFirst("journalctl -u ", "journalctl -u custom-app.service");
+assertFirst("journalctl -u ", "journalctl -u certbot.timer");
 assertSameEffectiveSuggestions("journalctl -u ", "sudo journalctl -u ", 8);
 assertIncludes("journalctl -p e", "journalctl -p err");
 assertIncludes("journalctl --since ", "journalctl --since today");
@@ -3085,7 +3175,11 @@ assertSuggestionDescription(
   "machinectl list-images",
   "lokale Maschinen-Images auflisten",
 );
-assertIncludes("systemd-analyze verify ", "systemd-analyze verify nginx");
+assertNotIncludes("systemd-analyze verify ", "systemd-analyze verify nginx");
+assertRuntimeIncludes(
+  "systemd-analyze verify ",
+  "systemd-analyze verify certbot.service",
+);
 assertIncludes("nmcli connection up ", "nmcli connection up 'Wired connection 1'");
 assertIncludes("nmcli device show ", "nmcli device show eth0");
 assertNotIncludes("nmcli device show ", "nmcli device show any");
@@ -3209,6 +3303,7 @@ assertNotIncludes("rm ", "rm -rf ./dir");
 assertNotIncludes("sudo rm ", "sudo rm -rf ./dir");
 
 assertUsefulHistory("sudo systemctl status certbot.timer", true);
+assertUsefulHistory("sudo systemctl restart ssh", false);
 assertUsefulHistory("sudo systemctl status cert.bot", false);
 assertUsefulHistory("sudo systemctl status certbot.", false);
 assertUsefulHistory("sudo nantest.sh", false);
