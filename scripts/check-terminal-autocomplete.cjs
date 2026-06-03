@@ -506,6 +506,8 @@ function assertHelpCatalogQuality() {
     "pip",
     "pip3",
     "make",
+    "kubectl",
+    "helm",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1205,6 +1207,12 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "pip ",
   "pip3 ",
   "make ",
+  "kubectl ",
+  "kubectl get ",
+  "kubectl logs ",
+  "helm ",
+  "helm list ",
+  "helm upgrade ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1326,6 +1334,8 @@ assertManualPopupExceedsTen("pnpm ");
 assertManualPopupExceedsTen("yarn ");
 assertManualPopupExceedsTen("python ");
 assertManualPopupExceedsTen("pip ");
+assertManualPopupExceedsTen("kubectl ");
+assertManualPopupExceedsTen("helm ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -1743,6 +1753,67 @@ assertStartsWithSequence("make ", [
 ]);
 assertIncludes("make ", "make -j");
 assertSuggestionDescription("make ", "make -j", "parallele Jobs setzen");
+
+assertMinCount("kubectl ", 70);
+assertMinCount("kubectl get ", 18);
+assertStartsWithSequence("kubectl ", [
+  "kubectl get pods",
+  "kubectl get pods -A",
+  "kubectl get services",
+  "kubectl get deployments",
+  "kubectl get namespaces",
+]);
+assertStartsWithSequence("kubectl get ", [
+  "kubectl get pods",
+  "kubectl get pods -A",
+  "kubectl get services",
+  "kubectl get deployments",
+]);
+assertStartsWithSequence("kubectl logs ", [
+  "kubectl logs deployment/<name>",
+  "kubectl logs -f <pod>",
+  "kubectl logs --follow",
+]);
+assertStartsWithSequence("kubectl rollout ", [
+  "kubectl rollout status deployment/<name>",
+  "kubectl rollout restart deployment/<name>",
+]);
+assertIncludes("kubectl ", "kubectl apply -f <file>");
+assertIncludes("kubectl ", "kubectl config get-contexts");
+assertSuggestionDescription("kubectl ", "kubectl get pods -A", "Pods in allen Namespaces anzeigen");
+assertSuggestionDescription("kubectl logs ", "kubectl logs -f deployment/app", "Logs live verfolgen");
+assertSuggestionDescription(
+  "kubectl rollout ",
+  "kubectl rollout status deployment/<name>",
+  "Rollout-Fortschritt beobachten",
+);
+
+assertMinCount("helm ", 70);
+assertStartsWithSequence("helm ", [
+  "helm list",
+  "helm status <release>",
+  "helm upgrade --install <release> <chart>",
+  "helm upgrade --install",
+  "helm install <release> <chart>",
+]);
+assertStartsWithSequence("helm list ", [
+  "helm list -A",
+  "helm list --all-namespaces",
+  "helm list -n",
+]);
+assertStartsWithSequence("helm upgrade ", [
+  "helm upgrade --install <release> <chart>",
+  "helm upgrade --install",
+  "helm upgrade --install app ./chart -n prod",
+]);
+assertIncludes("helm ", "helm repo add <name> <url>");
+assertIncludes("helm ", "helm dependency update");
+assertSuggestionDescription("helm list ", "helm list -A", "Releases in allen Namespaces auflisten");
+assertSuggestionDescription(
+  "helm upgrade ",
+  "helm upgrade --install app ./chart -n prod",
+  "Release aktualisieren oder installieren",
+);
 
 assertIncludes("docker ps -", "docker ps -a");
 assertUnique("docker ps -");
