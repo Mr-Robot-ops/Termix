@@ -477,6 +477,16 @@ function assertHelpCatalogQuality() {
     "which",
     "type",
     "command",
+    "screen",
+    "nohup",
+    "jobs",
+    "fg",
+    "bg",
+    "disown",
+    "pidof",
+    "pstree",
+    "top",
+    "htop",
     "basename",
     "dirname",
     "more",
@@ -1401,6 +1411,8 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "htop ",
   "kill ",
   "pgrep ",
+  "pidof ",
+  "pstree ",
   "pkill ",
   "netstat ",
   "lsof ",
@@ -1653,6 +1665,16 @@ assertManualPopupExceedsTen("basename ");
 assertManualPopupExceedsTen("printf ");
 assertManualPopupExceedsTen("tee ");
 assertManualPopupExceedsTen("more ");
+assertManualPopupExceedsTen("screen ");
+assertManualPopupExceedsTen("nohup ");
+assertManualPopupExceedsTen("jobs ");
+assertManualPopupExceedsTen("fg ");
+assertManualPopupExceedsTen("bg ");
+assertManualPopupExceedsTen("disown ");
+assertManualPopupExceedsTen("pidof ");
+assertManualPopupExceedsTen("pstree ");
+assertManualPopupExceedsTen("top ");
+assertManualPopupExceedsTen("htop ");
 assertManualPopupExceedsTen("docker ");
 assertManualPopupExceedsTen("npm ");
 assertManualPopupExceedsTen("pnpm ");
@@ -2889,18 +2911,75 @@ assertStartsWithSequence("tmux ", [
   "tmux ls",
 ]);
 assertStartsWithSequence("screen ", [
-  "screen -S",
-  "screen -r",
+  "screen -S work",
+  "screen -S work -X quit",
+  "screen -S work -X hardcopy",
+  "screen -r work",
   "screen -ls",
 ]);
-assertStartsWithSequence("jobs ", ["jobs -l", "jobs -p", "jobs -r"]);
-assertStartsWithSequence("fg ", ["fg %1", "fg %<job>"]);
-assertStartsWithSequence("bg ", ["bg %1", "bg %<job>"]);
+assertMinCount("screen ", 12);
+assertSuggestionDescription("screen ", "screen -x work", "Sitzung work gemeinsam anhaengen");
+assertMinCount("nohup ", 12);
+assertStartsWithSequence("nohup ", [
+  "nohup ./server.sh &",
+  "nohup npm start > app.log 2>&1 &",
+  "nohup python app.py > app.log 2>&1 &",
+  "nohup node server.js > server.log 2>&1 &",
+]);
+assertSuggestionDescription(
+  "nohup ",
+  "nohup npm start > app.log 2>&1 &",
+  "npm start mit Logdatei vom Terminal loesen",
+);
+assertMinCount("jobs ", 12);
+assertStartsWithSequence("jobs ", ["jobs -l", "jobs -p", "jobs -r", "jobs -s"]);
+assertSuggestionDescription("jobs ", "jobs -l %%", "aktuellen Job mit Prozess-ID anzeigen");
+assertMinCount("fg ", 12);
+assertStartsWithSequence("fg ", ["fg %1", "fg %2", "fg %3", "fg %%"]);
+assertSuggestionDescription("fg ", "fg %?python", "Job mit python im Kommando in den Vordergrund holen");
+assertMinCount("bg ", 12);
+assertStartsWithSequence("bg ", ["bg %1", "bg %2", "bg %3", "bg %%"]);
+assertSuggestionDescription("bg ", "bg %?python", "Job mit python im Kommando im Hintergrund fortsetzen");
+assertMinCount("disown ", 12);
 assertStartsWithSequence("disown ", [
   "disown %1",
-  "disown -h",
-  "disown -h %1",
+  "disown %2",
+  "disown %%",
+  "disown %+",
 ]);
+assertSuggestionDescription("disown ", "disown -h %%", "aktuellen Job vor SIGHUP schuetzen");
+assertMinCount("pidof ", 12);
+assertStartsWithSequence("pidof ", [
+  "pidof sshd",
+  "pidof nginx",
+  "pidof systemd",
+  "pidof -s nginx",
+]);
+assertSuggestionDescription("pidof ", "pidof -o %PPID sshd", "aufrufenden Parent-Prozess ausschliessen");
+assertMinCount("pstree ", 12);
+assertStartsWithSequence("pstree ", [
+  "pstree -p",
+  "pstree -u",
+  "pstree -a",
+  "pstree -h",
+]);
+assertSuggestionDescription("pstree ", "pstree -T", "Threads ausblenden");
+assertMinCount("top ", 12);
+assertStartsWithSequence("top ", [
+  "top -u www-data",
+  "top -u root",
+  "top -p 1",
+  "top -b -n 1",
+]);
+assertSuggestionDescription("top ", "top -b -n 1 -o %CPU", "einmalige Batch-Ausgabe nach CPU sortieren");
+assertMinCount("htop ", 12);
+assertStartsWithSequence("htop ", [
+  "htop -u root",
+  "htop -u www-data",
+  "htop -p 1",
+  "htop -d 10",
+]);
+assertSuggestionDescription("htop ", "htop -s PERCENT_CPU", "nach CPU-Auslastung sortieren");
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
 assertMinCount("rg ", 20);
