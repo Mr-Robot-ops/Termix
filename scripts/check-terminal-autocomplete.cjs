@@ -496,8 +496,14 @@ function assertHelpCatalogQuality() {
     "chage",
     "visudo",
     "tcpdump",
+    "nslookup",
+    "tracepath",
+    "iw",
+    "nft",
     "openssl s_client",
     "resolvectl",
+    "ssh-keyscan",
+    "scp",
     "ncdu",
     "iftop",
     "nload",
@@ -1227,7 +1233,11 @@ assertSuggestionDescription(
   "Job vor SIGHUP beim Logout schützen",
 );
 assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
-assertSuggestionDescription("lsof ", "lsof -nP -iTCP -sTCP:LISTEN", "TCP-Ports numerisch anzeigen");
+assertSuggestionDescription(
+  "lsof ",
+  "lsof -nP -iTCP -sTCP:LISTEN",
+  "lauschende TCP-Ports numerisch anzeigen",
+);
 assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
 assertTopSuggestionsHaveSpecificDescriptions([
   "cat ",
@@ -1361,6 +1371,13 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "certbot ",
   "supervisorctl ",
   "pm2 ",
+  "nslookup ",
+  "tracepath ",
+  "iw ",
+  "nft ",
+  "openssl s_client ",
+  "ssh-keyscan ",
+  "scp ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1511,6 +1528,15 @@ assertManualPopupExceedsTen("chage ");
 assertManualPopupExceedsTen("groupadd ");
 assertManualPopupExceedsTen("groupmod ");
 assertManualPopupExceedsTen("visudo ");
+assertManualPopupExceedsTen("nslookup ");
+assertManualPopupExceedsTen("tracepath ");
+assertManualPopupExceedsTen("iw ");
+assertManualPopupExceedsTen("nft ");
+assertManualPopupExceedsTen("openssl s_client ");
+assertManualPopupExceedsTen("ssh-keyscan ");
+assertManualPopupExceedsTen("scp ");
+assertManualPopupExceedsTen("lsof ");
+assertManualPopupExceedsTen("pkill ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -2360,6 +2386,91 @@ assertStartsWithSequence("pm2 ", [
 ]);
 assertIncludes("pm2 ", "pm2 start app.js --name app");
 assertSuggestionDescription("pm2 ", "pm2 start app.js --name", "app.js mit Namen starten");
+
+assertMinCount("nslookup ", 16);
+assertStartsWithSequence("nslookup ", [
+  "nslookup example.com",
+  "nslookup example.com 1.1.1.1",
+  "nslookup -type=MX example.com",
+  "nslookup -type=TXT example.com",
+]);
+assertSuggestionDescription("nslookup ", "nslookup -type=TXT example.com", "TXT-Records abfragen");
+assertSuggestionDescription("nslookup ", "nslookup -type=SOA", "SOA-Record abfragen");
+
+assertMinCount("tracepath ", 12);
+assertStartsWithSequence("tracepath ", [
+  "tracepath example.com",
+  "tracepath -n 8.8.8.8",
+  "tracepath -b example.com",
+  "tracepath -m 20 example.com",
+]);
+assertSuggestionDescription("tracepath ", "tracepath -l 1200 example.com", "Paketlänge auf 1200 Bytes setzen");
+
+assertMinCount("iw ", 13);
+assertStartsWithSequence("iw ", [
+  "iw dev",
+  "iw dev wlan0 link",
+  "iw dev wlan0 scan",
+  "iw dev wlan0 station dump",
+]);
+assertSuggestionDescription("iw ", "iw dev wlan0 set power_save off", "WLAN-Energiesparen deaktivieren");
+
+assertMinCount("nft ", 18);
+assertStartsWithSequence("nft ", [
+  "nft list ruleset",
+  "nft list tables",
+  "nft list table inet filter",
+  "nft list counters",
+]);
+assertNotIncludes("nft ", "nft flush ruleset");
+assertSuggestionDescription("nft ", "nft --check -f rules.nft", "Regeldatei validieren, ohne sie anzuwenden");
+
+assertMinCount("openssl s_client ", 16);
+assertIncludes("openssl s_client ", "openssl s_client -brief -connect example.com:443");
+assertIncludes("openssl s_client ", "openssl s_client -verify_return_error -connect example.com:443");
+assertSuggestionDescription(
+  "openssl s_client ",
+  "openssl s_client -connect example.com:443 -servername example.com",
+  "TLS-Verbindung mit SNI testen",
+);
+
+assertMinCount("ssh-keyscan ", 13);
+assertStartsWithSequence("ssh-keyscan ", [
+  "ssh-keyscan github.com",
+  "ssh-keyscan -t ed25519,rsa github.com",
+  "ssh-keyscan -p 2222 host",
+]);
+assertSuggestionDescription(
+  "ssh-keyscan ",
+  "ssh-keyscan -H host >> ~/.ssh/known_hosts",
+  "gehashten Host-Key an known_hosts anhängen",
+);
+
+assertMinCount("scp ", 18);
+assertIncludes("scp ", "scp -i ~/.ssh/id_ed25519 file.txt user@host:/tmp/");
+assertIncludes("scp ", "scp -J bastion file.txt user@host:/tmp/");
+assertSuggestionDescription(
+  "scp ",
+  "scp -P 2222 file.txt user@host:/tmp/",
+  "Datei über SSH-Port 2222 kopieren",
+);
+
+assertMinCount("lsof ", 18);
+assertStartsWithSequence("lsof ", [
+  "lsof -nP -iTCP -sTCP:LISTEN",
+  "lsof -i :80",
+  "lsof -iTCP -sTCP:LISTEN",
+]);
+assertIncludes("lsof ", "lsof -i");
+assertSuggestionDescription("lsof ", "lsof +D /var/log", "offene Dateien unter /var/log suchen");
+
+assertMinCount("pkill ", 18);
+assertStartsWithSequence("pkill ", [
+  "pkill -TERM nginx",
+  "pkill -HUP nginx",
+  "pkill -f 'python app.py'",
+]);
+assertSuggestionDescription("pkill ", "pkill -e -TERM nginx", "beendete nginx-Prozesse ausgeben");
 
 assertIncludes("docker ps -", "docker ps -a");
 assertUnique("docker ps -");
