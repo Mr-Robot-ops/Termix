@@ -508,6 +508,10 @@ function assertHelpCatalogQuality() {
     "make",
     "kubectl",
     "helm",
+    "terraform",
+    "ansible",
+    "ansible-playbook",
+    "ansible-inventory",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1213,6 +1217,12 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "helm ",
   "helm list ",
   "helm upgrade ",
+  "terraform ",
+  "terraform plan ",
+  "terraform workspace ",
+  "ansible ",
+  "ansible-playbook ",
+  "ansible-inventory ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1336,6 +1346,10 @@ assertManualPopupExceedsTen("python ");
 assertManualPopupExceedsTen("pip ");
 assertManualPopupExceedsTen("kubectl ");
 assertManualPopupExceedsTen("helm ");
+assertManualPopupExceedsTen("terraform ");
+assertManualPopupExceedsTen("ansible ");
+assertManualPopupExceedsTen("ansible-playbook ");
+assertManualPopupExceedsTen("ansible-inventory ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -1813,6 +1827,92 @@ assertSuggestionDescription(
   "helm upgrade ",
   "helm upgrade --install app ./chart -n prod",
   "Release aktualisieren oder installieren",
+);
+
+assertMinCount("terraform ", 50);
+assertStartsWithSequence("terraform ", [
+  "terraform init",
+  "terraform plan",
+  "terraform plan -out",
+  "terraform plan -out tfplan",
+  "terraform validate",
+]);
+assertStartsWithSequence("terraform workspace ", [
+  "terraform workspace list",
+  "terraform workspace show",
+  "terraform workspace select <name>",
+]);
+assertIncludes("terraform ", "terraform fmt -check");
+assertIncludes("terraform ", "terraform state list");
+assertNotIncludes("terraform ", "terraform destroy");
+assertSuggestionDescription(
+  "terraform ",
+  "terraform plan -out tfplan",
+  "Plan in tfplan-Datei speichern",
+);
+assertSuggestionDescription(
+  "terraform workspace ",
+  "terraform workspace list",
+  "Workspaces auflisten",
+);
+
+assertMinCount("ansible ", 20);
+assertStartsWithSequence("ansible ", [
+  "ansible all -m ping",
+  "ansible all --list-hosts",
+  "ansible -i",
+  "ansible web -a uptime",
+]);
+assertIncludes("ansible ", "ansible --check");
+assertIncludes("ansible ", "ansible --diff");
+assertSuggestionDescription(
+  "ansible ",
+  "ansible all -m ping",
+  "Erreichbarkeit aller Hosts testen",
+);
+assertSuggestionDescription(
+  "ansible ",
+  "ansible --check",
+  "Dry-Run ohne Änderungen ausführen",
+);
+
+assertMinCount("ansible-playbook ", 28);
+assertStartsWithSequence("ansible-playbook ", [
+  "ansible-playbook site.yml --check",
+  "ansible-playbook site.yml --diff",
+  "ansible-playbook site.yml --syntax-check",
+  "ansible-playbook site.yml",
+]);
+assertIncludes("ansible-playbook ", "ansible-playbook --list-tasks");
+assertIncludes("ansible-playbook ", "ansible-playbook --limit");
+assertSuggestionDescription(
+  "ansible-playbook ",
+  "ansible-playbook site.yml --check",
+  "Playbook als Dry-Run prüfen",
+);
+assertSuggestionDescription(
+  "ansible-playbook ",
+  "ansible-playbook --list-tasks",
+  "Tasks anzeigen, ohne sie auszuführen",
+);
+
+assertMinCount("ansible-inventory ", 12);
+assertStartsWithSequence("ansible-inventory ", [
+  "ansible-inventory --list",
+  "ansible-inventory --graph",
+  "ansible-inventory -i",
+  "ansible-inventory --host",
+]);
+assertIncludes("ansible-inventory ", "ansible-inventory --yaml --list");
+assertSuggestionDescription(
+  "ansible-inventory ",
+  "ansible-inventory --list",
+  "Inventory als JSON-Struktur ausgeben",
+);
+assertSuggestionDescription(
+  "ansible-inventory ",
+  "ansible-inventory --graph",
+  "Inventory-Gruppen als Baum anzeigen",
 );
 
 assertIncludes("docker ps -", "docker ps -a");
