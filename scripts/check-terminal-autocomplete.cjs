@@ -512,6 +512,9 @@ function assertHelpCatalogQuality() {
     "ansible",
     "ansible-playbook",
     "ansible-inventory",
+    "aws",
+    "gcloud",
+    "az",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1223,6 +1226,18 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "ansible ",
   "ansible-playbook ",
   "ansible-inventory ",
+  "aws ",
+  "aws s3 ",
+  "aws logs ",
+  "aws eks ",
+  "gcloud ",
+  "gcloud compute ",
+  "gcloud container ",
+  "gcloud logging ",
+  "az ",
+  "az account ",
+  "az aks ",
+  "az webapp ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1350,6 +1365,9 @@ assertManualPopupExceedsTen("terraform ");
 assertManualPopupExceedsTen("ansible ");
 assertManualPopupExceedsTen("ansible-playbook ");
 assertManualPopupExceedsTen("ansible-inventory ");
+assertManualPopupExceedsTen("aws ");
+assertManualPopupExceedsTen("gcloud ");
+assertManualPopupExceedsTen("az ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -1913,6 +1931,82 @@ assertSuggestionDescription(
   "ansible-inventory ",
   "ansible-inventory --graph",
   "Inventory-Gruppen als Baum anzeigen",
+);
+
+assertMinCount("aws ", 50);
+assertStartsWithSequence("aws ", [
+  "aws sts get-caller-identity",
+  "aws configure list",
+  "aws s3 ls",
+]);
+assertIncludes("aws ", "aws ec2 describe-instances");
+assertIncludes("aws ", "aws eks update-kubeconfig --name <cluster>");
+assertIncludes("aws logs ", "aws logs tail <group> --follow");
+assertSuggestionDescription(
+  "aws ",
+  "aws sts get-caller-identity",
+  "aktiven AWS-Account und Benutzer anzeigen",
+);
+assertSuggestionDescription(
+  "aws eks ",
+  "aws eks update-kubeconfig --name <cluster>",
+  "Kubeconfig für EKS-Cluster aktualisieren",
+);
+assertSuggestionDescription(
+  "aws logs ",
+  "aws logs tail /aws/lambda/my-function --follow",
+  "Logs live verfolgen",
+);
+
+assertMinCount("gcloud ", 40);
+assertStartsWithSequence("gcloud ", [
+  "gcloud auth list",
+  "gcloud config list",
+  "gcloud projects list",
+  "gcloud compute instances list",
+]);
+assertIncludes("gcloud ", "gcloud container clusters get-credentials <cluster>");
+assertIncludes("gcloud logging ", "gcloud logging tail <filter>");
+assertSuggestionDescription(
+  "gcloud ",
+  "gcloud compute instances list",
+  "Compute-Instanzen auflisten",
+);
+assertSuggestionDescription(
+  "gcloud container ",
+  "gcloud container clusters get-credentials cluster",
+  "Kubeconfig für GKE-Cluster aktualisieren",
+);
+assertSuggestionDescription(
+  "gcloud logging ",
+  "gcloud logging read 'severity>=ERROR' --limit 50",
+  "Fehlerlogs mit Limit lesen",
+);
+
+assertMinCount("az ", 40);
+assertStartsWithSequence("az ", [
+  "az account show",
+  "az account list",
+  "az account list -o table",
+  "az account list --query",
+  "az group list",
+]);
+assertIncludes("az ", "az aks get-credentials --resource-group <group> --name <cluster>");
+assertIncludes("az ", "az webapp log tail --name <app> --resource-group <group>");
+assertSuggestionDescription(
+  "az account ",
+  "az account list -o table",
+  "Azure-Subscriptions als Tabelle auflisten",
+);
+assertSuggestionDescription(
+  "az aks ",
+  "az aks get-credentials --resource-group <group> --name <cluster>",
+  "Kubeconfig für AKS-Cluster aktualisieren",
+);
+assertSuggestionDescription(
+  "az webapp ",
+  "az webapp log tail --name <app> --resource-group <group>",
+  "Web-App-Logs live verfolgen",
 );
 
 assertIncludes("docker ps -", "docker ps -a");
