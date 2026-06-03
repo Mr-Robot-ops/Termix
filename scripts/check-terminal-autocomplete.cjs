@@ -1110,9 +1110,14 @@ assertSuggestionDescription(
   "pwd --physical",
   "physischen Pfad ohne Symlinks anzeigen",
 );
-assertMinCount("hostname ", 12);
+assertMinCount("hostname ", 14);
 assertIncludes("hostname ", "hostname --all-ip-addresses");
 assertIncludes("hostname ", "hostname --all-fqdns");
+assertStartsWithSequence("hostname ", [
+  "hostname -f",
+  "hostname -I",
+  "hostname -i",
+]);
 assertSuggestionDescription(
   "hostname ",
   "hostname --all-ip-addresses",
@@ -1449,6 +1454,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "tee ",
   "tr ",
   "nl ",
+  "base64 ",
   "split ",
   "column ",
   "file ",
@@ -1477,6 +1483,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "dig ",
   "host ",
   "traceroute ",
+  "mtr ",
   "nmap ",
   "iftop ",
   "nload ",
@@ -1493,6 +1500,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "tmux ",
   "screen ",
   "nohup ",
+  "ssh-agent ",
   "jobs ",
   "fg ",
   "bg ",
@@ -1513,6 +1521,10 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "sysctl ",
   "dmesg ",
   "systemd-analyze ",
+  "awk ",
+  "zip ",
+  "unzip ",
+  "zcat ",
   "diff ",
   "patch ",
   "alias ",
@@ -1853,6 +1865,19 @@ assertManualPopupExceedsTen("mount ");
 assertManualPopupExceedsTen("umount ");
 assertManualPopupExceedsTen("free ");
 assertManualPopupExceedsTen("dmesg ");
+assertManualPopupExceedsTen("zip ");
+assertManualPopupExceedsTen("unzip ");
+assertManualPopupExceedsTen("zcat ");
+assertManualPopupExceedsTen("split ");
+assertManualPopupExceedsTen("base64 ");
+assertManualPopupExceedsTen("awk ");
+assertManualPopupExceedsTen("findmnt ");
+assertManualPopupExceedsTen("mtr ");
+assertManualPopupExceedsTen("iftop ");
+assertManualPopupExceedsTen("ssh-agent ");
+assertManualPopupExceedsTen("hostname ");
+assertManualPopupExceedsTen("dirname ");
+assertManualPopupExceedsTen("basename ");
 assertManualPopupExceedsTen("pgrep ");
 assertManualPopupExceedsTen("uptime");
 assertManualPopupExceedsTen("hostnamectl ");
@@ -2753,6 +2778,14 @@ assertStartsWithSequence("tracepath ", [
 ]);
 assertSuggestionDescription("tracepath ", "tracepath -l 1200 example.com", "Paketlänge auf 1200 Bytes setzen");
 
+assertMinCount("mtr ", 24);
+assertStartsWithSequence("mtr ", [
+  "mtr example.com",
+  "mtr -rw -c 100 example.com",
+  "mtr -T -P 443 example.com",
+]);
+assertSuggestionDescription("mtr ", "mtr --json example.com", "MTR-Ergebnis als JSON ausgeben");
+
 assertMinCount("iw ", 13);
 assertStartsWithSequence("iw ", [
   "iw dev",
@@ -2895,6 +2928,17 @@ assertSuggestionDescription(
   "ssh-copy-id user@host",
   "Public Key für diesen Login installieren",
 );
+assertMinCount("ssh-agent ", 16);
+assertStartsWithSequence("ssh-agent ", [
+  "ssh-agent -s",
+  "ssh-agent -c",
+  "ssh-agent -k",
+]);
+assertSuggestionDescription(
+  "ssh-agent ",
+  "ssh-agent -s > agent.env",
+  "Agent-Umgebung in Datei schreiben",
+);
 assertMinCount("sftp ", 18);
 assertIncludes("sftp ", "sftp -J");
 assertIncludes("sftp ", "sftp -F");
@@ -2917,10 +2961,56 @@ assertSuggestionDescription("who ", "who -b", "Zeit des letzten Systemstarts anz
 assertMinCount("printenv", 6);
 assertIncludes("printenv", "printenv --null");
 assertSuggestionDescription("printenv", "printenv --null", "Ausgabe mit NUL statt Zeilenumbruch trennen");
-assertMinCount("awk ", 10);
+assertMinCount("awk ", 20);
+assertStartsWithSequence("awk ", [
+  "awk '{print $1}' file.txt",
+  "awk -F ':' '{print $1}' /etc/passwd",
+  "awk 'NF {print}' file.txt",
+]);
 assertIncludes("awk ", "awk --field-separator");
 assertIncludes("awk ", "awk --lint");
+assertSuggestionDescription(
+  "awk ",
+  "awk '{sum += $1} END {print sum}' numbers.txt",
+  "erste Spalte aufsummieren",
+);
 assertSuggestionDescription("awk ", "awk -v", "Variable vor Programmausführung setzen");
+assertMinCount("base64 ", 17);
+assertStartsWithSequence("base64 ", [
+  "base64 file.bin",
+  "base64 -d encoded.txt",
+  "base64 -d encoded.txt > decoded.bin",
+]);
+assertSuggestionDescription(
+  "base64 ",
+  "base64 --ignore-garbage -d dirty.txt",
+  "ungueltige Zeichen beim Dekodieren ignorieren",
+);
+assertMinCount("split ", 20);
+assertStartsWithSequence("split ", [
+  "split -l 1000 big.log part-",
+  "split -b 100M archive.tar archive.part.",
+  "split -d -a 3 file chunk-",
+]);
+assertSuggestionDescription(
+  "split ",
+  "split --filter='gzip > $FILE.gz' big.log part-",
+  "Teile direkt durch gzip filtern",
+);
+assertMinCount("basename ", 18);
+assertIncludes("basename ", "basename --multiple /etc/passwd /etc/group");
+assertSuggestionDescription(
+  "basename ",
+  "basename /srv/app/releases/current",
+  "Release-Name aus Pfad extrahieren",
+);
+assertMinCount("dirname ", 15);
+assertIncludes("dirname ", "dirname /etc/systemd/system/ssh.service");
+assertSuggestionDescription(
+  "dirname ",
+  "dirname -z /tmp/file | xargs -0 printf '%s\\n'",
+  "NUL-Ausgabe lesbar weiterverarbeiten",
+);
 assertMinCount("xargs ", 14);
 assertIncludes("xargs ", "xargs --no-run-if-empty");
 assertIncludes("xargs ", "xargs --max-procs");
@@ -3140,6 +3230,18 @@ assertStartsWithSequence("umount ", [
 assertNotIncludes("umount ", "umount -a");
 assertSuggestionDescription("umount ", "umount --recursive /mnt", "Submounts unter /mnt rekursiv aushängen");
 
+assertMinCount("findmnt ", 24);
+assertStartsWithSequence("findmnt ", [
+  "findmnt /",
+  "findmnt -t ext4",
+  "findmnt -J",
+]);
+assertSuggestionDescription(
+  "findmnt ",
+  "findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS",
+  "ausgewaehlte Mount-Spalten anzeigen",
+);
+
 assertMinCount("free ", 20);
 assertStartsWithSequence("free ", [
   "free -h",
@@ -3312,6 +3414,23 @@ assertIncludes("unxz ", "unxz -k");
 assertIncludes("zstd ", "zstd -T");
 assertIncludes("zcat ", "zcat file.log.gz");
 assertIncludes("zgrep ", "zgrep -n");
+assertMinCount("zip ", 20);
+assertStartsWithSequence("zip ", [
+  "zip archive.zip file.txt",
+  "zip -r archive.zip ./dir",
+  "zip -r archive.zip ./dir -x '*.git*'",
+]);
+assertSuggestionDescription("zip ", "zip -r encrypted.zip ./secrets -e", "verschluesseltes Archiv erstellen");
+assertMinCount("unzip ", 20);
+assertStartsWithSequence("unzip ", [
+  "unzip archive.zip",
+  "unzip archive.zip -d /tmp",
+  "unzip -l archive.zip",
+]);
+assertSuggestionDescription("unzip ", "unzip -p archive.zip file.txt", "Datei aus Archiv auf stdout ausgeben");
+assertMinCount("zcat ", 16);
+assertIncludes("zcat ", "zcat *.log.gz | grep -i error");
+assertSuggestionDescription("zcat ", "zcat file.log.gz | wc -l", "Zeilen in komprimiertem Log zaehlen");
 assertSuggestionDescription("zip ", "zip -r", "Verzeichnisse rekursiv einpacken");
 assertSuggestionDescription("unzip ", "unzip -l", "Archivinhalt anzeigen");
 assertIncludes("head -n ", "head -n 100");
@@ -3456,6 +3575,12 @@ assertNotIncludes("nmap -p ", "nmap -Pn");
 assertNotIncludes("nmap -p ", "nmap -p 10.44.0.42");
 assertIncludes("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42");
 assertSource("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42", "history");
+assertMinCount("iftop ", 16);
+assertStartsWithSequence("iftop ", [
+  "iftop -i eth0",
+  "iftop -P -n",
+  "iftop -i wlan0 -B",
+]);
 assertIncludes("iftop ", "iftop -i");
 assertIncludes("sudo iftop ", "sudo iftop -P");
 assertStartsWithSequence("sudo iftop ", [
@@ -3463,6 +3588,7 @@ assertStartsWithSequence("sudo iftop ", [
   "sudo iftop -P",
   "sudo iftop -n",
 ]);
+assertSuggestionDescription("iftop ", "iftop -f 'port 443'", "Traffic per pcap-Filter auf Port 443 begrenzen");
 assertSuggestionDescription("iftop ", "iftop -P", "Ports anzeigen");
 assertMinCount("nload ", 16);
 assertIncludes("nload ", "nload eth0");
