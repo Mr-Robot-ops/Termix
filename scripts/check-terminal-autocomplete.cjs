@@ -492,6 +492,11 @@ function assertHelpCatalogQuality() {
     "tcpdump",
     "openssl s_client",
     "resolvectl",
+    "ncdu",
+    "iftop",
+    "nload",
+    "vnstat",
+    "iperf3",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1057,6 +1062,7 @@ assertSuggestionDescription("wc ", "wc file.txt", "Zeilen, Wörter oder Bytes f�
 assertSuggestionDescription("sort ", "sort -nr numbers.txt", "numerisch absteigend sortieren");
 assertSuggestionDescription("df ", "df -hT", "Größen menschenlesbar mit Dateisystemtyp anzeigen");
 assertSuggestionDescription("du ", "du -sh /var/log", "Gesamtsumme menschenlesbar anzeigen");
+assertSuggestionDescription("ncdu ", "ncdu -x", "auf einem Dateisystem bleiben");
 assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
 assertSuggestionDescription("lsof ", "lsof -nP -iTCP -sTCP:LISTEN", "TCP-Ports numerisch anzeigen");
 assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
@@ -1093,6 +1099,11 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "host ",
   "traceroute ",
   "nmap ",
+  "iftop ",
+  "nload ",
+  "vnstat ",
+  "iperf3 ",
+  "ncdu ",
   "service ",
   "loginctl ",
   "localectl ",
@@ -1678,6 +1689,8 @@ assertIncludes("tar --", "tar --xz");
 assertIncludes("tar --", "tar --directory");
 assertIncludes("tar --", "tar --one-file-system");
 assertSuggestionDescription("tar --", "tar --directory", "vor Aktion in Verzeichnis wechseln");
+assertIncludes("ncdu ", "ncdu /var/log");
+assertIncludes("ncdu ", "ncdu --one-file-system");
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
 assertMinCount("rg ", 20);
@@ -1791,6 +1804,19 @@ assertNotIncludes("nmap -p ", "nmap -Pn");
 assertNotIncludes("nmap -p ", "nmap -p 10.44.0.42");
 assertIncludes("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42");
 assertSource("nmap -p 22,443 ", "nmap -p 22,443 10.44.0.42", "history");
+assertIncludes("iftop ", "iftop -i");
+assertIncludes("sudo iftop ", "sudo iftop -P");
+assertSuggestionDescription("iftop ", "iftop -P", "Ports anzeigen");
+assertIncludes("nload ", "nload eth0");
+assertIncludes("nload -u ", "nload -u M -t 500 eth0");
+assertSuggestionDescription("nload ", "nload -m", "mehrere Interfaces gleichzeitig anzeigen");
+assertIncludes("vnstat ", "vnstat -i");
+assertIncludes("vnstat ", "vnstat --json");
+assertSuggestionDescription("vnstat ", "vnstat -l", "Live-Verkehr anzeigen");
+assertIncludes("iperf3 ", "iperf3 -s");
+assertIncludes("iperf3 -c ", "iperf3 -c 192.168.1.10");
+assertIncludes("iperf3 ", "iperf3 -R");
+assertSuggestionDescription("iperf3 ", "iperf3 -R", "Reverse-Test vom Server zum Client");
 assertIncludes("ping -c ", "ping -c 4");
 assertIncludes("ping -I ", "ping -I eth0");
 assertNotIncludes("ping -I ", "ping -I any");
