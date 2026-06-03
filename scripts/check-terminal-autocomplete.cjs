@@ -515,6 +515,15 @@ function assertHelpCatalogQuality() {
     "aws",
     "gcloud",
     "az",
+    "psql",
+    "pg_dump",
+    "pg_restore",
+    "mysql",
+    "mariadb",
+    "mysqldump",
+    "sqlite3",
+    "redis-cli",
+    "mongosh",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1238,6 +1247,15 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "az account ",
   "az aks ",
   "az webapp ",
+  "psql ",
+  "pg_dump ",
+  "pg_restore ",
+  "mysql ",
+  "mariadb ",
+  "mysqldump ",
+  "sqlite3 ",
+  "redis-cli ",
+  "mongosh ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1368,6 +1386,12 @@ assertManualPopupExceedsTen("ansible-inventory ");
 assertManualPopupExceedsTen("aws ");
 assertManualPopupExceedsTen("gcloud ");
 assertManualPopupExceedsTen("az ");
+assertManualPopupExceedsTen("psql ");
+assertManualPopupExceedsTen("pg_dump ");
+assertManualPopupExceedsTen("mysql ");
+assertManualPopupExceedsTen("sqlite3 ");
+assertManualPopupExceedsTen("redis-cli ");
+assertManualPopupExceedsTen("mongosh ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -2007,6 +2031,136 @@ assertSuggestionDescription(
   "az webapp ",
   "az webapp log tail --name <app> --resource-group <group>",
   "Web-App-Logs live verfolgen",
+);
+
+assertMinCount("psql ", 28);
+assertStartsWithSequence("psql ", [
+  "psql -h",
+  "psql -U",
+  "psql -d",
+  "psql -c",
+  "psql -f",
+  "psql -l",
+  "psql \\dt",
+]);
+assertSuggestionDescription("psql ", "psql \\dt", "Tabellen auflisten");
+assertSuggestionDescription(
+  "psql ",
+  "psql -d app -c '\\dt'",
+  "Tabellen in Datenbank app auflisten",
+);
+
+assertMinCount("pg_dump ", 18);
+assertStartsWithSequence("pg_dump ", [
+  "pg_dump -h",
+  "pg_dump -U",
+  "pg_dump -d",
+  "pg_dump -f",
+  "pg_dump -F",
+  "pg_dump -Fc",
+]);
+assertSuggestionDescription("pg_dump ", "pg_dump -Fc", "Custom-Format-Dump erzeugen");
+assertSuggestionDescription(
+  "pg_dump ",
+  "pg_dump --schema-only",
+  "nur Schema sichern",
+);
+
+assertMinCount("pg_restore ", 18);
+assertStartsWithSequence("pg_restore ", [
+  "pg_restore -l",
+  "pg_restore -d",
+  "pg_restore -j",
+  "pg_restore --schema-only",
+]);
+assertSuggestionDescription(
+  "pg_restore ",
+  "pg_restore -l app.dump",
+  "Inhaltsverzeichnis des Dumps anzeigen",
+);
+
+assertMinCount("mysql ", 18);
+assertMinCount("mariadb ", 18);
+assertStartsWithSequence("mysql ", [
+  "mysql -h",
+  "mysql -u",
+  "mysql -P",
+  "mysql -p",
+  "mysql -D",
+]);
+assertStartsWithSequence("mariadb ", [
+  "mariadb -h",
+  "mariadb -u",
+  "mariadb -P",
+  "mariadb -p",
+]);
+assertSuggestionDescription(
+  "mysql ",
+  "mysql -e 'SHOW DATABASES;'",
+  "Datenbanken auflisten",
+);
+assertSuggestionDescription(
+  "mariadb ",
+  "mariadb -u root -p",
+  "als root mit Passwortabfrage verbinden",
+);
+
+assertMinCount("mysqldump ", 18);
+assertStartsWithSequence("mysqldump ", [
+  "mysqldump --single-transaction",
+  "mysqldump --routines",
+  "mysqldump --triggers",
+  "mysqldump --events",
+]);
+assertSuggestionDescription(
+  "mysqldump ",
+  "mysqldump --single-transaction",
+  "konsistenten InnoDB-Dump ohne Lock erzeugen",
+);
+
+assertMinCount("sqlite3 ", 17);
+assertStartsWithSequence("sqlite3 ", [
+  "sqlite3 app.db",
+  "sqlite3 .tables",
+  "sqlite3 .schema",
+  "sqlite3 .dump",
+]);
+assertSuggestionDescription(
+  "sqlite3 ",
+  "sqlite3 app.db '.tables'",
+  "Tabellen in app.db auflisten",
+);
+assertSuggestionDescription(
+  "sqlite3 ",
+  "sqlite3 app.db 'select count(*) from users;'",
+  "Anzahl Datensätze in users zählen",
+);
+
+assertMinCount("redis-cli ", 17);
+assertStartsWithSequence("redis-cli ", [
+  "redis-cli ping",
+  "redis-cli info",
+  "redis-cli --scan",
+  "redis-cli dbsize",
+]);
+assertSuggestionDescription("redis-cli ", "redis-cli --scan", "Keys per SCAN iterieren");
+assertSuggestionDescription(
+  "redis-cli ",
+  "redis-cli -h localhost -p 6379",
+  "zu lokalem Redis auf Port 6379 verbinden",
+);
+
+assertMinCount("mongosh ", 15);
+assertStartsWithSequence("mongosh ", [
+  "mongosh mongodb://localhost:27017/app",
+  "mongosh --eval",
+  "mongosh --host",
+  "mongosh --port",
+]);
+assertSuggestionDescription(
+  "mongosh ",
+  "mongosh --eval 'db.runCommand({ ping: 1 })'",
+  "MongoDB-Ping per JavaScript ausführen",
 );
 
 assertIncludes("docker ps -", "docker ps -a");
