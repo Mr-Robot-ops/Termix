@@ -468,6 +468,20 @@ function assertHelpCatalogQuality() {
     "ssh-agent",
     "ssh-add",
     "sftp",
+    "alias",
+    "unalias",
+    "export",
+    "unset",
+    "history",
+    "pwd",
+    "which",
+    "type",
+    "command",
+    "basename",
+    "dirname",
+    "more",
+    "printf",
+    "tee",
     "diff",
     "patch",
     "tr",
@@ -1032,16 +1046,18 @@ assertSuggestionDescription(
   "clear -x",
   "Scrollback-Puffer nicht löschen",
 );
-assertMinCount("printf ", 5);
+assertMinCount("printf ", 12);
 assertIncludes("printf ", "printf '%04d\\n' 42");
 assertIncludes("printf ", "printf '%q\\n' \"$PATH\"");
+assertIncludes("printf ", "printf '%(%F %T)T\\n' -1");
 assertSuggestionDescription(
   "printf ",
   "printf '%q\\n' \"$PATH\"",
   "Shell-escaped Ausgabe erzeugen",
 );
-assertMinCount("pwd ", 4);
+assertMinCount("pwd ", 12);
 assertIncludes("pwd ", "pwd --physical");
+assertIncludes("pwd ", "pwd | xargs basename");
 assertSuggestionDescription(
   "pwd ",
   "pwd --physical",
@@ -1247,15 +1263,124 @@ assertSuggestionDescription(
   "lauschende TCP-Ports numerisch anzeigen",
 );
 assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
+assertMinCount("alias ", 12);
+assertStartsWithSequence("alias ", [
+  "alias ll='ls -lah'",
+  "alias gs='git status'",
+  "alias ga='git add'",
+  "alias gp='git pull'",
+  "alias dc='docker compose'",
+]);
+assertSuggestionDescription(
+  "alias ",
+  "alias ports='ss -tulpn'",
+  "Alias fuer lauschende Ports mit Prozessen",
+);
+assertMinCount("unalias ", 12);
+assertStartsWithSequence("unalias ", [
+  "unalias ll",
+  "unalias gs",
+  "unalias ga",
+  "unalias gp",
+  "unalias dc",
+]);
+assertSuggestionDescription("unalias ", "unalias serve", "Alias serve entfernen");
+assertMinCount("export ", 12);
+assertStartsWithSequence("export ", [
+  "export PATH=$PATH:/opt/bin",
+  "export EDITOR=nano",
+  "export NODE_ENV=production",
+  "export LANG=C.UTF-8",
+]);
+assertSuggestionDescription(
+  "export ",
+  "export HISTCONTROL=ignoredups",
+  "doppelte History-Eintraege vermeiden",
+);
+assertMinCount("unset ", 12);
+assertStartsWithSequence("unset ", [
+  "unset VAR",
+  "unset NODE_ENV",
+  "unset SSH_AUTH_SOCK",
+  "unset DEBUG",
+]);
+assertSuggestionDescription("unset ", "unset -f function_name", "Shell-Funktion entfernen");
+assertMinCount("history ", 12);
+assertStartsWithSequence("history ", [
+  "history 20",
+  "history 100",
+  "history | grep ssh",
+  "history | grep systemctl",
+]);
+assertNotIncludes("history ", "history -c");
+assertSuggestionDescription(
+  "history ",
+  "history | grep ssh",
+  "History nach ssh durchsuchen",
+);
+assertMinCount("which ", 12);
+assertStartsWithSequence("which ", [
+  "which python",
+  "which node",
+  "which docker",
+  "which systemctl",
+]);
+assertSuggestionDescription("which ", "which -a python", "alle python-Fundstellen anzeigen");
+assertMinCount("type ", 12);
+assertStartsWithSequence("type ", [
+  "type cd",
+  "type alias",
+  "type export",
+  "type history",
+]);
+assertSuggestionDescription(
+  "type ",
+  "type -t systemctl",
+  "nur den Typ von systemctl ausgeben",
+);
+assertMinCount("command ", 12);
+assertStartsWithSequence("command ", [
+  "command -v docker",
+  "command -v systemctl",
+  "command -V cd",
+  "command -V history",
+]);
+assertSuggestionDescription("command ", "command -v docker", "Pfad zu docker anzeigen");
+assertMinCount("dirname ", 11);
+assertSuggestionDescription(
+  "dirname ",
+  "dirname ~/.ssh/config",
+  "SSH-Konfigurationsverzeichnis ausgeben",
+);
+assertMinCount("basename ", 12);
+assertSuggestionDescription(
+  "basename ",
+  "basename --suffix=.tar.gz archive.tar.gz",
+  "Suffix .tar.gz entfernen",
+);
+assertMinCount("more ", 12);
+assertStartsWithSequence("more ", [
+  "more /var/log/syslog",
+  "more file.txt",
+  "more -d file.txt",
+  "more -f file.txt",
+]);
+assertSuggestionDescription(
+  "more ",
+  "more +/error /var/log/syslog",
+  "bei erstem Treffer fuer error starten",
+);
 assertTopSuggestionsHaveSpecificDescriptions([
   "cat ",
   "less ",
+  "more ",
   "head ",
   "tail ",
   "wc ",
   "sort ",
   "uniq ",
   "cut ",
+  "tee ",
   "tr ",
   "nl ",
   "split ",
@@ -1312,6 +1437,14 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "systemd-analyze ",
   "diff ",
   "patch ",
+  "alias ",
+  "unalias ",
+  "export ",
+  "unset ",
+  "history ",
+  "which ",
+  "type ",
+  "command ",
   "clear ",
   "printf ",
   "pwd ",
@@ -1506,6 +1639,20 @@ assertNoModeSuggestions("sudo su", "ghost");
 assertManualPopupExceedsTen("git");
 assertManualPopupExceedsTen("sudo git");
 assertManualPopupExceedsTen("sudo systemctl ");
+assertManualPopupExceedsTen("alias ");
+assertManualPopupExceedsTen("unalias ");
+assertManualPopupExceedsTen("export ");
+assertManualPopupExceedsTen("unset ");
+assertManualPopupExceedsTen("history ");
+assertManualPopupExceedsTen("pwd ");
+assertManualPopupExceedsTen("which ");
+assertManualPopupExceedsTen("type ");
+assertManualPopupExceedsTen("command ");
+assertManualPopupExceedsTen("dirname ");
+assertManualPopupExceedsTen("basename ");
+assertManualPopupExceedsTen("printf ");
+assertManualPopupExceedsTen("tee ");
+assertManualPopupExceedsTen("more ");
 assertManualPopupExceedsTen("docker ");
 assertManualPopupExceedsTen("npm ");
 assertManualPopupExceedsTen("pnpm ");
@@ -2597,10 +2744,12 @@ assertIncludes("xargs ", "xargs --no-run-if-empty");
 assertIncludes("xargs ", "xargs --max-procs");
 assertNotIncludes("xargs ", "xargs rm");
 assertSuggestionDescription("xargs ", "xargs -0", "Eingabe mit NUL-Trennung lesen");
-assertMinCount("tee ", 6);
+assertMinCount("tee ", 12);
 assertIncludes("tee ", "tee --append");
 assertIncludes("tee ", "tee --output-error");
+assertIncludes("tee ", "tee file.txt");
 assertSuggestionDescription("tee ", "tee -a", "an Dateien anhängen statt überschreiben");
+assertSuggestionDescription("tee ", "tee file1.log file2.log", "Ausgabe in mehrere Logdateien schreiben");
 assertMinCount("env ", 12);
 assertIncludes("env ", "env --ignore-environment");
 assertIncludes("env ", "env --split-string");
