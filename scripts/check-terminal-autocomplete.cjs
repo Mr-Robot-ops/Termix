@@ -1230,6 +1230,17 @@ assertSuggestionDescription(
 );
 assertSuggestionDescription("wget ", "wget -c", "abgebrochenen Download fortsetzen");
 assertSuggestionDescription("watch ", "watch --interval", "Intervall in Sekunden setzen");
+assertMinCount("watch ", 20);
+assertStartsWithSequence("watch ", [
+  "watch -n 1 date",
+  "watch -d 'df -h'",
+  "watch -n 2 'systemctl status ssh'",
+]);
+assertSuggestionDescription(
+  "watch ",
+  "watch --differences=cumulative 'ss -tulpn'",
+  "Socket-Aenderungen kumulativ hervorheben",
+);
 assertSuggestionDescription("sed ", "sed -i", "Dateien direkt bearbeiten");
 assertSuggestionDescription(
   "jq ",
@@ -1304,6 +1315,14 @@ assertSuggestionDescription(
   "Job vor SIGHUP beim Logout schützen",
 );
 assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
+assertMinCount("pgrep ", 24);
+assertStartsWithSequence("pgrep ", [
+  "pgrep -af python",
+  "pgrep -u www-data",
+  "pgrep -x sshd",
+  "pgrep -n node",
+]);
+assertSuggestionDescription("pgrep ", "pgrep -d ',' nginx", "PIDs durch Komma getrennt ausgeben");
 assertSuggestionDescription(
   "lsof ",
   "lsof -nP -iTCP -sTCP:LISTEN",
@@ -1461,6 +1480,8 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "nmap ",
   "iftop ",
   "nload ",
+  "iostat ",
+  "modinfo ",
   "vnstat ",
   "iperf3 ",
   "lscpu ",
@@ -1477,6 +1498,8 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "bg ",
   "disown ",
   "service ",
+  "hostnamectl ",
+  "timedatectl ",
   "loginctl ",
   "localectl ",
   "networkctl ",
@@ -1501,6 +1524,8 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "type ",
   "command ",
   "clear ",
+  "uptime",
+  "watch ",
   "printf ",
   "pwd ",
   "hostname ",
@@ -1828,6 +1853,17 @@ assertManualPopupExceedsTen("mount ");
 assertManualPopupExceedsTen("umount ");
 assertManualPopupExceedsTen("free ");
 assertManualPopupExceedsTen("dmesg ");
+assertManualPopupExceedsTen("pgrep ");
+assertManualPopupExceedsTen("uptime");
+assertManualPopupExceedsTen("hostnamectl ");
+assertManualPopupExceedsTen("timedatectl ");
+assertManualPopupExceedsTen("systemd-cgls ");
+assertManualPopupExceedsTen("systemd-cgtop ");
+assertManualPopupExceedsTen("systemd-analyze ");
+assertManualPopupExceedsTen("watch ");
+assertManualPopupExceedsTen("nload ");
+assertManualPopupExceedsTen("iostat ");
+assertManualPopupExceedsTen("modinfo ");
 assertManualPopupExceedsTen("vmstat ");
 assertManualPopupExceedsTen("lscpu ");
 assertManualPopupExceedsTen("lspci ");
@@ -2865,10 +2901,15 @@ assertIncludes("sftp ", "sftp -F");
 assertIncludes("sftp ", "sftp -R");
 assertSuggestionDescription("sftp ", "sftp -J", "Jump-Host verwenden");
 assertIncludes("jq -r ", "jq -r .[]");
-assertMinCount("uptime", 8);
+assertMinCount("uptime", 13);
 assertIncludes("uptime", "uptime --pretty");
 assertIncludes("uptime", "uptime --version");
 assertSuggestionDescription("uptime", "uptime --pretty", "Laufzeit menschenlesbar anzeigen");
+assertSuggestionDescription(
+  "uptime",
+  "uptime | sed 's/.*load average: //'",
+  "Load-Average-Teil per sed extrahieren",
+);
 assertMinCount("who ", 14);
 assertIncludes("who ", "who -b");
 assertIncludes("who ", "who --heading");
@@ -2955,6 +2996,30 @@ assertStartsWithSequence("vmstat ", [
   "vmstat -s",
 ]);
 assertSuggestionDescription("vmstat ", "vmstat -S M 1", "Speicherwerte in MiB anzeigen");
+
+assertMinCount("iostat ", 24);
+assertStartsWithSequence("iostat ", [
+  "iostat -xz 1",
+  "iostat -p ALL",
+  "iostat -m 1 5",
+]);
+assertSuggestionDescription(
+  "iostat ",
+  "iostat -y 1",
+  "erste Statistik seit Boot ueberspringen",
+);
+
+assertMinCount("modinfo ", 20);
+assertStartsWithSequence("modinfo ", [
+  "modinfo overlay",
+  "modinfo -F filename overlay",
+  "modinfo -p module_name",
+]);
+assertSuggestionDescription(
+  "modinfo ",
+  "modinfo --field vermagic overlay",
+  "vermagic-Feld eines Moduls anzeigen",
+);
 
 assertMinCount("readlink ", 18);
 assertIncludes("readlink ", "readlink -e /etc/alternatives/editor");
@@ -3285,6 +3350,24 @@ assertIncludes("service nginx ", "service nginx restart");
 assertIncludes("sudo service ", "sudo service custom-app");
 assertSource("sudo service ", "sudo service custom-app", "history");
 assertFirst("sudo service ", "sudo service custom-app");
+assertMinCount("hostnamectl ", 20);
+assertStartsWithSequence("hostnamectl ", [
+  "hostnamectl status",
+  "hostnamectl hostname",
+  "hostnamectl chassis",
+]);
+assertSuggestionDescription("hostnamectl ", "hostnamectl location", "Standort-Metadatum anzeigen");
+assertMinCount("timedatectl ", 20);
+assertStartsWithSequence("timedatectl ", [
+  "timedatectl status",
+  "timedatectl show",
+  "timedatectl list-timezones",
+]);
+assertSuggestionDescription(
+  "timedatectl ",
+  "timedatectl timesync-status",
+  "Status von systemd-timesyncd anzeigen",
+);
 assertIncludes("loginctl show-user ", "loginctl show-user $USER");
 assertIncludes("loginctl session-status ", "loginctl session-status $XDG_SESSION_ID");
 assertIncludes("localectl ", "localectl list-locales");
@@ -3293,9 +3376,38 @@ assertIncludes("networkctl ", "networkctl status <link>");
 assertIncludes("networkctl ", "networkctl lldp");
 assertIncludes("busctl i", "busctl introspect <service> <path>");
 assertIncludes("coredumpctl ", "coredumpctl debug <match>");
+assertMinCount("systemd-cgls ", 13);
+assertStartsWithSequence("systemd-cgls ", [
+  "systemd-cgls --user",
+  "systemd-cgls --system",
+  "systemd-cgls --all",
+]);
 assertIncludes("systemd-cgls --", "systemd-cgls --unit");
+assertIncludes("systemd-cgls ", "systemd-cgls --unit dbus.service");
+assertMinCount("systemd-cgtop ", 14);
+assertStartsWithSequence("systemd-cgtop ", [
+  "systemd-cgtop --depth=2",
+  "systemd-cgtop --order=memory",
+  "systemd-cgtop --order=cpu",
+]);
 assertIncludes("systemd-cgtop --", "systemd-cgtop --order");
+assertMinCount("systemd-analyze ", 20);
+assertStartsWithSequence("systemd-analyze ", [
+  "systemd-analyze time",
+  "systemd-analyze blame",
+  "systemd-analyze critical-chain",
+]);
 assertIncludes("machinectl ", "machinectl list-images");
+assertSuggestionDescription(
+  "systemd-cgtop ",
+  "systemd-cgtop --iterations=5 --batch",
+  "fuenf Batch-Messungen ausgeben",
+);
+assertSuggestionDescription(
+  "systemd-analyze ",
+  "systemd-analyze security ssh.service",
+  "Sicherheitsprofil von ssh.service bewerten",
+);
 assertSuggestionDescription(
   "localectl ",
   "localectl list-locales",
@@ -3352,9 +3464,16 @@ assertStartsWithSequence("sudo iftop ", [
   "sudo iftop -n",
 ]);
 assertSuggestionDescription("iftop ", "iftop -P", "Ports anzeigen");
+assertMinCount("nload ", 16);
 assertIncludes("nload ", "nload eth0");
+assertIncludes("nload ", "nload wlan0");
 assertIncludes("nload -u ", "nload -u M -t 500 eth0");
 assertSuggestionDescription("nload ", "nload -m", "mehrere Interfaces gleichzeitig anzeigen");
+assertSuggestionDescription(
+  "nload ",
+  "nload -i 10000 -o 10000 eth0",
+  "Skala fuer eth0 auf 10 MBit/s setzen",
+);
 assertIncludes("vnstat ", "vnstat -i");
 assertIncludes("vnstat ", "vnstat --json");
 assertSuggestionDescription("vnstat ", "vnstat -l", "Live-Verkehr anzeigen");
