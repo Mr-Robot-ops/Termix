@@ -1435,6 +1435,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "file ",
   "stat ",
   "readlink ",
+  "realpath ",
   "basename ",
   "dirname ",
   "df ",
@@ -1462,6 +1463,11 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "nload ",
   "vnstat ",
   "iperf3 ",
+  "lscpu ",
+  "lspci ",
+  "lsusb ",
+  "lsmod",
+  "vmstat ",
   "ncdu ",
   "tmux ",
   "screen ",
@@ -1499,6 +1505,14 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "pwd ",
   "hostname ",
   "whoami",
+  "touch ",
+  "tail ",
+  "timeout ",
+  "sha256sum ",
+  "sha1sum ",
+  "md5sum ",
+  "hexdump ",
+  "xxd ",
   "passwd ",
   "groups ",
   "useradd ",
@@ -1814,6 +1828,21 @@ assertManualPopupExceedsTen("mount ");
 assertManualPopupExceedsTen("umount ");
 assertManualPopupExceedsTen("free ");
 assertManualPopupExceedsTen("dmesg ");
+assertManualPopupExceedsTen("vmstat ");
+assertManualPopupExceedsTen("lscpu ");
+assertManualPopupExceedsTen("lspci ");
+assertManualPopupExceedsTen("lsusb ");
+assertManualPopupExceedsTen("lsmod");
+assertManualPopupExceedsTen("readlink ");
+assertManualPopupExceedsTen("realpath ");
+assertManualPopupExceedsTen("touch ");
+assertManualPopupExceedsTen("tail ");
+assertManualPopupExceedsTen("timeout ");
+assertManualPopupExceedsTen("sha256sum ");
+assertManualPopupExceedsTen("sha1sum ");
+assertManualPopupExceedsTen("md5sum ");
+assertManualPopupExceedsTen("hexdump ");
+assertManualPopupExceedsTen("xxd ");
 assertManualPopupExceedsTen("sysctl ");
 assertManualPopupExceedsTen("update-alternatives ");
 assertManualPopupExceedsTen("df ");
@@ -2875,6 +2904,133 @@ assertIncludes("uname ", "uname --operating-system");
 assertMinCount("id ", 12);
 assertIncludes("id ", "id --groups");
 assertIncludes("id ", "id --zero");
+
+assertMinCount("lsusb ", 12);
+assertStartsWithSequence("lsusb ", [
+  "lsusb -t",
+  "lsusb -v",
+  "lsusb -V",
+  "lsusb -d 1d6b:",
+]);
+assertSuggestionDescription(
+  "lsusb ",
+  "lsusb -D /dev/bus/usb/001/002",
+  "bestimmte USB-Geraetedatei auslesen",
+);
+
+assertMinCount("lspci ", 15);
+assertStartsWithSequence("lspci ", [
+  "lspci -nn",
+  "lspci -k",
+  "lspci -tv",
+  "lspci -vv",
+]);
+assertSuggestionDescription(
+  "lspci ",
+  "lspci -s 00:1f.3",
+  "nur Geraet am Slot 00:1f.3 anzeigen",
+);
+
+assertMinCount("lscpu ", 18);
+assertStartsWithSequence("lscpu ", [
+  "lscpu -J",
+  "lscpu --extended",
+  "lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE",
+]);
+assertSuggestionDescription(
+  "lscpu ",
+  "lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE",
+  "ausgewaehlte CPU-Spalten anzeigen",
+);
+
+assertMinCount("lsmod", 12);
+assertIncludes("lsmod", "lsmod | grep bluetooth");
+assertIncludes("lsmod", "lsmod | column -t");
+assertSuggestionDescription("lsmod", "lsmod | wc -l", "Anzahl geladener Module zaehlen");
+
+assertMinCount("vmstat ", 20);
+assertStartsWithSequence("vmstat ", [
+  "vmstat 1",
+  "vmstat 1 5",
+  "vmstat -s",
+]);
+assertSuggestionDescription("vmstat ", "vmstat -S M 1", "Speicherwerte in MiB anzeigen");
+
+assertMinCount("readlink ", 18);
+assertIncludes("readlink ", "readlink -e /etc/alternatives/editor");
+assertSuggestionDescription(
+  "readlink ",
+  "readlink -m missing/path",
+  "Pfad auch mit fehlenden Bestandteilen aufloesen",
+);
+
+assertMinCount("realpath ", 20);
+assertIncludes("realpath ", "realpath --relative-base=/srv /srv/app/config.yml");
+assertSuggestionDescription(
+  "realpath ",
+  "realpath --relative-to /var /var/log/syslog",
+  "Pfad relativ zu /var ausgeben",
+);
+
+assertMinCount("touch ", 18);
+assertIncludes("touch ", "touch -t 202606030900 release.txt");
+assertSuggestionDescription(
+  "touch ",
+  "touch -r reference.txt target.txt",
+  "Zeitstempel von Referenzdatei uebernehmen",
+);
+
+assertMinCount("tail ", 20);
+assertIncludes("tail ", "tail --pid 1234 -f /var/log/app.log");
+assertSuggestionDescription(
+  "tail ",
+  "tail --retry -F /var/log/app.log",
+  "Datei beim Folgen erneut oeffnen",
+);
+
+assertMinCount("timeout ", 16);
+assertIncludes("timeout ", "timeout --foreground 30s ssh host");
+assertSuggestionDescription(
+  "timeout ",
+  "timeout --signal=TERM 10s command",
+  "Signal fuer Timeout-Abbruch setzen",
+);
+
+assertMinCount("sha256sum ", 20);
+assertIncludes("sha256sum ", "sha256sum --ignore-missing -c checksums.txt");
+assertSuggestionDescription(
+  "sha256sum ",
+  "sha256sum --quiet -c checksums.txt",
+  "nur fehlerhafte Pruefungen melden",
+);
+
+assertMinCount("sha1sum ", 20);
+assertIncludes("sha1sum ", "sha1sum --tag file.iso");
+assertSuggestionDescription(
+  "sha1sum ",
+  "sha1sum --status -c checksums.txt",
+  "Pruefung ohne Ausgabe, nur Exit-Code",
+);
+
+assertMinCount("md5sum ", 20);
+assertIncludes("md5sum ", "md5sum --ignore-missing -c checksums.txt");
+assertSuggestionDescription(
+  "md5sum ",
+  "md5sum --binary file.iso",
+  "Datei im Binaermodus pruefen",
+);
+
+assertMinCount("hexdump ", 24);
+assertIncludes("hexdump ", "hexdump -C -s 512 file.bin");
+assertSuggestionDescription(
+  "hexdump ",
+  "hexdump -e '16/1 \"%02x \" \"\\n\"' file.bin",
+  "Bytes mit eigenem Format ausgeben",
+);
+
+assertMinCount("xxd ", 18);
+assertIncludes("xxd ", "xxd -i file.bin");
+assertSuggestionDescription("xxd ", "xxd -g 1 file.bin", "Bytes einzeln gruppieren");
 
 assertMinCount("lsblk ", 15);
 assertStartsWithSequence("lsblk ", [
