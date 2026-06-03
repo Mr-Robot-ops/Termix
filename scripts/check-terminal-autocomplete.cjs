@@ -497,6 +497,15 @@ function assertHelpCatalogQuality() {
     "nload",
     "vnstat",
     "iperf3",
+    "npm",
+    "pnpm",
+    "yarn",
+    "node",
+    "python",
+    "python3",
+    "pip",
+    "pip3",
+    "make",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1185,6 +1194,17 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "yq ",
   "rg ",
   "rg -",
+  "npm ",
+  "npm run ",
+  "pnpm ",
+  "pnpm run ",
+  "yarn ",
+  "node ",
+  "python ",
+  "python3 ",
+  "pip ",
+  "pip3 ",
+  "make ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1301,6 +1321,11 @@ assertManualPopupExceedsTen("git");
 assertManualPopupExceedsTen("sudo git");
 assertManualPopupExceedsTen("sudo systemctl ");
 assertManualPopupExceedsTen("docker ");
+assertManualPopupExceedsTen("npm ");
+assertManualPopupExceedsTen("pnpm ");
+assertManualPopupExceedsTen("yarn ");
+assertManualPopupExceedsTen("python ");
+assertManualPopupExceedsTen("pip ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -1613,6 +1638,111 @@ assertSuggestionDescription(
   "dpkg --contents",
   "Inhalt eines .deb-Pakets anzeigen",
 );
+
+assertMinCount("npm ", 30);
+assertStartsWithSequence("npm ", [
+  "npm install",
+  "npm install <package>",
+  "npm ci",
+  "npm run dev",
+  "npm run build",
+]);
+assertStartsWithSequence("npm run ", [
+  "npm run dev",
+  "npm run build",
+  "npm run start",
+]);
+assertIncludes("npm ", "npm audit");
+assertIncludes("npm ", "npm list --depth=0");
+assertSuggestionDescription("npm ", "npm run dev", "Entwicklungs-Skript starten");
+assertSuggestionDescription(
+  "npm ",
+  "npm ci",
+  "Dependencies exakt aus package-lock installieren",
+);
+
+assertMinCount("pnpm ", 24);
+assertStartsWithSequence("pnpm ", [
+  "pnpm install",
+  "pnpm add <package>",
+  "pnpm run dev",
+  "pnpm run build",
+]);
+assertIncludes("pnpm ", "pnpm add -D <package>");
+assertIncludes("pnpm ", "pnpm dlx <package>");
+assertSuggestionDescription(
+  "pnpm ",
+  "pnpm add -D <package>",
+  "Paket als Dev-Dependency hinzufügen",
+);
+
+assertMinCount("yarn ", 20);
+assertStartsWithSequence("yarn ", [
+  "yarn install",
+  "yarn add <package>",
+  "yarn run <script>",
+  "yarn dev",
+]);
+assertIncludes("yarn ", "yarn --immutable");
+assertSuggestionDescription("yarn ", "yarn --immutable", "Yarn-Install ohne Lockfile-Änderung erzwingen");
+
+assertMinCount("node ", 12);
+assertStartsWithSequence("node ", [
+  "node server.js",
+  "node --watch",
+  "node --test",
+  "node -e",
+]);
+assertIncludes("node ", "node --inspect-brk");
+assertSuggestionDescription("node ", "node --watch", "Skript bei Dateiänderungen neu starten");
+
+assertMinCount("python ", 18);
+assertMinCount("python3 ", 18);
+assertStartsWithSequence("python ", [
+  "python -m venv .venv",
+  "python -m pip install -r requirements.txt",
+  "python -m pip list",
+]);
+assertStartsWithSequence("python3 ", [
+  "python3 -m venv .venv",
+  "python3 -m pip install -r requirements.txt",
+  "python3 -m pip list",
+]);
+assertSuggestionDescription("python ", "python -m venv .venv", "virtuelle Umgebung erstellen");
+assertSuggestionDescription(
+  "python3 ",
+  "python3 -m pip install -r requirements.txt",
+  "Requirements-Datei installieren",
+);
+
+assertMinCount("pip ", 20);
+assertMinCount("pip3 ", 20);
+assertStartsWithSequence("pip ", [
+  "pip install <package>",
+  "pip install -r requirements.txt",
+  "pip install --upgrade <package>",
+]);
+assertStartsWithSequence("pip3 ", [
+  "pip3 install <package>",
+  "pip3 install -r requirements.txt",
+  "pip3 install --upgrade <package>",
+]);
+assertSuggestionDescription(
+  "pip ",
+  "pip install -r requirements.txt",
+  "Requirements-Datei installieren",
+);
+assertSuggestionDescription("pip3 ", "pip3 freeze > requirements.txt", "Requirements-Datei erzeugen");
+
+assertMinCount("make ", 16);
+assertStartsWithSequence("make ", [
+  "make build",
+  "make test",
+  "make install",
+  "make clean",
+]);
+assertIncludes("make ", "make -j");
+assertSuggestionDescription("make ", "make -j", "parallele Jobs setzen");
 
 assertIncludes("docker ps -", "docker ps -a");
 assertUnique("docker ps -");
