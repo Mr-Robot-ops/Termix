@@ -524,6 +524,13 @@ function assertHelpCatalogQuality() {
     "sqlite3",
     "redis-cli",
     "mongosh",
+    "crontab",
+    "nginx",
+    "apachectl",
+    "apache2ctl",
+    "certbot",
+    "supervisorctl",
+    "pm2",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1256,6 +1263,13 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "sqlite3 ",
   "redis-cli ",
   "mongosh ",
+  "crontab ",
+  "nginx ",
+  "apachectl ",
+  "apache2ctl ",
+  "certbot ",
+  "supervisorctl ",
+  "pm2 ",
   "gzip ",
   "gunzip ",
   "bzip2 ",
@@ -1392,6 +1406,13 @@ assertManualPopupExceedsTen("mysql ");
 assertManualPopupExceedsTen("sqlite3 ");
 assertManualPopupExceedsTen("redis-cli ");
 assertManualPopupExceedsTen("mongosh ");
+assertManualPopupExceedsTen("crontab ");
+assertManualPopupExceedsTen("nginx ");
+assertManualPopupExceedsTen("apachectl ");
+assertManualPopupExceedsTen("apache2ctl ");
+assertManualPopupExceedsTen("certbot ");
+assertManualPopupExceedsTen("supervisorctl ");
+assertManualPopupExceedsTen("pm2 ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -2162,6 +2183,85 @@ assertSuggestionDescription(
   "mongosh --eval 'db.runCommand({ ping: 1 })'",
   "MongoDB-Ping per JavaScript ausführen",
 );
+
+assertMinCount("crontab ", 12);
+assertStartsWithSequence("crontab ", [
+  "crontab -l",
+  "crontab -e",
+  "crontab -u www-data -l",
+  "crontab -u root -e",
+]);
+assertSuggestionDescription(
+  "crontab ",
+  "crontab -T crontab.backup",
+  "Backup-Datei vor Installation prüfen",
+);
+assertSuggestionDescription("crontab ", "crontab -", "Crontab aus Standardeingabe installieren");
+
+assertMinCount("nginx ", 16);
+assertStartsWithSequence("nginx ", [
+  "nginx -t",
+  "nginx -T",
+  "nginx -s reload",
+  "nginx -s reopen",
+  "nginx -q -t",
+]);
+assertSuggestionDescription("nginx ", "nginx -s reload", "Nginx-Konfiguration neu laden");
+assertSuggestionDescription("nginx ", "nginx -g \"daemon off;\"", "Nginx im Vordergrund starten");
+
+assertMinCount("apachectl ", 12);
+assertStartsWithSequence("apachectl ", [
+  "apachectl configtest",
+  "apachectl -S",
+  "apachectl -M",
+  "apachectl status",
+]);
+assertSuggestionDescription("apachectl ", "apachectl -S", "VirtualHost-Konfiguration anzeigen");
+assertMinCount("apache2ctl ", 12);
+assertStartsWithSequence("apache2ctl ", [
+  "apache2ctl configtest",
+  "apache2ctl -S",
+  "apache2ctl -M",
+  "apache2ctl status",
+]);
+assertSuggestionDescription("apache2ctl ", "apache2ctl -S", "VirtualHost-Konfiguration anzeigen");
+
+assertMinCount("certbot ", 16);
+assertStartsWithSequence("certbot ", [
+  "certbot certificates",
+  "certbot renew --dry-run",
+  "certbot renew",
+  "certbot plugins",
+]);
+assertSuggestionDescription("certbot ", "certbot renew --dry-run", "Zertifikatserneuerung testen");
+assertSuggestionDescription(
+  "certbot ",
+  "certbot certonly --nginx -d",
+  "Zertifikat per Nginx für Domain beziehen",
+);
+
+assertMinCount("supervisorctl ", 13);
+assertStartsWithSequence("supervisorctl ", [
+  "supervisorctl status",
+  "supervisorctl tail",
+  "supervisorctl tail -f",
+  "supervisorctl restart",
+]);
+assertSuggestionDescription(
+  "supervisorctl ",
+  "supervisorctl tail -f app",
+  "Programmlog live verfolgen",
+);
+
+assertMinCount("pm2 ", 16);
+assertStartsWithSequence("pm2 ", [
+  "pm2 list",
+  "pm2 status",
+  "pm2 logs",
+  "pm2 logs --lines",
+]);
+assertIncludes("pm2 ", "pm2 start app.js --name app");
+assertSuggestionDescription("pm2 ", "pm2 start app.js --name", "app.js mit Namen starten");
 
 assertIncludes("docker ps -", "docker ps -a");
 assertUnique("docker ps -");
