@@ -479,9 +479,17 @@ function assertHelpCatalogQuality() {
     "apt-get",
     "apt-cache",
     "dpkg",
+    "df",
+    "du",
+    "free",
     "dmesg",
     "sysctl",
     "findmnt",
+    "lsblk",
+    "blkid",
+    "mount",
+    "umount",
+    "update-alternatives",
     "loginctl",
     "systemd-analyze",
     "chgrp",
@@ -1185,7 +1193,7 @@ assertSuggestionDescription("tail ", "tail -f", "Dateiende live verfolgen");
 assertSuggestionDescription("wc ", "wc file.txt", "Zeilen, Wörter oder Bytes für Datei zählen");
 assertSuggestionDescription("sort ", "sort -nr numbers.txt", "numerisch absteigend sortieren");
 assertSuggestionDescription("df ", "df -hT", "Größen menschenlesbar mit Dateisystemtyp anzeigen");
-assertSuggestionDescription("du ", "du -sh /var/log", "Gesamtsumme menschenlesbar anzeigen");
+assertSuggestionDescription("du ", "du -sh /var/log", "Größe von /var/log anzeigen");
 assertSuggestionDescription("ncdu ", "ncdu -x", "auf einem Dateisystem bleiben");
 assertSuggestionDescription(
   "tmux ",
@@ -1260,6 +1268,10 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "df ",
   "du ",
   "free ",
+  "lsblk ",
+  "blkid ",
+  "mount ",
+  "umount ",
   "top ",
   "htop ",
   "kill ",
@@ -1292,6 +1304,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "coredumpctl ",
   "systemd-cgls ",
   "systemd-cgtop ",
+  "update-alternatives ",
   "machinectl ",
   "findmnt ",
   "sysctl ",
@@ -1537,6 +1550,16 @@ assertManualPopupExceedsTen("ssh-keyscan ");
 assertManualPopupExceedsTen("scp ");
 assertManualPopupExceedsTen("lsof ");
 assertManualPopupExceedsTen("pkill ");
+assertManualPopupExceedsTen("lsblk ");
+assertManualPopupExceedsTen("blkid ");
+assertManualPopupExceedsTen("mount ");
+assertManualPopupExceedsTen("umount ");
+assertManualPopupExceedsTen("free ");
+assertManualPopupExceedsTen("dmesg ");
+assertManualPopupExceedsTen("sysctl ");
+assertManualPopupExceedsTen("update-alternatives ");
+assertManualPopupExceedsTen("df ");
+assertManualPopupExceedsTen("du ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
@@ -2591,6 +2614,114 @@ assertIncludes("uname ", "uname --operating-system");
 assertMinCount("id ", 12);
 assertIncludes("id ", "id --groups");
 assertIncludes("id ", "id --zero");
+
+assertMinCount("lsblk ", 15);
+assertStartsWithSequence("lsblk ", [
+  "lsblk -f",
+  "lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,UUID",
+  "lsblk -J",
+  "lsblk -p",
+]);
+assertSuggestionDescription(
+  "lsblk ",
+  "lsblk -d -o NAME,MODEL,SIZE,ROTA",
+  "nur Platten mit Modell, Größe und Rotation anzeigen",
+);
+
+assertMinCount("blkid ", 14);
+assertStartsWithSequence("blkid ", [
+  "blkid /dev/sda1",
+  "blkid -o export /dev/sda1",
+  "blkid -s UUID /dev/sda1",
+  "blkid -L data",
+]);
+assertSuggestionDescription("blkid ", "blkid -U <uuid>", "Gerät mit dieser UUID finden");
+assertSuggestionDescription("blkid ", "blkid -c", "Cache-Datei setzen");
+
+assertMinCount("mount ", 20);
+assertStartsWithSequence("mount ", [
+  "mount | column -t",
+  "mount | grep /mnt",
+  "mount /dev/sdb1 /mnt",
+  "mount -t nfs server:/share /mnt",
+]);
+assertSuggestionDescription("mount ", "mount -o remount,rw /", "Root-Dateisystem schreibbar remounten");
+assertSuggestionDescription("mount ", "mount --bind /srv/data /mnt/data", "Verzeichnis per Bind-Mount einhängen");
+
+assertMinCount("umount ", 14);
+assertStartsWithSequence("umount ", [
+  "umount /mnt",
+  "umount -l /mnt",
+  "umount -v /mnt",
+  "umount /dev/sdb1",
+]);
+assertNotIncludes("umount ", "umount -a");
+assertSuggestionDescription("umount ", "umount --recursive /mnt", "Submounts unter /mnt rekursiv aushängen");
+
+assertMinCount("free ", 20);
+assertStartsWithSequence("free ", [
+  "free -h",
+  "free -w -h",
+  "free -m",
+  "free -h -s 2",
+]);
+assertSuggestionDescription("free ", "free -w -h", "Speicher breit und menschenlesbar anzeigen");
+
+assertMinCount("dmesg ", 20);
+assertStartsWithSequence("dmesg ", [
+  "dmesg -T",
+  "dmesg -w",
+  "dmesg -T --level=err,warn",
+  "dmesg -H",
+]);
+assertSuggestionDescription(
+  "dmesg ",
+  "dmesg -T --level=err,warn",
+  "Fehler und Warnungen mit lesbarer Zeit anzeigen",
+);
+
+assertMinCount("sysctl ", 20);
+assertStartsWithSequence("sysctl ", [
+  "sysctl -a",
+  "sysctl net.ipv4.ip_forward",
+  "sysctl vm.swappiness",
+  "sysctl -n kernel.hostname",
+]);
+assertSuggestionDescription("sysctl ", "sysctl vm.swappiness", "Swappiness-Parameter anzeigen");
+assertSuggestionDescription(
+  "sysctl ",
+  "sysctl -p /etc/sysctl.conf",
+  "Parameter aus /etc/sysctl.conf laden",
+);
+
+assertMinCount("update-alternatives ", 19);
+assertStartsWithSequence("update-alternatives ", [
+  "update-alternatives --display editor",
+  "update-alternatives --config java",
+  "update-alternatives --list editor",
+]);
+assertSuggestionDescription(
+  "update-alternatives ",
+  "update-alternatives --set editor /usr/bin/vim",
+  "editor auf vim setzen",
+);
+
+assertMinCount("df ", 15);
+assertStartsWithSequence("df ", ["df -h", "df -hT", "df -ih"]);
+assertSuggestionDescription("df ", "df -x tmpfs -x devtmpfs", "temporäre Dateisysteme ausblenden");
+
+assertMinCount("du ", 18);
+assertStartsWithSequence("du ", [
+  "du -sh *",
+  "du -sh /var/log",
+  "du -h --max-depth=1 /var",
+]);
+assertSuggestionDescription(
+  "du ",
+  "du -xhd1 /",
+  "Root-Dateisystem auf erster Ebene auswerten",
+);
+
 assertIncludes("ufw allow ", "ufw allow 22/tcp");
 assertIncludes("ufw delete allow ", "ufw delete allow 22/tcp");
 assertIncludes("tar -C ", "tar -C /tmp");
