@@ -1063,6 +1063,51 @@ assertSuggestionDescription("sort ", "sort -nr numbers.txt", "numerisch absteige
 assertSuggestionDescription("df ", "df -hT", "Größen menschenlesbar mit Dateisystemtyp anzeigen");
 assertSuggestionDescription("du ", "du -sh /var/log", "Gesamtsumme menschenlesbar anzeigen");
 assertSuggestionDescription("ncdu ", "ncdu -x", "auf einem Dateisystem bleiben");
+assertSuggestionDescription(
+  "tmux ",
+  "tmux attach -t <name>",
+  "an bestehende tmux-Sitzung anhängen",
+);
+assertSuggestionDescription(
+  "tmux ",
+  "tmux split-window",
+  "aktuelles Fenster teilen",
+);
+assertSuggestionDescription(
+  "screen ",
+  "screen -r",
+  "Screen-Sitzung wieder anhängen",
+);
+assertSuggestionDescription(
+  "screen ",
+  "screen -ls",
+  "Screen-Sitzungen auflisten",
+);
+assertSuggestionDescription(
+  "nohup ",
+  "nohup ./server.sh &",
+  "Befehl nach Logout weiterlaufen lassen",
+);
+assertSuggestionDescription(
+  "jobs ",
+  "jobs -l",
+  "Jobs mit Prozess-IDs anzeigen",
+);
+assertSuggestionDescription(
+  "fg ",
+  "fg %1",
+  "Job 1 in den Vordergrund holen",
+);
+assertSuggestionDescription(
+  "bg ",
+  "bg %1",
+  "Job 1 im Hintergrund fortsetzen",
+);
+assertSuggestionDescription(
+  "disown ",
+  "disown -h",
+  "Job vor SIGHUP beim Logout schützen",
+);
 assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
 assertSuggestionDescription("lsof ", "lsof -nP -iTCP -sTCP:LISTEN", "TCP-Ports numerisch anzeigen");
 assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
@@ -1104,6 +1149,13 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "vnstat ",
   "iperf3 ",
   "ncdu ",
+  "tmux ",
+  "screen ",
+  "nohup ",
+  "jobs ",
+  "fg ",
+  "bg ",
+  "disown ",
   "service ",
   "loginctl ",
   "localectl ",
@@ -1692,6 +1744,25 @@ assertSuggestionDescription("tar --", "tar --directory", "vor Aktion in Verzeich
 assertIncludes("ncdu ", "ncdu /var/log");
 assertIncludes("ncdu ", "ncdu --one-file-system");
 assertStartsWithSequence("ncdu ", ["ncdu /var/log", "ncdu -x"]);
+assertStartsWithSequence("tmux ", [
+  "tmux new -s <name>",
+  "tmux new -s work",
+  "tmux attach -t <name>",
+  "tmux ls",
+]);
+assertStartsWithSequence("screen ", [
+  "screen -S",
+  "screen -r",
+  "screen -ls",
+]);
+assertStartsWithSequence("jobs ", ["jobs -l", "jobs -p", "jobs -r"]);
+assertStartsWithSequence("fg ", ["fg %1", "fg %<job>"]);
+assertStartsWithSequence("bg ", ["bg %1", "bg %<job>"]);
+assertStartsWithSequence("disown ", [
+  "disown %1",
+  "disown -h",
+  "disown -h %1",
+]);
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
 assertMinCount("rg ", 20);
