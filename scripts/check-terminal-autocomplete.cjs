@@ -486,8 +486,14 @@ function assertHelpCatalogQuality() {
     "systemd-analyze",
     "chgrp",
     "umask",
+    "groups",
     "groupadd",
+    "groupmod",
+    "useradd",
+    "usermod",
     "userdel",
+    "passwd",
+    "chage",
     "visudo",
     "tcpdump",
     "openssl s_client",
@@ -1050,6 +1056,84 @@ assertSuggestionDescription(
   "passwd --lock",
   "Benutzerpasswort sperren",
 );
+assertSuggestionDescription(
+  "passwd ",
+  "passwd username",
+  "Passwort dieses Benutzers ändern",
+);
+assertMinCount("groups ", 12);
+assertStartsWithSequence("groups ", [
+  "groups $USER",
+  "groups username",
+  "groups www-data",
+  "groups deploy",
+]);
+assertSuggestionDescription(
+  "groups ",
+  "groups www-data",
+  "Gruppen des Webserver-Benutzers anzeigen",
+);
+assertMinCount("useradd ", 17);
+assertStartsWithSequence("useradd ", [
+  "useradd -m -s /bin/bash username",
+  "useradd -m -G sudo username",
+  "useradd -m -d /home/deploy deploy",
+]);
+assertSuggestionDescription(
+  "useradd ",
+  "useradd -r -s /usr/sbin/nologin app",
+  "Systembenutzer ohne Login-Shell erstellen",
+);
+assertSuggestionDescription("useradd ", "useradd --user-group", "gleichnamige Benutzergruppe anlegen");
+assertMinCount("usermod ", 18);
+assertStartsWithSequence("usermod ", [
+  "usermod -aG sudo username",
+  "usermod -aG docker username",
+  "usermod -s /bin/bash username",
+]);
+assertSuggestionDescription(
+  "usermod ",
+  "usermod -d /home/deploy -m deploy",
+  "Home-Verzeichnis ändern und Inhalte verschieben",
+);
+assertSuggestionDescription("usermod ", "usermod --lock", "Benutzerpasswort sperren");
+assertMinCount("chage ", 18);
+assertStartsWithSequence("chage ", [
+  "chage -l username",
+  "chage -d 0 username",
+  "chage -M 90 -W 14 username",
+]);
+assertSuggestionDescription(
+  "chage ",
+  "chage -d 0 username",
+  "Passwortwechsel beim nächsten Login erzwingen",
+);
+assertSuggestionDescription("chage ", "chage --inactive", "Inaktivitätstage nach Passwortablauf setzen");
+assertMinCount("groupadd ", 12);
+assertStartsWithSequence("groupadd ", [
+  "groupadd developers",
+  "groupadd -g 1500 app",
+  "groupadd -r servicegroup",
+]);
+assertSuggestionDescription("groupadd ", "groupadd -f developers", "keinen Fehler melden, wenn Gruppe existiert");
+assertMinCount("groupmod ", 11);
+assertStartsWithSequence("groupmod ", [
+  "groupmod -n newname oldname",
+  "groupmod --new-name app app-old",
+  "groupmod -g 1501 developers",
+]);
+assertSuggestionDescription(
+  "groupmod ",
+  "groupmod -n newname oldname",
+  "Gruppe oldname in newname umbenennen",
+);
+assertMinCount("visudo ", 14);
+assertStartsWithSequence("visudo ", [
+  "visudo -c",
+  "visudo -c -f /etc/sudoers.d/app",
+  "visudo -f /etc/sudoers.d/app",
+]);
+assertSuggestionDescription("visudo ", "visudo -c -f /etc/sudoers.d/app", "sudoers-Drop-in app prüfen");
 assertMinCount("ssh-agent ", 9);
 assertIncludes("ssh-agent ", "ssh-agent -D");
 assertIncludes("ssh-agent ", "ssh-agent -d");
@@ -1211,6 +1295,13 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "hostname ",
   "whoami",
   "passwd ",
+  "groups ",
+  "useradd ",
+  "usermod ",
+  "chage ",
+  "groupadd ",
+  "groupmod ",
+  "visudo ",
   "ssh-agent ",
   "ssh-add ",
   "wget ",
@@ -1413,6 +1504,13 @@ assertManualPopupExceedsTen("apache2ctl ");
 assertManualPopupExceedsTen("certbot ");
 assertManualPopupExceedsTen("supervisorctl ");
 assertManualPopupExceedsTen("pm2 ");
+assertManualPopupExceedsTen("groups ");
+assertManualPopupExceedsTen("useradd ");
+assertManualPopupExceedsTen("usermod ");
+assertManualPopupExceedsTen("chage ");
+assertManualPopupExceedsTen("groupadd ");
+assertManualPopupExceedsTen("groupmod ");
+assertManualPopupExceedsTen("visudo ");
 
 assertIncludes("ssh ", "ssh -p");
 assertIncludes("ssh ", "ssh admin@10.10.10.10");
