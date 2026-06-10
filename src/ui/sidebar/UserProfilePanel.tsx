@@ -492,6 +492,9 @@ export function UserProfilePanel({
   const [terminalAutocompleteHelp, setTerminalAutocompleteHelp] = useState(
     () => getTerminalAutocompleteSettings().help,
   );
+  const [fileColorCoding, setFileColorCoding] = useState(
+    () => localStorage.getItem("fileColorCoding") !== "false",
+  );
   const [commandHistoryTracking, setCommandHistoryTracking] = useState(
     () => localStorage.getItem("commandHistoryTracking") === "true",
   );
@@ -959,6 +962,25 @@ export function UserProfilePanel({
                 hex
               </span>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+              {t("newUi.sidebar.userProfile.settingsFileManager")}
+            </span>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.fileColorCoding")}
+              description={t("newUi.sidebar.userProfile.fileColorCodingDesc")}
+            >
+              <FakeSwitch
+                checked={fileColorCoding}
+                onChange={(v) => {
+                  setFileColorCoding(v);
+                  localStorage.setItem("fileColorCoding", v.toString());
+                  window.dispatchEvent(new Event("fileColorCodingChanged"));
+                }}
+              />
+            </SettingRow>
           </div>
 
           <div className="flex flex-col gap-1 border-t border-border pt-3">

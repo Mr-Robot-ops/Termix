@@ -68,7 +68,22 @@ interface FileManagerGridProps {
   onSortChange?: (field: "name" | "modified" | "size") => void;
 }
 
-const getFileTypeColor = (file: FileItem): string => {
+const readFileColorCodingEnabled = (): boolean => {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  return window.localStorage.getItem("fileColorCoding") !== "false";
+};
+
+const getFileTypeColor = (
+  file: FileItem,
+  fileColorCodingEnabled: boolean,
+): string => {
+  if (!fileColorCodingEnabled) {
+    return "text-muted-foreground";
+  }
+
   if (file.type === "directory") {
     return "text-red-400";
   }
@@ -80,9 +95,13 @@ const getFileTypeColor = (file: FileItem): string => {
   return "text-blue-400";
 };
 
-const getFileIcon = (file: FileItem, viewMode: "grid" | "list" = "grid") => {
+const getFileIcon = (
+  file: FileItem,
+  viewMode: "grid" | "list" = "grid",
+  fileColorCodingEnabled = true,
+) => {
   const iconClass = viewMode === "grid" ? "w-8 h-8" : "w-6 h-6";
-  const colorClass = getFileTypeColor(file);
+  const colorClass = getFileTypeColor(file, fileColorCodingEnabled);
 
   if (file.type === "directory") {
     return <Folder className={`${iconClass} ${colorClass}`} />;
@@ -185,12 +204,35 @@ export function FileManagerGrid({
   const { t } = useTranslation();
   const gridRef = useRef<HTMLDivElement>(null);
   const [editingName, setEditingName] = useState("");
+  const [fileColorCodingEnabled, setFileColorCodingEnabled] = useState(
+    readFileColorCodingEnabled,
+  );
 
   const [dragState, setDragState] = useState<DragState>({
     type: "none",
     files: [],
     counter: 0,
   });
+
+  useEffect(() => {
+    const handleFileColorCodingChanged = () => {
+      setFileColorCodingEnabled(readFileColorCodingEnabled());
+    };
+
+    window.addEventListener(
+      "fileColorCodingChanged",
+      handleFileColorCodingChanged,
+    );
+    window.addEventListener("storage", handleFileColorCodingChanged);
+
+    return () => {
+      window.removeEventListener(
+        "fileColorCodingChanged",
+        handleFileColorCodingChanged,
+      );
+      window.removeEventListener("storage", handleFileColorCodingChanged);
+    };
+  }, []);
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -847,7 +889,7 @@ export function FileManagerGrid({
                     onDragEnd={handleFileDragEnd}
                   >
                     <div className="relative mb-2 pointer-events-none">
-                      {getFileIcon(file, viewMode)}
+                      {getFileIcon(file, viewMode, fileColorCodingEnabled)}
                     </div>
 
                     <div className="w-full flex flex-col items-center pointer-events-none">
@@ -972,7 +1014,7 @@ export function FileManagerGrid({
                   >
                     <div className="flex items-center gap-3 overflow-hidden pointer-events-none">
                       <div className="shrink-0">
-                        {getFileIcon(file, viewMode)}
+                        {getFileIcon(file, viewMode, fileColorCodingEnabled)}
                       </div>
                       {editingFile?.path === file.path ? (
                         <input
