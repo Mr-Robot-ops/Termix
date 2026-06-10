@@ -29,6 +29,14 @@ import {
   waitForTmuxSession,
 } from "./tmux-helper.js";
 import { MemoryAgent, performPortKnocking } from "./terminal-auth-helpers.js";
+import {
+  SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY,
+  SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES,
+  SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_TIMEOUT_MS,
+  extractSystemdServiceUnitsForAutocomplete,
+  getOrFetchCachedSystemdServiceAutocomplete,
+  type SystemdServiceAutocompleteCacheEntry,
+} from "./systemd-autocomplete.js";
 
 interface ConnectToHostData {
   cols: number;
@@ -89,72 +97,58 @@ const authManager = AuthManager.getInstance();
 const userCrypto = UserCrypto.getInstance();
 
 const userConnections = new Map<string, Set<WebSocket>>();
-const SYSTEMD_UNIT_SUFFIXES = [
-  "automount",
-  "device",
-  "mount",
-  "path",
-  "scope",
-  "service",
-  "slice",
-  "socket",
-  "swap",
-  "target",
-  "timer",
-];
-const SYSTEMD_UNIT_QUERY_TIMEOUT_MS = 5000;
-const SYSTEMD_UNIT_QUERY_MAX_BYTES = 128 * 1024;
-const SYSTEMD_UNIT_QUERY_LIMIT = 200;
-const SYSTEMD_UNIT_QUERY = [
-  "if command -v systemctl >/dev/null 2>&1; then",
-  "systemctl list-units --all --no-legend --no-pager --full 2>/dev/null;",
-  "systemctl list-unit-files --no-legend --no-pager --full 2>/dev/null;",
-  "fi",
-].join(" ");
+const systemdServiceAutocompleteCache =
+  new Map<string, SystemdServiceAutocompleteCacheEntry>();
 
-function extractSystemdUnitsForAutocomplete(output: string): string[] {
-  const suffixPattern = SYSTEMD_UNIT_SUFFIXES.join("|");
-  const unitPattern = new RegExp(
-    `\\b([A-Za-z0-9][A-Za-z0-9@_.:+-]*\\.(?:${suffixPattern}))\\b`,
-    "gi",
+function shouldLogSystemdAutocompleteDebug() {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    process.env.TERMIX_AUTOCOMPLETE_DEBUG === "true"
   );
-  const units: string[] = [];
-  const seen = new Set<string>();
-
-  for (const match of output.matchAll(unitPattern)) {
-    const unit = match[1] ?? "";
-    const normalizedUnit = unit.toLowerCase();
-    if (seen.has(normalizedUnit)) {
-      continue;
-    }
-
-    seen.add(normalizedUnit);
-    units.push(unit);
-
-    if (units.length >= SYSTEMD_UNIT_QUERY_LIMIT) {
-      break;
-    }
-  }
-
-  return units;
 }
 
-function querySystemdUnitsForAutocomplete(
+function logSystemdAutocompleteDebug(
+  message: string,
+  context: Record<string, unknown> = {},
+) {
+  if (!shouldLogSystemdAutocompleteDebug()) {
+    return;
+  }
+
+  console.debug(`[terminal autocomplete] ${message}`, context);
+}
+
+function getSystemdAutocompleteSample(services: string[]) {
+  return services.slice(0, 5);
+}
+
+function querySystemdServicesForAutocomplete(
   conn: SSHClientType,
 ): Promise<string[]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
     let stdout = "";
+    let exitCode: number | null = null;
     let streamRef: ClientChannel | null = null;
 
-    function finish(units: string[]) {
+    function finishSuccess(services: string[]) {
       if (settled) {
         return;
       }
 
       settled = true;
       clearTimeout(timeout);
-      resolve(units);
+      resolve(services);
+    }
+
+    function finishFailure(error: Error) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
     }
 
     const timeout = setTimeout(() => {
@@ -163,41 +157,76 @@ function querySystemdUnitsForAutocomplete(
       } catch {
         /* ignore */
       }
-      finish([]);
-    }, SYSTEMD_UNIT_QUERY_TIMEOUT_MS);
+      finishFailure(new Error("systemd autocomplete query timed out"));
+    }, SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_TIMEOUT_MS);
 
-    conn.exec(SYSTEMD_UNIT_QUERY, { pty: false }, (err, stream) => {
+    logSystemdAutocompleteDebug("Fetching systemd autocomplete services");
+
+    conn.exec(SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY, { pty: false }, (err, stream) => {
       if (err) {
-        finish([]);
+        finishFailure(err instanceof Error ? err : new Error(String(err)));
         return;
       }
 
       streamRef = stream;
       stream.on("data", (chunk: Buffer) => {
-        if (stdout.length < SYSTEMD_UNIT_QUERY_MAX_BYTES) {
+        if (stdout.length < SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES) {
           stdout += chunk.toString("utf-8");
         }
       });
       stream.stderr.on("data", () => {
         // systemctl errors are intentionally ignored for autocomplete metadata.
       });
-      stream.on("error", () => finish([]));
+      stream.on("exit", (code: number | null) => {
+        exitCode = typeof code === "number" ? code : null;
+      });
+      stream.on("error", (error) =>
+        finishFailure(error instanceof Error ? error : new Error(String(error))),
+      );
       stream.on("close", () => {
-        finish(extractSystemdUnitsForAutocomplete(stdout));
+        const services = extractSystemdServiceUnitsForAutocomplete(stdout);
+        logSystemdAutocompleteDebug("Parsed systemd autocomplete services", {
+          count: services.length,
+          sample: getSystemdAutocompleteSample(services),
+        });
+        if (services.length === 0 && exitCode !== null && exitCode !== 0) {
+          finishFailure(
+            new Error(`systemd autocomplete query exited with ${exitCode}`),
+          );
+          return;
+        }
+
+        finishSuccess(services);
       });
     });
   });
 }
 
-function sendSystemdUnitsForAutocomplete(ws: WebSocket, units: string[]) {
-  if (ws.readyState !== WebSocket.OPEN || units.length === 0) {
+function getSystemdServiceAutocompleteCacheKey(
+  userId: string,
+  sessionIdForCache: string | null,
+) {
+  const session = sessionManager.getSession(sessionIdForCache);
+  return session
+    ? `${userId}:host:${session.hostId}`
+    : `${userId}:session:${sessionIdForCache ?? "detached"}`;
+}
+
+function sendSystemdServicesForAutocomplete(ws: WebSocket, services: string[]) {
+  if (ws.readyState !== WebSocket.OPEN) {
     return;
   }
+
+  logSystemdAutocompleteDebug("Sending systemd autocomplete services", {
+    count: services.length,
+    sample: getSystemdAutocompleteSample(services),
+  });
 
   ws.send(
     JSON.stringify({
       type: "autocomplete_systemd_units",
-      units,
+      units: services,
+      services,
     }),
   );
 }
@@ -311,22 +340,49 @@ wss.on("connection", async (ws: WebSocket, req) => {
       return;
     }
 
-    try {
-      const units = await querySystemdUnitsForAutocomplete(conn);
-      if (units.length === 0) {
-        return;
-      }
+    const cacheKey = getSystemdServiceAutocompleteCacheKey(
+      userId,
+      sessionIdForCache,
+    );
 
+    logSystemdAutocompleteDebug("Starting systemd autocomplete service refresh", {
+      sessionId: sessionIdForCache,
+      userId,
+    });
+
+    const cacheResult = getOrFetchCachedSystemdServiceAutocomplete(
+      systemdServiceAutocompleteCache,
+      cacheKey,
+      () =>
+        querySystemdServicesForAutocomplete(conn).catch((error) => {
+          sshLogger.warn("Failed to fetch systemd autocomplete services", {
+            operation: "terminal_autocomplete_systemd_services",
+            sessionId: sessionIdForCache,
+            userId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          throw error;
+        }),
+    );
+
+    logSystemdAutocompleteDebug("Systemd autocomplete cache status", {
+      status: cacheResult.status,
+      sessionId: sessionIdForCache,
+      userId,
+    });
+
+    try {
+      const services = await cacheResult.promise;
       const session = sessionManager.getSession(sessionIdForCache);
       if (session) {
-        session.autocompleteSystemdUnits = units;
+        session.autocompleteSystemdUnits = services;
       }
 
       const targetWs = session?.attachedWs ?? ws;
-      sendSystemdUnitsForAutocomplete(targetWs, units);
+      sendSystemdServicesForAutocomplete(targetWs, services);
     } catch (error) {
-      sshLogger.warn("Failed to refresh systemd unit autocomplete metadata", {
-        operation: "terminal_autocomplete_systemd_units",
+      sshLogger.warn("Failed to refresh systemd service autocomplete metadata", {
+        operation: "terminal_autocomplete_systemd_services",
         sessionId: sessionIdForCache,
         userId,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -336,11 +392,11 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
   function sendCachedAutocompleteSystemdUnits(sessionIdForCache: string | null) {
     const session = sessionManager.getSession(sessionIdForCache);
-    if (!session) {
+    if (!session || session.autocompleteSystemdUnits.length === 0) {
       return;
     }
 
-    sendSystemdUnitsForAutocomplete(ws, session.autocompleteSystemdUnits);
+    sendSystemdServicesForAutocomplete(ws, session.autocompleteSystemdUnits);
   }
 
   ws.on("pong", () => {

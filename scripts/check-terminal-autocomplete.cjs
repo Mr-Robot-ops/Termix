@@ -45,6 +45,7 @@ const autocompleteKeys = require("../src/ui/features/terminal/command-history/co
 const autocompleteLayout = require("../src/ui/features/terminal/command-history/commandAutocompleteLayout.ts");
 const commandHelp = require("../src/ui/lib/terminal-command-help.ts");
 const renderedCommand = require("../src/ui/lib/terminal-rendered-command.ts");
+const systemdAutocomplete = require("../src/backend/ssh/systemd-autocomplete.ts");
 
 const history = [
   "sudo systemctl status certbot.timer",
@@ -120,6 +121,29 @@ const raspberryPiSystemdOutput = `
 `;
 const raspberryPiSystemdUnits =
   autocomplete.extractSystemdUnitsFromTerminalOutput(raspberryPiSystemdOutput);
+const backendSystemdServiceOutput = `
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+  accounts-daemon.service loaded active running Accounts Service
+  auditd.service not-found inactive dead auditd.service
+  avahi-daemon.service loaded active running Avahi mDNS/DNS-SD Stack
+  bluetooth.service loaded active running Bluetooth service
+  cron.service loaded active running Regular background program processing daemon
+  cups.service loaded active running CUPS Scheduler
+  dns.service loaded active running Technitium DNS Server
+  UNIT FILE STATE PRESET
+  cron.service enabled enabled
+  cups.service enabled enabled
+`;
+const backendSystemdServices =
+  systemdAutocomplete.extractSystemdServiceUnitsForAutocomplete(
+    backendSystemdServiceOutput,
+  );
+const freshSessionBackendSystemdServices = [
+  "bluetooth.service",
+  "cron.service",
+  "cups.service",
+  "dns.service",
+];
 
 function fail(message) {
   throw new Error(message);
@@ -208,6 +232,15 @@ function commandsForSystemdUnits(command, systemdUnits) {
   }).map((item) => item.command);
 }
 
+function commandsForSystemdUnitsWithHistory(command, systemdUnits, commandHistory) {
+  return autocomplete
+    .buildTerminalAutocompleteMatchItems(command, commandHistory, {
+      mode: "popup",
+      systemdUnits,
+    })
+    .map((item) => item.command);
+}
+
 function assertRuntimeIncludes(command, expected) {
   const commands = runtimeCommandsFor(command);
   if (!commands.includes(expected)) {
@@ -239,6 +272,15 @@ function assertSystemdUnitsIncludes(command, systemdUnits, expected) {
   if (!commands.includes(expected)) {
     fail(
       `Expected ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} to include ${expected}`,
+    );
+  }
+}
+
+function assertFreshSystemdUnitsIncludes(command, systemdUnits, expected) {
+  const commands = commandsForSystemdUnitsWithHistory(command, systemdUnits, []);
+  if (!commands.includes(expected)) {
+    fail(
+      `Expected fresh ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} to include ${expected}`,
     );
   }
 }
@@ -1732,6 +1774,33 @@ assertDeepEqual(
   ],
   "real systemd service output extraction",
 );
+assertDeepEqual(
+  backendSystemdServices,
+  [
+    "accounts-daemon.service",
+    "avahi-daemon.service",
+    "bluetooth.service",
+    "cron.service",
+    "cups.service",
+    "dns.service",
+  ],
+  "backend systemd service first-column extraction",
+);
+assertDeepEqual(
+  systemdAutocomplete.extractSystemdServiceUnitsForAutocomplete(
+    "auditd.service not-found inactive dead auditd.service",
+  ),
+  [],
+  "backend systemd service list-units not-found exclusion",
+);
+assertEqual(
+  systemdAutocomplete.SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY,
+  [
+    "systemctl list-units --type=service --all --plain --no-legend --no-pager",
+    "systemctl list-unit-files --type=service --plain --no-legend --no-pager",
+  ].join("; "),
+  "backend systemd service query commands",
+);
 assertEqual(
   autocomplete.isSystemdUnitAutocompleteContext("sudo systemctl status "),
   true,
@@ -1749,6 +1818,23 @@ assertRuntimeIncludes("sudo systemctl stop ", "sudo systemctl stop ssh.service")
 assertRuntimeIncludes("systemctl restart n", "systemctl restart nginx.service");
 assertRuntimeIncludes("systemctl reload ", "systemctl reload custom-runtime.service");
 assertRuntimeIncludes("journalctl -u c", "journalctl -u custom-runtime.service");
+assertSystemdUnitsIncludes(
+  "sudo systemctl status bl",
+  backendSystemdServices,
+  "sudo systemctl status bluetooth.service",
+);
+assertSystemdUnitsIncludes(
+  "sudo systemctl status ",
+  backendSystemdServices,
+  "sudo systemctl status cups.service",
+);
+freshSessionBackendSystemdServices.forEach((service) => {
+  assertFreshSystemdUnitsIncludes(
+    "sudo systemctl status ",
+    freshSessionBackendSystemdServices,
+    `sudo systemctl status ${service}`,
+  );
+});
 assertRuntimeSource(
   "sudo systemctl stop ",
   "sudo systemctl stop ssh.service",
@@ -1768,6 +1854,11 @@ assertSystemdUnitsIncludes(
   "systemctl stop ",
   raspberryPiSystemdUnits,
   "systemctl stop dhcpcd.service",
+);
+assertSystemdUnitsIncludes(
+  "sudo systemctl status ",
+  raspberryPiSystemdUnits,
+  "sudo systemctl status avahi-daemon.service",
 );
 assertSystemdUnitsNotIncludes(
   "sudo systemctl status m",
@@ -3741,4 +3832,87 @@ assertHelp("sudo systemctl status custom-app.service", "systemctl");
 assertHelp("ssh pi@192.168.178.20", "ssh");
 assertHelp("rsync -avz ./build/ deploy@10.10.10.11:/srv/app/", "rsync");
 
-console.log("terminal autocomplete regression checks passed");
+async function assertSystemdServiceCacheReuse() {
+  const cache = new Map();
+  let now = 1000;
+  let fetchCount = 0;
+  let resolvePending;
+
+  const first = systemdAutocomplete.getOrFetchCachedSystemdServiceAutocomplete(
+    cache,
+    "host:1",
+    () => {
+      fetchCount += 1;
+      return new Promise((resolve) => {
+        resolvePending = resolve;
+      });
+    },
+    () => now,
+    1000,
+  );
+  assertEqual(first.status, "fresh-fetch", "first cache request fetches");
+
+  const second = systemdAutocomplete.getOrFetchCachedSystemdServiceAutocomplete(
+    cache,
+    "host:1",
+    () => {
+      fetchCount += 1;
+      return Promise.resolve(["unexpected.service"]);
+    },
+    () => now,
+    1000,
+  );
+  assertEqual(second.status, "pending-reuse", "pending cache request reuses fetch");
+  assertEqual(fetchCount, 1, "pending cache request avoids duplicate command");
+
+  resolvePending(["cron.service"]);
+  assertDeepEqual(await first.promise, ["cron.service"], "first pending result");
+  assertDeepEqual(await second.promise, ["cron.service"], "second pending result");
+
+  const third = systemdAutocomplete.getOrFetchCachedSystemdServiceAutocomplete(
+    cache,
+    "host:1",
+    () => {
+      fetchCount += 1;
+      return Promise.resolve(["unexpected.service"]);
+    },
+    () => now,
+    1000,
+  );
+  assertEqual(third.status, "cache-hit", "fresh cache request reuses TTL data");
+  assertDeepEqual(await third.promise, ["cron.service"], "fresh cache data");
+  assertEqual(fetchCount, 1, "fresh cache hit avoids duplicate command");
+
+  now = 3001;
+  const failedRefresh =
+    systemdAutocomplete.getOrFetchCachedSystemdServiceAutocomplete(
+      cache,
+      "host:1",
+      () => {
+        fetchCount += 1;
+        return Promise.reject(new Error("systemctl failed"));
+      },
+      () => now,
+      1000,
+    );
+  assertEqual(
+    failedRefresh.status,
+    "fresh-fetch",
+    "stale cache starts fresh fetch",
+  );
+  assertDeepEqual(
+    await failedRefresh.promise,
+    ["cron.service"],
+    "failed refresh keeps previous cached services",
+  );
+  assertEqual(fetchCount, 2, "stale refresh attempted one new command");
+}
+
+assertSystemdServiceCacheReuse()
+  .then(() => {
+    console.log("terminal autocomplete regression checks passed");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
