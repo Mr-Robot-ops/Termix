@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Nepodařilo se načíst upozornění",
     "failedToDismissAlert": "Nepodařilo se zrušit výstrahu"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Spustit {{command}}",
+      "example": "Příklad pro {{command}}",
+      "option": "Použít {{option}} s {{command}}",
+      "subcommand": "Použít {{subcommand}} s {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Konfigurace serveru",
     "description": "Konfigurace URL serveru Termix pro připojení k vašim službám backendu",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Téma",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Barva zvýraznění",
+        "settingsFileManager": "Správce souborů",
+        "fileColorCoding": "Barevné kódování souborů",
+        "fileColorCodingDesc": "Barevně rozlišovat soubory podle typu",
         "settingsTerminal": "Terminál",
         "commandAutocomplete": "Automatické dokončování příkazu",
         "commandAutocompleteDesc": "Zobrazit automatické dokončování při psaní",

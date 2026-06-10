@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Uyarılar yüklenemedi.",
     "failedToDismissAlert": "Uyarıyı kapatma başarısız oldu."
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} çalıştır",
+      "example": "{{command}} için örnek",
+      "option": "{{command}} ile {{option}} kullan",
+      "subcommand": "{{command}} ile {{subcommand}} kullan"
+    }
+  },
   "serverConfig": {
     "title": "Sunucu Yapılandırması",
     "description": "Termix sunucu URL'sini arka uç servislerinize bağlanacak şekilde yapılandırın.",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Yazı Tipi Boyutu",
         "accentColorLabel": "Vurgu Rengi",
+        "settingsFileManager": "Dosya Yöneticisi",
+        "fileColorCoding": "Dosya Renk Kodlama",
+        "fileColorCodingDesc": "Dosyaları türe göre renklendir",
         "settingsTerminal": "terminal",
         "commandAutocomplete": "Komut Otomatik Tamamlama",
         "commandAutocompleteDesc": "Yazarken otomatik tamamlama özelliğini göster",

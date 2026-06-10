@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "No s'han pogut carregar les alertes",
     "failedToDismissAlert": "No s'ha pogut ignorar l'alerta"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Executa {{command}}",
+      "example": "Exemple per a {{command}}",
+      "option": "Usa {{option}} amb {{command}}",
+      "subcommand": "Usa {{subcommand}} amb {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Configuració del servidor",
     "description": "Configureu l'URL del servidor Termix per connectar-vos als vostres serveis de backend",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Mida de la lletra",
         "accentColorLabel": "Color d'accent",
+        "settingsFileManager": "Gestor de fitxers",
+        "fileColorCoding": "Codificació de colors dels fitxers",
+        "fileColorCodingDesc": "Codifica els fitxers per tipus amb colors",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Autocompletar ordres",
         "commandAutocompleteDesc": "Mostra l'autocompleció mentre s'escriu",

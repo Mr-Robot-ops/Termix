@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Ilmoitusten lataaminen epäonnistui",
     "failedToDismissAlert": "Hälytys epäonnistui"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Suorita {{command}}",
+      "example": "Esimerkki komennolle {{command}}",
+      "option": "Käytä {{option}} komennon {{command}} kanssa",
+      "subcommand": "Käytä {{subcommand}} komennon {{command}} kanssa"
+    }
+  },
   "serverConfig": {
     "title": "Palvelimen Asetukset",
     "description": "Määritä Termix-palvelimen URL-osoite yhdistääksesi taustaosan palveluihin",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Teema",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Korostettu Väri",
+        "settingsFileManager": "Tiedostonhallinta",
+        "fileColorCoding": "Tiedostojen värikoodaus",
+        "fileColorCodingDesc": "Värikoodaa tiedostot tyypin mukaan",
         "settingsTerminal": "Pääte",
         "commandAutocomplete": "Komennon Automaattitäydennys",
         "commandAutocompleteDesc": "Näytä automaattitäydennys kirjoitettaessa",

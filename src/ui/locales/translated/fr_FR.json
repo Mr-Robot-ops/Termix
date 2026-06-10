@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Impossible de charger les alertes",
     "failedToDismissAlert": "Échec de la suppression de l'alerte"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Exécuter {{command}}",
+      "example": "Exemple pour {{command}}",
+      "option": "Utiliser {{option}} avec {{command}}",
+      "subcommand": "Utiliser {{subcommand}} avec {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Configuration du serveur",
     "description": "Configurer l'URL du serveur Termix pour vous connecter à vos services backend",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Thème",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Couleur d'accentuation",
+        "settingsFileManager": "Gestionnaire de fichiers",
+        "fileColorCoding": "Code couleur des fichiers",
+        "fileColorCodingDesc": "Coder les fichiers par couleur selon leur type",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Auto-complétion de commande",
         "commandAutocompleteDesc": "Afficher la saisie automatique lors de la saisie",

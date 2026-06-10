@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Kon nie waarskuwings laai nie",
     "failedToDismissAlert": "Kon nie waarskuwing toemaak nie"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Voer {{command}} uit",
+      "example": "Voorbeeld vir {{command}}",
+      "option": "Gebruik {{option}} met {{command}}",
+      "subcommand": "Gebruik {{subcommand}} met {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Bedienerkonfigurasie",
     "description": "Konfigureer die Termix-bediener-URL om aan jou backend-dienste te koppel",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Lettergrootte",
         "accentColorLabel": "Aksentkleur",
+        "settingsFileManager": "Lêerbestuurder",
+        "fileColorCoding": "Lêerkleurkodering",
+        "fileColorCodingDesc": "Kleurkodeer lêers volgens tipe",
         "settingsTerminal": "Terminaal",
         "commandAutocomplete": "Opdrag Outomatiese Voltooiing",
         "commandAutocompleteDesc": "Wys outovoltooiing terwyl jy tik",

@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Không thể tải cảnh báo",
     "failedToDismissAlert": "Không thể tắt cảnh báo"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Chạy {{command}}",
+      "example": "Ví dụ cho {{command}}",
+      "option": "Dùng {{option}} với {{command}}",
+      "subcommand": "Dùng {{subcommand}} với {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Cấu hình máy chủ",
     "description": "Cấu hình URL máy chủ Termix để kết nối với các dịch vụ phụ trợ của bạn.",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Chủ đề",
         "fontSizeLabel": "Kích thước phông chữ",
         "accentColorLabel": "Màu nhấn",
+        "settingsFileManager": "Trình quản lý tệp",
+        "fileColorCoding": "Mã màu tệp",
+        "fileColorCodingDesc": "Tô màu tệp theo loại",
         "settingsTerminal": "Phần cuối",
         "commandAutocomplete": "Tự động hoàn thành lệnh",
         "commandAutocompleteDesc": "Hiển thị tính năng tự động hoàn thành khi đang gõ",

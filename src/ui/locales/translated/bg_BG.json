@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Зареждането на известията не бе успешно",
     "failedToDismissAlert": "Отхвърлянето на предупреждението не бе успешно"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Изпълни {{command}}",
+      "example": "Пример за {{command}}",
+      "option": "Използвай {{option}} с {{command}}",
+      "subcommand": "Използвай {{subcommand}} с {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Конфигурация на сървъра",
     "description": "Конфигурирайте URL адреса на Termix сървъра, за да се свържете с вашите backend услуги",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Тема",
         "fontSizeLabel": "Размер на шрифта",
         "accentColorLabel": "Акцентен цвят",
+        "settingsFileManager": "Файлов мениджър",
+        "fileColorCoding": "Цветово кодиране на файлове",
+        "fileColorCodingDesc": "Оцветявай файловете според типа",
         "settingsTerminal": "Терминал",
         "commandAutocomplete": "Автоматично довършване на команди",
         "commandAutocompleteDesc": "Показване на автоматично довършване при въвеждане",

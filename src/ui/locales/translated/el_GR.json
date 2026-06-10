@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Αποτυχία φόρτωσης ειδοποιήσεων",
     "failedToDismissAlert": "Αποτυχία απόρριψης ειδοποίησης"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Εκτέλεση {{command}}",
+      "example": "Παράδειγμα για {{command}}",
+      "option": "Χρήση {{option}} με {{command}}",
+      "subcommand": "Χρήση {{subcommand}} με {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Ρύθμιση Παραμέτρων Διακομιστή",
     "description": "Ρυθμίστε τη διεύθυνση URL του διακομιστή Termix για να συνδεθείτε με τις υπηρεσίες του συστήματος υποστήριξης",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Θέμα",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Χρώμα Έμφασης",
+        "settingsFileManager": "Διαχειριστής αρχείων",
+        "fileColorCoding": "Χρωματική κωδικοποίηση αρχείων",
+        "fileColorCodingDesc": "Χρωματική κωδικοποίηση αρχείων ανά τύπο",
         "settingsTerminal": "Τερματικό",
         "commandAutocomplete": "Αυτόματη Ολοκλήρωση Εντολής",
         "commandAutocompleteDesc": "Εμφάνιση αυτόματης συμπλήρωσης κατά την πληκτρολόγηση",

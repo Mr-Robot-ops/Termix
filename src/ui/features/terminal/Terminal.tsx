@@ -54,7 +54,6 @@ import {
   getTerminalAutocompleteHelp,
   getTerminalAutocompleteInsertCommand,
   getTerminalAutocompleteSettings,
-  getTerminalAutocompleteSuggestionDescription,
   isSystemdUnitAutocompleteContext,
   isUsefulAutocompleteHistoryCommand,
   type TerminalAutocompleteSource,
@@ -63,6 +62,7 @@ import {
 import { useCommandHistory } from "@/features/terminal/command-history/CommandHistoryContext.tsx";
 import { CommandAutocomplete } from "./command-history/CommandAutocomplete.tsx";
 import { CommandAutocompleteHint } from "./command-history/CommandAutocompleteHint.tsx";
+import { getLocalizedTerminalAutocompleteSuggestionDescription } from "./command-history/autocompleteDescriptionI18n.ts";
 import { getCommandAutocompleteListHeight } from "./command-history/commandAutocompleteLayout.ts";
 import {
   getCommandAutocompleteGhostKeyAction,
@@ -219,7 +219,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     },
     ref,
   ) {
-    const { t } = useTranslation();
+    const { i18n, t } = useTranslation();
     const { instance: terminal, ref: xtermRef } = useXTerm();
     const commandHistoryContext = useCommandHistory();
     const { confirmWithToast } = useConfirmation();
@@ -1040,10 +1040,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         );
         const longestDescriptionLength = displayedSuggestions.reduce(
           (length, suggestion) => {
-            const description = getTerminalAutocompleteSuggestionDescription(
-              currentAutocompleteCommand.current,
-              suggestion,
-            );
+            const description =
+              getLocalizedTerminalAutocompleteSuggestionDescription(
+                t,
+                i18n.language,
+                currentAutocompleteCommand.current,
+                suggestion,
+              );
             return Math.max(length, Math.min(description.length, 44));
           },
           0,

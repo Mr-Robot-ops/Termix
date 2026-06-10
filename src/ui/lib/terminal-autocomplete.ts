@@ -11973,10 +11973,154 @@ function getDirectTerminalAutocompleteHelp(
   );
 }
 
+export type TerminalAutocompleteDescriptionKey =
+  | "terminalAutocomplete.descriptions.command"
+  | "terminalAutocomplete.descriptions.example"
+  | "terminalAutocomplete.descriptions.option"
+  | "terminalAutocomplete.descriptions.subcommand";
+
+export interface TerminalAutocompleteDescriptionInfo {
+  defaultValue: string;
+  key: TerminalAutocompleteDescriptionKey;
+  values: Record<string, string>;
+}
+
+export interface TerminalAutocompleteDescriptionOptions {
+  language?: string;
+}
+
+function shouldUseDetailedAutocompleteDescriptions(language?: string) {
+  return language?.toLowerCase().startsWith("de") ?? false;
+}
+
+function getDefaultAutocompleteDescriptionInfo(
+  currentCommand: string,
+  suggestion: string,
+): TerminalAutocompleteDescriptionInfo | null {
+  const help =
+    getDirectTerminalAutocompleteHelp(suggestion) ??
+    getTerminalAutocompleteHelp(suggestion);
+
+  if (!help) {
+    return null;
+  }
+
+  const displayLabel = getTerminalAutocompleteCatalogDisplayLabel(
+    currentCommand,
+    suggestion,
+  ).trim();
+  const tokens = displayLabel.split(/\s+/).filter(Boolean);
+
+  if (displayLabel.includes("=")) {
+    return {
+      key: "terminalAutocomplete.descriptions.example",
+      values: {
+        command: help.command,
+        suggestion: displayLabel,
+      },
+      defaultValue: `Example for ${help.command}`,
+    };
+  }
+
+  const option = tokens.find((token) => token.startsWith("-"));
+
+  if (option) {
+    return {
+      key: "terminalAutocomplete.descriptions.option",
+      values: {
+        command: help.command,
+        option,
+        suggestion: displayLabel,
+      },
+      defaultValue: `Use ${option} with ${help.command}`,
+    };
+  }
+
+  const subcommand =
+    tokens.find(
+      (token) =>
+        token !== help.command &&
+        !token.includes("=") &&
+        !token.includes("/") &&
+        !token.includes("\\"),
+    ) ?? "";
+
+  if (subcommand) {
+    return {
+      key: "terminalAutocomplete.descriptions.subcommand",
+      values: {
+        command: help.command,
+        subcommand,
+        suggestion: displayLabel,
+      },
+      defaultValue: `Use ${subcommand} with ${help.command}`,
+    };
+  }
+
+  if (displayLabel && displayLabel !== help.command) {
+    return {
+      key: "terminalAutocomplete.descriptions.example",
+      values: {
+        command: help.command,
+        suggestion: displayLabel,
+      },
+      defaultValue: `Example for ${help.command}`,
+    };
+  }
+
+  return {
+    key: "terminalAutocomplete.descriptions.command",
+    values: {
+      command: help.command,
+      suggestion: displayLabel || help.command,
+    },
+    defaultValue: `Run ${help.command}`,
+  };
+}
+
+export function getTerminalAutocompleteSuggestionDescriptionInfo(
+  currentCommand: string,
+  suggestion: string,
+): TerminalAutocompleteDescriptionInfo | null {
+  return getDefaultAutocompleteDescriptionInfo(currentCommand, suggestion);
+}
+
+export function getTerminalAutocompleteHelpDescriptionInfo(
+  help: TerminalAutocompleteHelp,
+): TerminalAutocompleteDescriptionInfo {
+  return {
+    key: "terminalAutocomplete.descriptions.command",
+    values: {
+      command: help.command,
+      suggestion: help.command,
+    },
+    defaultValue: `Run ${help.command}`,
+  };
+}
+
+export function getTerminalAutocompleteHelpDescription(
+  help: TerminalAutocompleteHelp,
+  options: TerminalAutocompleteDescriptionOptions = {},
+) {
+  if (shouldUseDetailedAutocompleteDescriptions(options.language)) {
+    return help.description;
+  }
+
+  return getTerminalAutocompleteHelpDescriptionInfo(help).defaultValue;
+}
+
 export function getTerminalAutocompleteSuggestionDescription(
   currentCommand: string,
   suggestion: string,
+  options: TerminalAutocompleteDescriptionOptions = {},
 ) {
+  if (!shouldUseDetailedAutocompleteDescriptions(options.language)) {
+    return (
+      getDefaultAutocompleteDescriptionInfo(currentCommand, suggestion)
+        ?.defaultValue ?? ""
+    );
+  }
+
   const directHelp = getDirectTerminalAutocompleteHelp(suggestion);
   if (
     directHelp?.command === "command" ||

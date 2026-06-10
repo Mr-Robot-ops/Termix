@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "アラートの読み込みに失敗しました",
     "failedToDismissAlert": "アラートを解除できませんでした"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} を実行",
+      "example": "{{command}} の例",
+      "option": "{{command}} で {{option}} を使用",
+      "subcommand": "{{command}} で {{subcommand}} を使用"
+    }
+  },
   "serverConfig": {
     "title": "サーバーの設定",
     "description": "バックエンドサービスに接続するTermixサーバーのURLを設定する",
@@ -2072,6 +2080,9 @@
         "themeLabel": "テーマ",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "アクセントカラー",
+        "settingsFileManager": "ファイルマネージャー",
+        "fileColorCoding": "ファイルの色分け",
+        "fileColorCodingDesc": "種類ごとにファイルを色分け",
         "settingsTerminal": "ターミナル",
         "commandAutocomplete": "コマンドオートコンプリート",
         "commandAutocompleteDesc": "入力中にオートコンプリートを表示",

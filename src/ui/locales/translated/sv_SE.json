@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Det gick inte att ladda varningar",
     "failedToDismissAlert": "Det gick inte att avfärda varningen"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Kör {{command}}",
+      "example": "Exempel för {{command}}",
+      "option": "Använd {{option}} med {{command}}",
+      "subcommand": "Använd {{subcommand}} med {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Serverns konfiguration",
     "description": "Konfigurera Termix server-URL för att ansluta till dina backend-tjänster",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Accentfärg",
+        "settingsFileManager": "Filhanterare",
+        "fileColorCoding": "Färgkodning av filer",
+        "fileColorCodingDesc": "Färgkoda filer efter typ",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Kommandot Autokomplettering",
         "commandAutocompleteDesc": "Visa autocomplete medan du skriver",

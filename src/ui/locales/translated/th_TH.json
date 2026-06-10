@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "ไม่สามารถโหลดการแจ้งเตือนได้",
     "failedToDismissAlert": "ไม่สามารถปิดการแจ้งเตือนได้"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "เรียกใช้ {{command}}",
+      "example": "ตัวอย่างสำหรับ {{command}}",
+      "option": "ใช้ {{option}} กับ {{command}}",
+      "subcommand": "ใช้ {{subcommand}} กับ {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "การกำหนดค่าเซิร์ฟเวอร์",
     "description": "กำหนดค่า URL ของเซิร์ฟเวอร์ Termix เพื่อเชื่อมต่อกับบริการแบ็กเอนด์ของคุณ",
@@ -2072,6 +2080,9 @@
         "themeLabel": "ธีม",
         "fontSizeLabel": "ขนาดตัวอักษร",
         "accentColorLabel": "สีเน้น",
+        "settingsFileManager": "ตัวจัดการไฟล์",
+        "fileColorCoding": "การกำหนดสีไฟล์",
+        "fileColorCodingDesc": "กำหนดสีไฟล์ตามประเภท",
         "settingsTerminal": "เทอร์มินัล",
         "commandAutocomplete": "การเติมคำสั่งอัตโนมัติ",
         "commandAutocompleteDesc": "แสดงคำแนะนำอัตโนมัติขณะพิมพ์",

@@ -439,14 +439,36 @@ function assertHelp(command, expectedBaseCommand) {
   }
 }
 
-function assertSuggestionDescription(command, suggestion, expectedDescription) {
+function assertSuggestionDescription(
+  command,
+  suggestion,
+  expectedDescription,
+  language = "de",
+) {
+  const actual = autocomplete.getTerminalAutocompleteSuggestionDescription(
+    command,
+    suggestion,
+    { language },
+  );
+  if (actual !== expectedDescription) {
+    fail(
+      `Expected description for ${JSON.stringify(suggestion)} from ${JSON.stringify(command)} to be ${expectedDescription}, got ${actual}`,
+    );
+  }
+}
+
+function assertDefaultSuggestionDescription(
+  command,
+  suggestion,
+  expectedDescription,
+) {
   const actual = autocomplete.getTerminalAutocompleteSuggestionDescription(
     command,
     suggestion,
   );
   if (actual !== expectedDescription) {
     fail(
-      `Expected description for ${JSON.stringify(suggestion)} from ${JSON.stringify(command)} to be ${expectedDescription}, got ${actual}`,
+      `Expected default description for ${JSON.stringify(suggestion)} from ${JSON.stringify(command)} to be ${expectedDescription}, got ${actual}`,
     );
   }
 }
@@ -1001,6 +1023,13 @@ assertSuggestionDescription(
   "mkdir -p",
   "fehlende Elternverzeichnisse erstellen",
 );
+assertDefaultSuggestionDescription("gzip ", "gzip -k", "Use -k with gzip");
+assertDefaultSuggestionDescription(
+  "systemctl ",
+  "systemctl status",
+  "Use status with systemctl",
+);
+assertDefaultSuggestionDescription("alias ", "alias ll='ls -lah'", "Example for alias");
 assertSuggestionDescription(
   "grep -",
   "grep -R",

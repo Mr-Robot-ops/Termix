@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "সতর্কতা লোড করতে ব্যর্থ হয়েছে",
     "failedToDismissAlert": "সতর্কতা খারিজ করতে ব্যর্থ হয়েছে"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} চালান",
+      "example": "{{command}}-এর উদাহরণ",
+      "option": "{{command}}-এর সাথে {{option}} ব্যবহার করুন",
+      "subcommand": "{{command}}-এর সাথে {{subcommand}} ব্যবহার করুন"
+    }
+  },
   "serverConfig": {
     "title": "সার্ভার কনফিগারেশন",
     "description": "আপনার ব্যাকএন্ড পরিষেবাগুলির সাথে সংযোগ করতে Termix সার্ভার URL কনফিগার করুন।",
@@ -2072,6 +2080,9 @@
         "themeLabel": "থিম",
         "fontSizeLabel": "ফন্ট সাইজ",
         "accentColorLabel": "অ্যাকসেন্ট রঙ",
+        "settingsFileManager": "ফাইল ম্যানেজার",
+        "fileColorCoding": "ফাইল রঙ কোডিং",
+        "fileColorCodingDesc": "ধরন অনুযায়ী ফাইল রঙ করুন",
         "settingsTerminal": "টার্মিনাল",
         "commandAutocomplete": "কমান্ড অটোকমপ্লিট",
         "commandAutocompleteDesc": "টাইপ করার সময় স্বয়ংক্রিয় সম্পূর্ণতা দেখান",

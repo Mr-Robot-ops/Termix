@@ -1,13 +1,17 @@
 import React, { useEffect, useRef } from "react";
 import { Brackets, Clock, CornerDownLeft } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   getTerminalAutocompleteCatalogDisplayLabel,
   getTerminalAutocompleteCatalogDisplayQuery,
   getTerminalAutocompleteHelp,
-  getTerminalAutocompleteSuggestionDescription,
   type TerminalAutocompleteSource,
 } from "@/lib/terminal-autocomplete.ts";
 import { cn } from "@/lib/utils.ts";
+import {
+  getLocalizedTerminalAutocompleteHelpDescription,
+  getLocalizedTerminalAutocompleteSuggestionDescription,
+} from "./autocompleteDescriptionI18n.ts";
 import { getCommandAutocompleteListHeight } from "./commandAutocompleteLayout.ts";
 
 interface CommandAutocompleteProps {
@@ -143,6 +147,7 @@ export function CommandAutocomplete({
   position,
   visible,
 }: CommandAutocompleteProps) {
+  const { i18n, t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
@@ -181,7 +186,9 @@ export function CommandAutocomplete({
     ? getTerminalAutocompleteHelp(selectedSuggestion)
     : null;
   const selectedDescription = selectedHelp
-    ? getTerminalAutocompleteSuggestionDescription(
+    ? getLocalizedTerminalAutocompleteSuggestionDescription(
+        t,
+        i18n.language,
         currentCommand ?? "",
         selectedSuggestion,
       )
@@ -247,7 +254,12 @@ export function CommandAutocomplete({
         <div className="border-t border-border bg-surface/80 px-3 py-2">
           <div className="flex items-start gap-2">
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-popover-foreground">
-              {selectedDescription || selectedHelp.description}
+              {selectedDescription ||
+                getLocalizedTerminalAutocompleteHelpDescription(
+                  t,
+                  i18n.language,
+                  selectedHelp,
+                )}
             </span>
             <span
               className="min-w-0 max-w-[44%] shrink truncate font-mono text-[10px] text-accent-brand"
@@ -306,6 +318,7 @@ const SuggestionRow = React.forwardRef<HTMLDivElement, SuggestionRowProps>(
     },
     ref,
   ) => {
+    const { i18n, t } = useTranslation();
     const displaySuggestion =
       source === "catalog"
         ? getTerminalAutocompleteCatalogDisplayLabel(
@@ -321,7 +334,9 @@ const SuggestionRow = React.forwardRef<HTMLDivElement, SuggestionRowProps>(
       displaySuggestion,
       displayQuery,
     );
-    const description = getTerminalAutocompleteSuggestionDescription(
+    const description = getLocalizedTerminalAutocompleteSuggestionDescription(
+      t,
+      i18n.language,
       currentCommand ?? "",
       suggestion,
     );

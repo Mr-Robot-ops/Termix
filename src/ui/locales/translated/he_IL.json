@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "טעינת ההתראות נכשלה",
     "failedToDismissAlert": "נכשלה סגירת ההתראה"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "הפעל את {{command}}",
+      "example": "דוגמה עבור {{command}}",
+      "option": "השתמש ב-{{option}} עם {{command}}",
+      "subcommand": "השתמש ב-{{subcommand}} עם {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "תצורת שרת",
     "description": "הגדר את כתובת ה-URL של שרת Termix כדי להתחבר לשירותי ה-backend שלך",
@@ -2072,6 +2080,9 @@
         "themeLabel": "נוֹשֵׂא",
         "fontSizeLabel": "גודל גופן",
         "accentColorLabel": "צבע מבטא",
+        "settingsFileManager": "מנהל קבצים",
+        "fileColorCoding": "קידוד צבע לקבצים",
+        "fileColorCodingDesc": "צבע קבצים לפי סוג",
         "settingsTerminal": "מָסוֹף",
         "commandAutocomplete": "השלמה אוטומטית של הפקודה",
         "commandAutocompleteDesc": "הצג השלמה אוטומטית בעת הקלדה",

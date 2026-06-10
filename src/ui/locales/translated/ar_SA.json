@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "فشل تحميل التنبيهات",
     "failedToDismissAlert": "فشل في تجاهل التنبيه"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "تشغيل {{command}}",
+      "example": "مثال لـ {{command}}",
+      "option": "استخدم {{option}} مع {{command}}",
+      "subcommand": "استخدم {{subcommand}} مع {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "تكوين الخادم",
     "description": "تكوين عنوان URL للخادم Termix للاتصال بخدمات الخلفية",
@@ -2072,6 +2080,9 @@
         "themeLabel": "السمة",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "لون اللكنة",
+        "settingsFileManager": "مدير الملفات",
+        "fileColorCoding": "ترميز ألوان الملفات",
+        "fileColorCodingDesc": "لوّن الملفات حسب النوع",
         "settingsTerminal": "المحطة",
         "commandAutocomplete": "إكمال الأوامر التلقائي",
         "commandAutocompleteDesc": "إظهار الإكمال التلقائي أثناء الكتابة",

@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Laden van waarschuwingen mislukt",
     "failedToDismissAlert": "Waarschuwing sluiten mislukt"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} uitvoeren",
+      "example": "Voorbeeld voor {{command}}",
+      "option": "Gebruik {{option}} met {{command}}",
+      "subcommand": "Gebruik {{subcommand}} met {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Server Configuratie",
     "description": "Configureer de Termix-server-URL om verbinding te maken met uw backend-services",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Thema",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Accent kleur",
+        "settingsFileManager": "Bestandsbeheer",
+        "fileColorCoding": "Bestandskleurcodering",
+        "fileColorCodingDesc": "Kleur bestanden op type",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Commando automatisch aanvullen",
         "commandAutocompleteDesc": "Automatisch aanvullen weergeven tijdens typen",

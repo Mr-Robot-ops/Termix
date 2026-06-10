@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "अलर्ट लोड करने में विफल",
     "failedToDismissAlert": "अलर्ट को खारिज करने में विफल"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} चलाएँ",
+      "example": "{{command}} के लिए उदाहरण",
+      "option": "{{command}} के साथ {{option}} उपयोग करें",
+      "subcommand": "{{command}} के साथ {{subcommand}} उपयोग करें"
+    }
+  },
   "serverConfig": {
     "title": "सर्वर कॉन्फ़िगरेशन",
     "description": "अपने बैकएंड सेवाओं से कनेक्ट करने के लिए टर्मिक्स सर्वर यूआरएल को कॉन्फ़िगर करें।",
@@ -2072,6 +2080,9 @@
         "themeLabel": "विषय",
         "fontSizeLabel": "फ़ॉन्ट आकार",
         "accentColorLabel": "एक्सेंट रंग",
+        "settingsFileManager": "फ़ाइल मैनेजर",
+        "fileColorCoding": "फ़ाइल रंग कोडिंग",
+        "fileColorCodingDesc": "फ़ाइलों को प्रकार के अनुसार रंग दें",
         "settingsTerminal": "टर्मिनल",
         "commandAutocomplete": "कमांड ऑटो-कंप्लीट",
         "commandAutocompleteDesc": "टाइप करते समय ऑटो-कंप्लीट दिखाएं",

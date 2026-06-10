@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Încărcarea alertelor a eșuat",
     "failedToDismissAlert": "Eroare la respingerea alertei"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Rulează {{command}}",
+      "example": "Exemplu pentru {{command}}",
+      "option": "Folosește {{option}} cu {{command}}",
+      "subcommand": "Folosește {{subcommand}} cu {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Configurare server",
     "description": "Configuraţi URL-ul serverului de Termix pentru a vă conecta la serviciile de backend",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Culoare accent",
+        "settingsFileManager": "Manager de fișiere",
+        "fileColorCoding": "Codare color a fișierelor",
+        "fileColorCodingDesc": "Colorează fișierele după tip",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Comanda Autocompletare",
         "commandAutocompleteDesc": "Arată autocompletarea în timpul tastării",

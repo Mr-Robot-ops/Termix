@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "警示載入失敗",
     "failedToDismissAlert": "未能關閉警示"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "執行 {{command}}",
+      "example": "{{command}} 範例",
+      "option": "在 {{command}} 中使用 {{option}}",
+      "subcommand": "在 {{command}} 中使用 {{subcommand}}"
+    }
+  },
   "serverConfig": {
     "title": "伺服器配置",
     "description": "設定 Termix 伺服器 URL 以連接到您的後端服務",
@@ -2072,6 +2080,9 @@
         "themeLabel": "主題",
         "fontSizeLabel": "字體大小",
         "accentColorLabel": "強調色",
+        "settingsFileManager": "檔案管理器",
+        "fileColorCoding": "檔案色彩編碼",
+        "fileColorCodingDesc": "依類型為檔案上色",
         "settingsTerminal": "終端",
         "commandAutocomplete": "命令自動完成",
         "commandAutocompleteDesc": "輸入時顯示自動完成功能",

@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Учитавање обавештења није успело",
     "failedToDismissAlert": "Одбацивање упозорења није успело"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Покрени {{command}}",
+      "example": "Пример за {{command}}",
+      "option": "Користи {{option}} са {{command}}",
+      "subcommand": "Користи {{subcommand}} са {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Конфигурација сервера",
     "description": "Конфигуришите URL адресу Termix сервера да бисте се повезали са вашим бекенд сервисима",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Тема",
         "fontSizeLabel": "Величина фонта",
         "accentColorLabel": "Акцентна боја",
+        "settingsFileManager": "Менаџер датотека",
+        "fileColorCoding": "Означавање датотека бојом",
+        "fileColorCodingDesc": "Обоји датотеке по типу",
         "settingsTerminal": "Терминал",
         "commandAutocomplete": "Аутоматско довршавање команди",
         "commandAutocompleteDesc": "Прикажи аутоматско довршавање током куцања",

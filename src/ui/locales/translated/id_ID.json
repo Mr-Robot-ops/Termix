@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Peringatan gagal dimuat.",
     "failedToDismissAlert": "Gagal menutup peringatan"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Jalankan {{command}}",
+      "example": "Contoh untuk {{command}}",
+      "option": "Gunakan {{option}} dengan {{command}}",
+      "subcommand": "Gunakan {{subcommand}} dengan {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Konfigurasi Server",
     "description": "Konfigurasikan URL server Termix untuk terhubung ke layanan backend Anda.",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Ukuran Huruf",
         "accentColorLabel": "Warna Aksen",
+        "settingsFileManager": "Manajer File",
+        "fileColorCoding": "Kode Warna File",
+        "fileColorCodingDesc": "Beri warna file berdasarkan jenis",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Pelengkapan Otomatis Perintah",
         "commandAutocompleteDesc": "Tampilkan fitur pelengkapan otomatis saat mengetik.",

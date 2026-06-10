@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Fehler beim Laden der Warnungen",
     "failedToDismissAlert": "Fehler beim Ausblenden der Warnung"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} ausführen",
+      "example": "Beispiel für {{command}}",
+      "option": "{{option}} mit {{command}} verwenden",
+      "subcommand": "{{subcommand}} mit {{command}} verwenden"
+    }
+  },
   "serverConfig": {
     "title": "Serverkonfiguration",
     "description": "Konfigurieren Sie die Termix-Server-URL für eine Verbindung zu Ihren Backend-Diensten",

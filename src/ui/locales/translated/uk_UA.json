@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Не вдалося завантажити сповіщення",
     "failedToDismissAlert": "Не вдалося відхилити попередження"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Виконати {{command}}",
+      "example": "Приклад для {{command}}",
+      "option": "Використати {{option}} з {{command}}",
+      "subcommand": "Використати {{subcommand}} з {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Конфігурація сервера",
     "description": "Налаштуйте URL сервера Termix для підключення до ваших сервісів backend",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Тема",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Колір акценту",
+        "settingsFileManager": "Файловий менеджер",
+        "fileColorCoding": "Кольорове кодування файлів",
+        "fileColorCodingDesc": "Позначати файли кольором за типом",
         "settingsTerminal": "Термінал",
         "commandAutocomplete": "Команду Автозаповнення",
         "commandAutocompleteDesc": "Показати автодоповнення під час введення тексту",

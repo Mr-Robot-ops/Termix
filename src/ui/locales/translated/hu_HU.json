@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Nem sikerült betölteni az értesítéseket",
     "failedToDismissAlert": "Nem sikerült elvetni a riasztást"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} futtatása",
+      "example": "Példa ehhez: {{command}}",
+      "option": "{{option}} használata ezzel: {{command}}",
+      "subcommand": "{{subcommand}} használata ezzel: {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Szerver konfiguráció",
     "description": "Konfigurálja a Termix szerver URL-címét a háttérszolgáltatásokhoz való csatlakozáshoz",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Téma",
         "fontSizeLabel": "Betűméret",
         "accentColorLabel": "hangsúlyos szín",
+        "settingsFileManager": "Fájlkezelő",
+        "fileColorCoding": "Fájlok színkódolása",
+        "fileColorCodingDesc": "Fájlok színezése típus szerint",
         "settingsTerminal": "Terminál",
         "commandAutocomplete": "Parancs automatikus kiegészítése",
         "commandAutocompleteDesc": "Automatikus kiegészítés megjelenítése gépelés közben",

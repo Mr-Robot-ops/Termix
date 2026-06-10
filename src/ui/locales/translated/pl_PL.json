@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Nie udało się załadować alertów",
     "failedToDismissAlert": "Nie udało się odrzucić alertu"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Uruchom {{command}}",
+      "example": "Przykład dla {{command}}",
+      "option": "Użyj {{option}} z {{command}}",
+      "subcommand": "Użyj {{subcommand}} z {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Konfiguracja serwera",
     "description": "Skonfiguruj adres URL serwera Termix, aby połączyć się z usługami backend",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Motyw",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Kolor akcentu",
+        "settingsFileManager": "Menedżer plików",
+        "fileColorCoding": "Kodowanie kolorami plików",
+        "fileColorCodingDesc": "Oznaczaj pliki kolorami według typu",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Autouzupełnianie polecenia",
         "commandAutocompleteDesc": "Pokaż autouzupełnianie podczas pisania",

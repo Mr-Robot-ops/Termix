@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Failed to load alerts",
     "failedToDismissAlert": "Failed to dismiss alert"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Run {{command}}",
+      "example": "Example for {{command}}",
+      "option": "Use {{option}} with {{command}}",
+      "subcommand": "Use {{subcommand}} with {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Server Configuration",
     "description": "Configure the Termix server URL to connect to your backend services",

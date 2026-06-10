@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "알림을 불러오는 데 실패했습니다.",
     "failedToDismissAlert": "알림을 닫는 데 실패했습니다."
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "{{command}} 실행",
+      "example": "{{command}} 예시",
+      "option": "{{command}}에서 {{option}} 사용",
+      "subcommand": "{{command}}에서 {{subcommand}} 사용"
+    }
+  },
   "serverConfig": {
     "title": "서버 설정",
     "description": "백엔드 서비스에 연결할 Termix 서버 URL을 설정하세요.",
@@ -2072,6 +2080,9 @@
         "themeLabel": "주제",
         "fontSizeLabel": "글꼴 크기",
         "accentColorLabel": "포인트 색상",
+        "settingsFileManager": "파일 관리자",
+        "fileColorCoding": "파일 색상 코딩",
+        "fileColorCodingDesc": "유형별로 파일 색상 표시",
         "settingsTerminal": "단말기",
         "commandAutocomplete": "명령어 자동 완성",
         "commandAutocompleteDesc": "입력하는 동안 자동 완성 기능을 표시합니다.",

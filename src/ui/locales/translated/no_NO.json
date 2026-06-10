@@ -26,6 +26,14 @@
     "failedToLoadAlerts": "Kunne ikke laste varsler",
     "failedToDismissAlert": "Kunne ikke avvise varsel"
   },
+  "terminalAutocomplete": {
+    "descriptions": {
+      "command": "Kjør {{command}}",
+      "example": "Eksempel for {{command}}",
+      "option": "Bruk {{option}} med {{command}}",
+      "subcommand": "Bruk {{subcommand}} med {{command}}"
+    }
+  },
   "serverConfig": {
     "title": "Serverkonfigurasjon",
     "description": "Konfigurer Termix-serverens URL for å koble til backend-tjenestene dine",
@@ -2072,6 +2080,9 @@
         "themeLabel": "Tema",
         "fontSizeLabel": "Font Size",
         "accentColorLabel": "Inngående farge",
+        "settingsFileManager": "Filbehandler",
+        "fileColorCoding": "Fargekoding av filer",
+        "fileColorCodingDesc": "Fargekod filer etter type",
         "settingsTerminal": "Terminal",
         "commandAutocomplete": "Kommando Autofullfør",
         "commandAutocompleteDesc": "Vis autofullfør mens du skriver",
