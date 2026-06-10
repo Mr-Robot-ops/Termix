@@ -13,6 +13,7 @@ import {
   disableTOTP,
   getVersionInfo,
   getUserRoles,
+  saveUserPreferences,
 } from "@/main-axios";
 import type { UserRole } from "@/main-axios";
 import type React from "react";
@@ -141,6 +142,8 @@ function AccordionSection({
     <div className="border border-border bg-card overflow-hidden">
       <button
         onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`${id}-content`}
         className="flex items-center gap-2 w-full px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
       >
         <span className="text-muted-foreground shrink-0">{icon}</span>
@@ -152,11 +155,34 @@ function AccordionSection({
         />
       </button>
       {open && (
-        <div className="border-t border-border px-3 pb-3">{children}</div>
+        <div id={`${id}-content`} className="border-t border-border px-3 pb-3">
+          {children}
+        </div>
       )}
     </div>
   );
 }
+
+type ApiErrorLike = {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
+};
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  return (error as ApiErrorLike).response?.data?.error || fallback;
+}
+
+type CreatedProfileApiKey = {
+  id: string;
+  name: string;
+  token?: string;
+  tokenPrefix?: string;
+  createdAt?: string;
+  expiresAt?: string | null;
+};
 
 function NewApiKeyDialog({
   open,
@@ -166,7 +192,7 @@ function NewApiKeyDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAdd: (key: any) => void;
+  onAdd: (key: CreatedProfileApiKey) => void;
   userId: string;
 }) {
   const { t } = useTranslation();
@@ -300,10 +326,9 @@ function PasswordChangeSection({
       setNewPw("");
       setConfirmPw("");
       onLogout?.();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(
-        e?.response?.data?.error ||
-          t("newUi.sidebar.userProfile.passwordUpdateFailed"),
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.passwordUpdateFailed")),
       );
     }
   }
@@ -539,24 +564,41 @@ export function UserProfilePanel({
         setVersionStatus(info.status ?? "up_to_date");
       })
       .catch(() => {});
-  }, []);
+  }, [t]);
+
+  function saveAppearancePreference(prefs: {
+    theme?: ThemeId;
+    fontSize?: FontSizeId;
+    accentColor?: string;
+    language?: string;
+  }) {
+    void saveUserPreferences(prefs).catch(() => {});
+  }
+
+  function handleThemeChange(id: ThemeId) {
+    setTheme(id);
+    saveAppearancePreference({ theme: id });
+  }
 
   function handleAccentChange(value: string) {
     setAccentColor(value);
     setCustomColorInput(value);
     localStorage.setItem("termix-accent", value);
     applyAccentColor(value);
+    saveAppearancePreference({ accentColor: value });
   }
 
   function handleFontSizeChange(id: FontSizeId) {
     setFontSize(id);
     applyFontSize(id);
+    saveAppearancePreference({ fontSize: id });
   }
 
   function handleLanguageChange(code: string) {
     setLanguage(code);
     localStorage.setItem("i18nextLng", code);
     i18n.changeLanguage(code);
+    saveAppearancePreference({ language: code });
   }
 
   function toggle(id: UserProfileSection) {
@@ -590,10 +632,9 @@ export function UserProfilePanel({
       setTotpEnabled(true);
       setTotpStep("backup");
       toast.success(t("newUi.sidebar.userProfile.totpEnabledSuccess"));
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(
-        e?.response?.data?.error ||
-          t("newUi.sidebar.userProfile.totpInvalidCode"),
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.totpInvalidCode")),
       );
     } finally {
       setTotpLoading(false);
@@ -612,10 +653,9 @@ export function UserProfilePanel({
       setShowDisableTotp(false);
       setDisableTotpInput("");
       toast.success(t("newUi.sidebar.userProfile.totpDisabledSuccess"));
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(
-        e?.response?.data?.error ||
-          t("newUi.sidebar.userProfile.totpDisableFailed"),
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.totpDisableFailed")),
       );
     } finally {
       setTotpLoading(false);
@@ -642,9 +682,9 @@ export function UserProfilePanel({
       await deleteAccount(deletePassword);
       await logoutUser().catch(() => {});
       window.location.reload();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(
-        e?.response?.data?.error || t("newUi.sidebar.userProfile.deleteFailed"),
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.deleteFailed")),
       );
       setDeleteLoading(false);
     }
@@ -808,7 +848,7 @@ export function UserProfilePanel({
             <div className="relative">
               <select
                 value={theme}
-                onChange={(e) => setTheme(e.target.value as ThemeId)}
+                onChange={(e) => handleThemeChange(e.target.value as ThemeId)}
                 className="w-full px-2.5 py-1.5 text-xs bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-ring appearance-none pr-7"
               >
                 {THEMES.map((th) => (
@@ -824,7 +864,7 @@ export function UserProfilePanel({
                 <button
                   key={th.id}
                   title={themeLabel[th.id]}
-                  onClick={() => setTheme(th.id)}
+                  onClick={() => handleThemeChange(th.id)}
                   className={`h-4 flex-1 border transition-all ${theme === th.id ? "border-accent-brand ring-1 ring-accent-brand" : "border-border/50"}`}
                   style={{ background: th.preview }}
                 />
