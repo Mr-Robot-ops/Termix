@@ -30,7 +30,7 @@ interface HighlightPattern {
   regex: RegExp;
   ansiCode: string;
   priority: number;
-  quickCheck?: string;
+  quickCheck?: string | string[];
 }
 
 interface MatchResult {
@@ -50,6 +50,7 @@ const PATTERNS: HighlightPattern[] = [
       /(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?::\d{1,5})?/g,
     ansiCode: ANSI_CODES.colors.magenta,
     priority: 10,
+    quickCheck: ".",
   },
 
   {
@@ -58,6 +59,7 @@ const PATTERNS: HighlightPattern[] = [
       /\b(ERROR|FATAL|CRITICAL|FAIL(?:ED)?|denied|invalid|DENIED)\b|\[ERROR\]/gi,
     ansiCode: ANSI_CODES.colors.brightRed,
     priority: 9,
+    quickCheck: ["error", "fatal", "critical", "fail", "denied", "invalid"],
   },
 
   {
@@ -65,6 +67,7 @@ const PATTERNS: HighlightPattern[] = [
     regex: /\b(WARN(?:ING)?|ALERT)\b|\[WARN(?:ING)?\]/gi,
     ansiCode: ANSI_CODES.colors.yellow,
     priority: 9,
+    quickCheck: ["warn", "alert"],
   },
 
   {
@@ -73,6 +76,16 @@ const PATTERNS: HighlightPattern[] = [
       /\b(SUCCESS|OK|PASS(?:ED)?|COMPLETE(?:D)?|connected|active|up|Up|UP|FULL)\b/gi,
     ansiCode: ANSI_CODES.colors.brightGreen,
     priority: 8,
+    quickCheck: [
+      "success",
+      "ok",
+      "pass",
+      "complete",
+      "connected",
+      "active",
+      "up",
+      "full",
+    ],
   },
 
   {
@@ -80,6 +93,7 @@ const PATTERNS: HighlightPattern[] = [
     regex: /https?:\/\/[^\s\])}]+/g,
     ansiCode: `${ANSI_CODES.colors.blue}${ANSI_CODES.styles.underline}`,
     priority: 8,
+    quickCheck: "http",
   },
 
   {
@@ -87,6 +101,7 @@ const PATTERNS: HighlightPattern[] = [
     regex: /\/[a-zA-Z][a-zA-Z0-9_\-@.]*(?:\/[a-zA-Z0-9_\-@.]+)+/g,
     ansiCode: ANSI_CODES.colors.cyan,
     priority: 7,
+    quickCheck: "/",
   },
 
   {
@@ -94,6 +109,7 @@ const PATTERNS: HighlightPattern[] = [
     regex: /~\/[a-zA-Z0-9_\-@./]+/g,
     ansiCode: ANSI_CODES.colors.cyan,
     priority: 7,
+    quickCheck: "~/",
   },
 
   {
@@ -101,12 +117,14 @@ const PATTERNS: HighlightPattern[] = [
     regex: /\bINFO\b|\[INFO\]/gi,
     ansiCode: ANSI_CODES.colors.blue,
     priority: 6,
+    quickCheck: "info",
   },
   {
     name: "log-debug",
     regex: /\b(?:DEBUG|TRACE)\b|\[(?:DEBUG|TRACE)\]/gi,
     ansiCode: ANSI_CODES.colors.brightBlack,
     priority: 6,
+    quickCheck: ["debug", "trace"],
   },
 ];
 
@@ -170,8 +188,21 @@ function highlightPlainText(text: string): string {
   }
 
   const matches: MatchResult[] = [];
+  const lowerText = text.toLowerCase();
 
   for (const pattern of PATTERNS) {
+    const quickChecks = Array.isArray(pattern.quickCheck)
+      ? pattern.quickCheck
+      : pattern.quickCheck
+        ? [pattern.quickCheck]
+        : [];
+    if (
+      quickChecks.length > 0 &&
+      !quickChecks.some((quickCheck) => lowerText.includes(quickCheck))
+    ) {
+      continue;
+    }
+
     pattern.regex.lastIndex = 0;
 
     let match;

@@ -9,6 +9,7 @@ import {
   clearCommandHistory,
 } from "@/main-axios";
 import { isUsefulAutocompleteHistoryCommand } from "@/lib/terminal-autocomplete.ts";
+import { notifyCommandHistoryChanged } from "@/features/terminal/command-history/commandHistoryEvents.ts";
 import type { Tab } from "@/types/ui-types";
 
 export function HistoryPanel({
@@ -96,6 +97,11 @@ export function HistoryPanel({
     try {
       await deleteCommandFromHistory(hostId, cmd);
       setCommands((prev) => prev.filter((c) => c !== cmd));
+      notifyCommandHistoryChanged({
+        action: "delete",
+        hostId,
+        command: cmd,
+      });
     } catch {
       /* ignore */
     }
@@ -127,6 +133,7 @@ export function HistoryPanel({
             if (!hostId) return;
             try {
               await clearCommandHistory(hostId);
+              notifyCommandHistoryChanged({ action: "clear", hostId });
             } catch {
               /* ignore */
             }

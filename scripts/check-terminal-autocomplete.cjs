@@ -42,9 +42,13 @@ require.extensions[".ts"] = function loadTypeScript(module, filename) {
 
 const autocomplete = require("../src/ui/lib/terminal-autocomplete.ts");
 const autocompleteKeys = require("../src/ui/features/terminal/command-history/commandAutocompleteKeys.ts");
+const commandHistoryEvents = require("../src/ui/features/terminal/command-history/commandHistoryEvents.ts");
 const autocompleteLayout = require("../src/ui/features/terminal/command-history/commandAutocompleteLayout.ts");
 const commandHelp = require("../src/ui/lib/terminal-command-help.ts");
+const autocompleteI18n = require("../src/ui/lib/terminal-autocomplete-i18n.ts");
 const renderedCommand = require("../src/ui/lib/terminal-rendered-command.ts");
+const serviceAutocomplete = require("../src/backend/ssh/service-autocomplete.ts");
+const terminalCapabilities = require("../src/backend/ssh/terminal-capabilities.ts");
 const systemdAutocomplete = require("../src/backend/ssh/systemd-autocomplete.ts");
 
 const history = [
@@ -144,6 +148,97 @@ const freshSessionBackendSystemdServices = [
   "cups.service",
   "dns.service",
 ];
+const freeBsdRcServiceOutput = `
+  cron
+  devd
+  netif
+  routing
+  sshd
+  zfs
+`;
+const freeBsdRcServices =
+  serviceAutocomplete.extractFreeBsdRcServicesForAutocomplete(
+    freeBsdRcServiceOutput,
+  );
+const debianCapabilityOutput = `
+__TERMIX_UNAME__Linux
+__TERMIX_OS_RELEASE__ID=debian
+__TERMIX_OS_RELEASE__ID_LIKE=debian
+__TERMIX_OS_RELEASE__NAME=Debian GNU/Linux
+__TERMIX_CMD__systemctl
+__TERMIX_CMD__journalctl
+__TERMIX_CMD__systemd-analyze
+__TERMIX_CMD__service
+__TERMIX_CMD__sudo
+__TERMIX_CMD__apt
+__TERMIX_CMD__apt-get
+__TERMIX_CMD__apt-cache
+__TERMIX_CMD__dpkg
+`;
+const raspberryPiCapabilityOutput = `
+__TERMIX_UNAME__Linux
+__TERMIX_OS_RELEASE__ID=raspbian
+__TERMIX_OS_RELEASE__ID_LIKE=debian
+__TERMIX_OS_RELEASE__NAME=Raspberry Pi OS
+__TERMIX_CMD__systemctl
+__TERMIX_CMD__journalctl
+__TERMIX_CMD__service
+__TERMIX_CMD__sudo
+__TERMIX_CMD__apt
+__TERMIX_CMD__dpkg
+`;
+const ubuntuCapabilityOutput = `
+__TERMIX_UNAME__Linux
+__TERMIX_OS_RELEASE__ID=ubuntu
+__TERMIX_OS_RELEASE__ID_LIKE=debian
+__TERMIX_OS_RELEASE__NAME=Ubuntu
+__TERMIX_CMD__systemctl
+__TERMIX_CMD__journalctl
+__TERMIX_CMD__service
+__TERMIX_CMD__sudo
+__TERMIX_CMD__apt
+__TERMIX_CMD__apt-get
+__TERMIX_CMD__dpkg
+`;
+const archCapabilityOutput = `
+__TERMIX_UNAME__Linux
+__TERMIX_OS_RELEASE__ID=arch
+__TERMIX_OS_RELEASE__NAME=Arch Linux
+__TERMIX_CMD__systemctl
+__TERMIX_CMD__journalctl
+__TERMIX_CMD__service
+__TERMIX_CMD__sudo
+__TERMIX_CMD__pacman
+__TERMIX_CMD__makepkg
+__TERMIX_CMD__yay
+`;
+const freeBsdCapabilityOutput = `
+__TERMIX_UNAME__FreeBSD
+__TERMIX_CMD__service
+__TERMIX_CMD__sysrc
+__TERMIX_CMD__doas
+__TERMIX_CMD__pkg
+`;
+const debianCapabilities =
+  terminalCapabilities.parseTerminalAutocompleteHostCapabilities(
+    debianCapabilityOutput,
+  );
+const raspberryPiCapabilities =
+  terminalCapabilities.parseTerminalAutocompleteHostCapabilities(
+    raspberryPiCapabilityOutput,
+  );
+const ubuntuCapabilities =
+  terminalCapabilities.parseTerminalAutocompleteHostCapabilities(
+    ubuntuCapabilityOutput,
+  );
+const archCapabilities =
+  terminalCapabilities.parseTerminalAutocompleteHostCapabilities(
+    archCapabilityOutput,
+  );
+const freeBsdCapabilities =
+  terminalCapabilities.parseTerminalAutocompleteHostCapabilities(
+    freeBsdCapabilityOutput,
+  );
 
 function fail(message) {
   throw new Error(message);
@@ -179,7 +274,12 @@ function assertGhostKeyAction(message, event, state, expected) {
   );
 }
 
-function assertInputModeAfterTerminalData(message, data, currentMode, expected) {
+function assertInputModeAfterTerminalData(
+  message,
+  data,
+  currentMode,
+  expected,
+) {
   assertEqual(
     autocompleteKeys.getCommandAutocompleteInputModeAfterTerminalData(
       data,
@@ -211,7 +311,11 @@ function commandsForMode(command, mode) {
 }
 
 function itemsForOptions(command, options) {
-  return autocomplete.buildTerminalAutocompleteMatchItems(command, history, options);
+  return autocomplete.buildTerminalAutocompleteMatchItems(
+    command,
+    history,
+    options,
+  );
 }
 
 function runtimeItemsFor(command) {
@@ -232,11 +336,27 @@ function commandsForSystemdUnits(command, systemdUnits) {
   }).map((item) => item.command);
 }
 
-function commandsForSystemdUnitsWithHistory(command, systemdUnits, commandHistory) {
+function commandsForSystemdUnitsWithHistory(
+  command,
+  systemdUnits,
+  commandHistory,
+) {
   return autocomplete
     .buildTerminalAutocompleteMatchItems(command, commandHistory, {
       mode: "popup",
       systemdUnits,
+    })
+    .map((item) => item.command);
+}
+
+function commandsForCapabilities(command, capabilities, options = {}) {
+  return autocomplete
+    .buildTerminalAutocompleteMatchItems(command, options.history ?? history, {
+      mode: "popup",
+      hostCapabilities: capabilities,
+      runtimeCommands: options.runtimeCommands ?? capabilities.commands,
+      serviceNames: options.serviceNames ?? [],
+      systemdUnits: options.systemdUnits ?? [],
     })
     .map((item) => item.command);
 }
@@ -251,14 +371,20 @@ function assertRuntimeIncludes(command, expected) {
 function assertRuntimeFirst(command, expected) {
   const first = runtimeCommandsFor(command)[0];
   if (first !== expected) {
-    fail(`Expected first runtime ${JSON.stringify(command)} to be ${expected}, got ${first}`);
+    fail(
+      `Expected first runtime ${JSON.stringify(command)} to be ${expected}, got ${first}`,
+    );
   }
 }
 
 function assertRuntimeSource(command, expectedCommand, source) {
-  const match = runtimeItemsFor(command).find((item) => item.command === expectedCommand);
+  const match = runtimeItemsFor(command).find(
+    (item) => item.command === expectedCommand,
+  );
   if (!match) {
-    fail(`Expected runtime ${JSON.stringify(command)} to include ${expectedCommand}`);
+    fail(
+      `Expected runtime ${JSON.stringify(command)} to include ${expectedCommand}`,
+    );
   }
   if (match.source !== source) {
     fail(
@@ -277,7 +403,11 @@ function assertSystemdUnitsIncludes(command, systemdUnits, expected) {
 }
 
 function assertFreshSystemdUnitsIncludes(command, systemdUnits, expected) {
-  const commands = commandsForSystemdUnitsWithHistory(command, systemdUnits, []);
+  const commands = commandsForSystemdUnitsWithHistory(
+    command,
+    systemdUnits,
+    [],
+  );
   if (!commands.includes(expected)) {
     fail(
       `Expected fresh ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} to include ${expected}`,
@@ -290,6 +420,29 @@ function assertSystemdUnitsNotIncludes(command, systemdUnits, unwanted) {
   if (commands.includes(unwanted)) {
     fail(
       `Expected ${JSON.stringify(command)} with systemd units ${JSON.stringify(systemdUnits)} not to include ${unwanted}`,
+    );
+  }
+}
+
+function assertCapabilitiesInclude(command, capabilities, expected, options) {
+  const commands = commandsForCapabilities(command, capabilities, options);
+  if (!commands.includes(expected)) {
+    fail(
+      `Expected ${JSON.stringify(command)} with capabilities ${JSON.stringify(capabilities)} to include ${expected}`,
+    );
+  }
+}
+
+function assertCapabilitiesNotInclude(
+  command,
+  capabilities,
+  unwanted,
+  options,
+) {
+  const commands = commandsForCapabilities(command, capabilities, options);
+  if (commands.includes(unwanted)) {
+    fail(
+      `Expected ${JSON.stringify(command)} with capabilities ${JSON.stringify(capabilities)} not to include ${unwanted}`,
     );
   }
 }
@@ -311,14 +464,18 @@ function assertNotIncludes(command, unwanted) {
 function assertFirst(command, expected) {
   const first = commandsFor(command)[0];
   if (first !== expected) {
-    fail(`Expected first ${JSON.stringify(command)} to be ${expected}, got ${first}`);
+    fail(
+      `Expected first ${JSON.stringify(command)} to be ${expected}, got ${first}`,
+    );
   }
 }
 
 function assertFirstSources(command, expectedSource, count) {
   const items = itemsFor(command).slice(0, count);
   if (items.length < count) {
-    fail(`Expected ${JSON.stringify(command)} to return at least ${count} suggestions`);
+    fail(
+      `Expected ${JSON.stringify(command)} to return at least ${count} suggestions`,
+    );
   }
 
   const wrongItem = items.find((item) => item.source !== expectedSource);
@@ -371,7 +528,9 @@ function assertBefore(command, earlier, later) {
 function assertMinCount(command, minCount) {
   const count = commandsFor(command).length;
   if (count < minCount) {
-    fail(`Expected ${JSON.stringify(command)} to return at least ${minCount}, got ${count}`);
+    fail(
+      `Expected ${JSON.stringify(command)} to return at least ${minCount}, got ${count}`,
+    );
   }
 }
 
@@ -411,7 +570,9 @@ function assertNoModeSuggestions(command, mode) {
 }
 
 function assertSource(command, expectedCommand, source) {
-  const match = itemsFor(command).find((item) => item.command === expectedCommand);
+  const match = itemsFor(command).find(
+    (item) => item.command === expectedCommand,
+  );
   if (!match) {
     fail(`Expected ${JSON.stringify(command)} to include ${expectedCommand}`);
   }
@@ -425,7 +586,9 @@ function assertSource(command, expectedCommand, source) {
 function assertUsefulHistory(command, useful) {
   const actual = autocomplete.isUsefulAutocompleteHistoryCommand(command);
   if (actual !== useful) {
-    fail(`Expected history usefulness of ${command} to be ${useful}, got ${actual}`);
+    fail(
+      `Expected history usefulness of ${command} to be ${useful}, got ${actual}`,
+    );
   }
 }
 
@@ -435,7 +598,9 @@ function assertHelp(command, expectedBaseCommand) {
     fail(`Expected ${command} to have autocomplete help`);
   }
   if (help.command !== expectedBaseCommand) {
-    fail(`Expected ${command} help to be ${expectedBaseCommand}, got ${help.command}`);
+    fail(
+      `Expected ${command} help to be ${expectedBaseCommand}, got ${help.command}`,
+    );
   }
 }
 
@@ -486,16 +651,139 @@ function assertTopSuggestionsHaveSpecificDescriptions(commands, limit = 10) {
         continue;
       }
 
-      const description = autocomplete.getTerminalAutocompleteSuggestionDescription(
-        command,
-        item.command,
-      );
+      const description =
+        autocomplete.getTerminalAutocompleteSuggestionDescription(
+          command,
+          item.command,
+        );
       if (description === help.description) {
         fail(
           `Expected ${item.command} from ${JSON.stringify(command)} to have a specific suggestion description, got generic ${description}`,
         );
       }
     }
+  }
+}
+
+function collectAutocompleteResourceKeys(value, prefix = "") {
+  if (typeof value === "string") {
+    return [prefix];
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, nestedValue]) =>
+    collectAutocompleteResourceKeys(
+      nestedValue,
+      prefix ? `${prefix}.${key}` : key,
+    ),
+  );
+}
+
+function collectAutocompleteResourceStrings(value) {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  return Object.values(value).flatMap(collectAutocompleteResourceStrings);
+}
+
+function assertAutocompleteResourceCoverage() {
+  const { de, en } = autocompleteI18n.TERMINAL_AUTOCOMPLETE_I18N_RESOURCES;
+  const enKeys = collectAutocompleteResourceKeys(en);
+  const deKeys = collectAutocompleteResourceKeys(de);
+  const enKeySet = new Set(enKeys);
+  const deKeySet = new Set(deKeys);
+
+  for (const key of enKeys) {
+    if (!deKeySet.has(key)) {
+      fail(`German autocomplete resource is missing key ${key}`);
+    }
+  }
+
+  for (const key of deKeys) {
+    if (!enKeySet.has(key)) {
+      fail(`English autocomplete resource is missing key ${key}`);
+    }
+  }
+
+  const commandsWithoutSuggestionDetails =
+    commandHelp.TERMINAL_AUTOCOMPLETE_HELP.filter((entry) => {
+      const details = en.suggestionDetails?.[entry.command];
+      return !details || Object.keys(details).length === 0;
+    }).map((entry) => entry.command);
+  if (commandsWithoutSuggestionDetails.length > 0) {
+    fail(
+      `Autocomplete commands without suggestion details: ${commandsWithoutSuggestionDetails.join(", ")}`,
+    );
+  }
+
+  const forbiddenGermanText =
+    /[äöüÄÖÜß]|\b(?:anzeigen|ausgeben|verwenden|auswaehlen|ausführen|ausfuehren|prüfen|pruefen|setzen|erstellen|entfernen|löschen|loeschen|ändern|aendern|suchen|filtern|auflisten|kopieren|verschieben|behalten|schreiben|lesen|ignorieren|erzwingen|begrenzen|hervorheben|verfolgen|aktualisieren|verwalten|steuern|bearbeiten|wechseln|zusammenführen|zusammenfuehren|Datei|Dateien|Befehl|Befehls|Benutzer|Gruppe|Verzeichnis|Pfad|Ausgabe|Umgebung|Verbindung|Sitzung|Versionsverwaltung|inklusive|Arbeitsbaum)\b/;
+  const leakedEnglish = collectAutocompleteResourceStrings(en).find((value) =>
+    forbiddenGermanText.test(value),
+  );
+
+  if (leakedEnglish) {
+    fail(
+      `English autocomplete resource contains German text: ${leakedEnglish}`,
+    );
+  }
+
+  const localeFiles = [
+    "src/ui/locales/en.json",
+    ...fs
+      .readdirSync(path.join(root, "src/ui/locales/translated"))
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => `src/ui/locales/translated/${file}`),
+  ];
+  const supportedLanguageCodes = localeFiles.map((file) => {
+    if (file.endsWith("/en.json") || file.endsWith("\\en.json")) {
+      return "en";
+    }
+
+    const basename = path.basename(file, ".json");
+    const [language, region] = basename.split("_");
+    return region ? `${language}-${region}` : language;
+  });
+
+  for (const language of supportedLanguageCodes) {
+    const resource =
+      autocompleteI18n.getTerminalAutocompleteI18nResource(language);
+    const keys = new Set(collectAutocompleteResourceKeys(resource));
+    for (const key of enKeys) {
+      if (!keys.has(key)) {
+        fail(`Autocomplete resource for ${language} is missing key ${key}`);
+      }
+    }
+  }
+
+  const germanGitStatus =
+    autocomplete.getTerminalAutocompleteSuggestionDescription(
+      "git s",
+      "git status",
+      { language: "de" },
+    );
+  if (germanGitStatus !== "Arbeitsbaumstatus anzeigen") {
+    fail(`Expected German autocomplete detail text, got ${germanGitStatus}`);
+  }
+
+  const frenchGitStatus =
+    autocomplete.getTerminalAutocompleteSuggestionDescription(
+      "git s",
+      "git status",
+      { language: "fr" },
+    );
+  if (frenchGitStatus !== "Show working tree status") {
+    fail(
+      `Expected non-DE autocomplete fallback to English, got ${frenchGitStatus}`,
+    );
   }
 }
 
@@ -601,6 +889,7 @@ function assertHelpCatalogQuality() {
     "column",
     "jq",
     "watch",
+    "memusage",
     "apt-get",
     "apt-cache",
     "dpkg",
@@ -718,13 +1007,16 @@ function assertHelpCatalogQuality() {
   }
 
   for (const requiredCommand of requiredCommands) {
-    if (!commandHelp.TERMINAL_AUTOCOMPLETE_HELP_BY_COMMAND.has(requiredCommand)) {
+    if (
+      !commandHelp.TERMINAL_AUTOCOMPLETE_HELP_BY_COMMAND.has(requiredCommand)
+    ) {
       fail(`Required help command is missing: ${requiredCommand}`);
     }
   }
 
   for (const suggestion of suggestions) {
-    const normalizedSuggestion = normalizeSuggestionForDuplicateCheck(suggestion);
+    const normalizedSuggestion =
+      normalizeSuggestionForDuplicateCheck(suggestion);
     if (!normalizedSuggestion) {
       fail("Generated autocomplete suggestion is empty");
     }
@@ -739,6 +1031,7 @@ function assertHelpCatalogQuality() {
 }
 
 assertHelpCatalogQuality();
+assertAutocompleteResourceCoverage();
 assertEqual(
   autocompleteLayout.getCommandAutocompleteVisibleRowCount(false),
   8,
@@ -1023,28 +1316,28 @@ assertSuggestionDescription(
   "mkdir -p",
   "fehlende Elternverzeichnisse erstellen",
 );
-assertDefaultSuggestionDescription("gzip ", "gzip -k", "Use -k with gzip");
+assertDefaultSuggestionDescription(
+  "gzip ",
+  "gzip -k",
+  "Keep the original file",
+);
 assertDefaultSuggestionDescription(
   "systemctl ",
   "systemctl status",
-  "Use status with systemctl",
+  "Show unit status",
 );
-assertDefaultSuggestionDescription("alias ", "alias ll='ls -lah'", "Example for alias");
-assertSuggestionDescription(
-  "grep -",
-  "grep -R",
-  "rekursiv suchen",
+assertDefaultSuggestionDescription(
+  "alias ",
+  "alias ll='ls -lah'",
+  "Alias for a long listing including hidden files",
 );
+assertSuggestionDescription("grep -", "grep -R", "rekursiv suchen");
 assertSuggestionDescription(
   "rg -",
   "rg --files",
   "Dateipfade statt Treffer ausgeben",
 );
-assertSuggestionDescription(
-  "curl -",
-  "curl -H",
-  "HTTP-Header setzen",
-);
+assertSuggestionDescription("curl -", "curl -H", "HTTP-Header setzen");
 assertSuggestionDescription(
   "curl --",
   "curl --retry",
@@ -1062,24 +1355,40 @@ assertSuggestionDescription(
 );
 assertSuggestionDescription("yq -", "yq -i", "Datei direkt bearbeiten");
 assertSuggestionDescription("gzip ", "gzip -k", "Originaldatei behalten");
-assertSuggestionDescription("gunzip ", "gunzip -l", "komprimierte Dateigrößen anzeigen");
+assertSuggestionDescription(
+  "gunzip ",
+  "gunzip -l",
+  "komprimierte Dateigrößen anzeigen",
+);
 assertSuggestionDescription("bzip2 ", "bzip2 -t", "komprimierte Datei prüfen");
-assertSuggestionDescription("bunzip2 ", "bunzip2 -c", "entpackten Inhalt auf stdout schreiben");
-assertSuggestionDescription("xz ", "xz -T", "Anzahl Kompressionsthreads setzen");
+assertSuggestionDescription(
+  "bunzip2 ",
+  "bunzip2 -c",
+  "entpackten Inhalt auf stdout schreiben",
+);
+assertSuggestionDescription(
+  "xz ",
+  "xz -T",
+  "Anzahl Kompressionsthreads setzen",
+);
 assertSuggestionDescription("unxz ", "unxz -k", "Originaldatei behalten");
-assertSuggestionDescription("zstd ", "zstd --long", "Long-Range-Modus für große Dateien nutzen");
-assertSuggestionDescription("zcat ", "zcat -l", "komprimierte Dateigrößen anzeigen");
+assertSuggestionDescription(
+  "zstd ",
+  "zstd --long",
+  "Long-Range-Modus für große Dateien nutzen",
+);
+assertSuggestionDescription(
+  "zcat ",
+  "zcat -l",
+  "komprimierte Dateigrößen anzeigen",
+);
 assertSuggestionDescription("zgrep ", "zgrep -n", "Zeilennummern anzeigen");
 assertSuggestionDescription(
   "ssh-keygen -",
   "ssh-keygen -t",
   "Schlüsseltyp wählen",
 );
-assertSuggestionDescription(
-  "tcpdump -",
-  "tcpdump -i",
-  "Interface auswählen",
-);
+assertSuggestionDescription("tcpdump -", "tcpdump -i", "Interface auswählen");
 assertSuggestionDescription(
   "openssl s_client -",
   "openssl s_client -connect",
@@ -1141,11 +1450,7 @@ assertSuggestionDescription(
   "ssh -vvv",
   "maximale SSH-Debug-Ausgabe anzeigen",
 );
-assertSuggestionDescription(
-  "scp ",
-  "scp -P",
-  "SSH-Port setzen",
-);
+assertSuggestionDescription("scp ", "scp -P", "SSH-Port setzen");
 assertSuggestionDescription(
   "dpkg -",
   "dpkg --listfiles",
@@ -1163,6 +1468,24 @@ assertSuggestionDescription(
   "clear ",
   "clear -x",
   "Scrollback-Puffer nicht löschen",
+);
+assertMinCount("echo ", 18);
+assertIncludes("echo ", "echo -e 'line1\\nline2'");
+assertIncludes("echo ", "echo \\t");
+assertSuggestionDescription(
+  "echo ",
+  "echo -e 'name\\tvalue'",
+  "Tabulator-Escape zwischen Name und Wert auswerten",
+);
+assertSuggestionDescription(
+  "echo ",
+  "echo \\t",
+  "horizontalen Tabulator ausgeben, wenn Escapes aktiviert sind",
+);
+assertDefaultSuggestionDescription(
+  "echo ",
+  "echo -e 'line1\\nline2'",
+  "Interpret newline escape and print two lines",
 );
 assertMinCount("printf ", 12);
 assertIncludes("printf ", "printf '%04d\\n' 42");
@@ -1196,11 +1519,7 @@ assertSuggestionDescription(
 );
 assertMinCount("whoami", 2);
 assertIncludes("whoami", "whoami --version");
-assertSuggestionDescription(
-  "whoami",
-  "whoami --version",
-  "Version anzeigen",
-);
+assertSuggestionDescription("whoami", "whoami --version", "Version anzeigen");
 assertMinCount("passwd ", 16);
 assertIncludes("passwd ", "passwd --status");
 assertIncludes("passwd ", "passwd --lock");
@@ -1237,7 +1556,11 @@ assertSuggestionDescription(
   "useradd -r -s /usr/sbin/nologin app",
   "Systembenutzer ohne Login-Shell erstellen",
 );
-assertSuggestionDescription("useradd ", "useradd --user-group", "gleichnamige Benutzergruppe anlegen");
+assertSuggestionDescription(
+  "useradd ",
+  "useradd --user-group",
+  "gleichnamige Benutzergruppe anlegen",
+);
 assertMinCount("usermod ", 18);
 assertStartsWithSequence("usermod ", [
   "usermod -aG sudo username",
@@ -1249,7 +1572,11 @@ assertSuggestionDescription(
   "usermod -d /home/deploy -m deploy",
   "Home-Verzeichnis ändern und Inhalte verschieben",
 );
-assertSuggestionDescription("usermod ", "usermod --lock", "Benutzerpasswort sperren");
+assertSuggestionDescription(
+  "usermod ",
+  "usermod --lock",
+  "Benutzerpasswort sperren",
+);
 assertMinCount("chage ", 18);
 assertStartsWithSequence("chage ", [
   "chage -l username",
@@ -1261,14 +1588,22 @@ assertSuggestionDescription(
   "chage -d 0 username",
   "Passwortwechsel beim nächsten Login erzwingen",
 );
-assertSuggestionDescription("chage ", "chage --inactive", "Inaktivitätstage nach Passwortablauf setzen");
+assertSuggestionDescription(
+  "chage ",
+  "chage --inactive",
+  "Inaktivitätstage nach Passwortablauf setzen",
+);
 assertMinCount("groupadd ", 12);
 assertStartsWithSequence("groupadd ", [
   "groupadd developers",
   "groupadd -g 1500 app",
   "groupadd -r servicegroup",
 ]);
-assertSuggestionDescription("groupadd ", "groupadd -f developers", "keinen Fehler melden, wenn Gruppe existiert");
+assertSuggestionDescription(
+  "groupadd ",
+  "groupadd -f developers",
+  "keinen Fehler melden, wenn Gruppe existiert",
+);
 assertMinCount("groupmod ", 11);
 assertStartsWithSequence("groupmod ", [
   "groupmod -n newname oldname",
@@ -1286,7 +1621,11 @@ assertStartsWithSequence("visudo ", [
   "visudo -c -f /etc/sudoers.d/app",
   "visudo -f /etc/sudoers.d/app",
 ]);
-assertSuggestionDescription("visudo ", "visudo -c -f /etc/sudoers.d/app", "sudoers-Drop-in app prüfen");
+assertSuggestionDescription(
+  "visudo ",
+  "visudo -c -f /etc/sudoers.d/app",
+  "sudoers-Drop-in app prüfen",
+);
 assertMinCount("ssh-agent ", 9);
 assertIncludes("ssh-agent ", "ssh-agent -D");
 assertIncludes("ssh-agent ", "ssh-agent -d");
@@ -1304,8 +1643,16 @@ assertSuggestionDescription(
   "ssh-add -L",
   "öffentliche Schlüssel des Agents ausgeben",
 );
-assertSuggestionDescription("wget ", "wget -c", "abgebrochenen Download fortsetzen");
-assertSuggestionDescription("watch ", "watch --interval", "Intervall in Sekunden setzen");
+assertSuggestionDescription(
+  "wget ",
+  "wget -c",
+  "abgebrochenen Download fortsetzen",
+);
+assertSuggestionDescription(
+  "watch ",
+  "watch --interval",
+  "Intervall in Sekunden setzen",
+);
 assertMinCount("watch ", 20);
 assertStartsWithSequence("watch ", [
   "watch -n 1 date",
@@ -1340,11 +1687,31 @@ assertSuggestionDescription(
   "Dateiinhalt ausgeben",
 );
 assertSuggestionDescription("tail ", "tail -f", "Dateiende live verfolgen");
-assertSuggestionDescription("wc ", "wc file.txt", "Zeilen, Wörter oder Bytes für Datei zählen");
-assertSuggestionDescription("sort ", "sort -nr numbers.txt", "numerisch absteigend sortieren");
-assertSuggestionDescription("df ", "df -hT", "Größen menschenlesbar mit Dateisystemtyp anzeigen");
-assertSuggestionDescription("du ", "du -sh /var/log", "Größe von /var/log anzeigen");
-assertSuggestionDescription("ncdu ", "ncdu -x", "auf einem Dateisystem bleiben");
+assertSuggestionDescription(
+  "wc ",
+  "wc file.txt",
+  "Zeilen, Wörter oder Bytes für Datei zählen",
+);
+assertSuggestionDescription(
+  "sort ",
+  "sort -nr numbers.txt",
+  "numerisch absteigend sortieren",
+);
+assertSuggestionDescription(
+  "df ",
+  "df -hT",
+  "Größen menschenlesbar mit Dateisystemtyp anzeigen",
+);
+assertSuggestionDescription(
+  "du ",
+  "du -sh /var/log",
+  "Größe von /var/log anzeigen",
+);
+assertSuggestionDescription(
+  "ncdu ",
+  "ncdu -x",
+  "auf einem Dateisystem bleiben",
+);
 assertSuggestionDescription(
   "tmux ",
   "tmux attach -t <name>",
@@ -1375,22 +1742,18 @@ assertSuggestionDescription(
   "jobs -l",
   "Jobs mit Prozess-IDs anzeigen",
 );
-assertSuggestionDescription(
-  "fg ",
-  "fg %1",
-  "Job 1 in den Vordergrund holen",
-);
-assertSuggestionDescription(
-  "bg ",
-  "bg %1",
-  "Job 1 im Hintergrund fortsetzen",
-);
+assertSuggestionDescription("fg ", "fg %1", "Job 1 in den Vordergrund holen");
+assertSuggestionDescription("bg ", "bg %1", "Job 1 im Hintergrund fortsetzen");
 assertSuggestionDescription(
   "disown ",
   "disown -h",
   "Job vor SIGHUP beim Logout schützen",
 );
-assertSuggestionDescription("pgrep ", "pgrep -af python", "PID und komplette Kommandozeile durchsuchen und anzeigen");
+assertSuggestionDescription(
+  "pgrep ",
+  "pgrep -af python",
+  "PID und komplette Kommandozeile durchsuchen und anzeigen",
+);
 assertMinCount("pgrep ", 24);
 assertStartsWithSequence("pgrep ", [
   "pgrep -af python",
@@ -1398,13 +1761,21 @@ assertStartsWithSequence("pgrep ", [
   "pgrep -x sshd",
   "pgrep -n node",
 ]);
-assertSuggestionDescription("pgrep ", "pgrep -d ',' nginx", "PIDs durch Komma getrennt ausgeben");
+assertSuggestionDescription(
+  "pgrep ",
+  "pgrep -d ',' nginx",
+  "PIDs durch Komma getrennt ausgeben",
+);
 assertSuggestionDescription(
   "lsof ",
   "lsof -nP -iTCP -sTCP:LISTEN",
   "lauschende TCP-Ports numerisch anzeigen",
 );
-assertSuggestionDescription("patch ", "patch -p1 < changes.patch", "einen führenden Pfadbestandteil entfernen");
+assertSuggestionDescription(
+  "patch ",
+  "patch -p1 < changes.patch",
+  "einen führenden Pfadbestandteil entfernen",
+);
 assertMinCount("alias ", 12);
 assertStartsWithSequence("alias ", [
   "alias ll='ls -lah'",
@@ -1426,7 +1797,11 @@ assertStartsWithSequence("unalias ", [
   "unalias gp",
   "unalias dc",
 ]);
-assertSuggestionDescription("unalias ", "unalias serve", "Alias serve entfernen");
+assertSuggestionDescription(
+  "unalias ",
+  "unalias serve",
+  "Alias serve entfernen",
+);
 assertMinCount("export ", 12);
 assertStartsWithSequence("export ", [
   "export PATH=$PATH:/opt/bin",
@@ -1446,7 +1821,11 @@ assertStartsWithSequence("unset ", [
   "unset SSH_AUTH_SOCK",
   "unset DEBUG",
 ]);
-assertSuggestionDescription("unset ", "unset -f function_name", "Shell-Funktion entfernen");
+assertSuggestionDescription(
+  "unset ",
+  "unset -f function_name",
+  "Shell-Funktion entfernen",
+);
 assertMinCount("history ", 12);
 assertStartsWithSequence("history ", [
   "history 20",
@@ -1467,7 +1846,11 @@ assertStartsWithSequence("which ", [
   "which docker",
   "which systemctl",
 ]);
-assertSuggestionDescription("which ", "which -a python", "alle python-Fundstellen anzeigen");
+assertSuggestionDescription(
+  "which ",
+  "which -a python",
+  "alle python-Fundstellen anzeigen",
+);
 assertMinCount("type ", 12);
 assertStartsWithSequence("type ", [
   "type cd",
@@ -1487,7 +1870,11 @@ assertStartsWithSequence("command ", [
   "command -V cd",
   "command -V history",
 ]);
-assertSuggestionDescription("command ", "command -v docker", "Pfad zu docker anzeigen");
+assertSuggestionDescription(
+  "command ",
+  "command -v docker",
+  "Pfad zu docker anzeigen",
+);
 assertMinCount("dirname ", 11);
 assertSuggestionDescription(
   "dirname ",
@@ -1616,6 +2003,7 @@ assertTopSuggestionsHaveSpecificDescriptions([
   "touch ",
   "tail ",
   "timeout ",
+  "memusage ",
   "sha256sum ",
   "sha1sum ",
   "md5sum ",
@@ -1775,19 +2163,34 @@ assertNotIncludes(
   "sudo systemctl status ssh | tee status.txt",
 );
 assertIncludes("sudo systemctl status ", "sudo systemctl status certbot.timer");
-assertSource("sudo systemctl status ", "sudo systemctl status certbot.timer", "history");
-assertIncludes("sudo systemctl status ", "sudo systemctl status custom-app.service");
-assertSource("sudo systemctl status ", "sudo systemctl status custom-app.service", "history");
+assertSource(
+  "sudo systemctl status ",
+  "sudo systemctl status certbot.timer",
+  "history",
+);
+assertIncludes(
+  "sudo systemctl status ",
+  "sudo systemctl status custom-app.service",
+);
+assertSource(
+  "sudo systemctl status ",
+  "sudo systemctl status custom-app.service",
+  "history",
+);
 assertFirst("sudo systemctl status ", "sudo systemctl status certbot.timer");
 assertNotIncludes("sudo systemctl status ", "sudo systemctl status cert.bot");
-assertDeepEqual(runtimeSystemdUnits, [
-  "certbot.service",
-  "certbot.timer",
-  "ssh.service",
-  "nginx.service",
-  "docker.socket",
-  "custom-runtime.service",
-], "runtime systemd unit extraction");
+assertDeepEqual(
+  runtimeSystemdUnits,
+  [
+    "certbot.service",
+    "certbot.timer",
+    "ssh.service",
+    "nginx.service",
+    "docker.socket",
+    "custom-runtime.service",
+  ],
+  "runtime systemd unit extraction",
+);
 assertDeepEqual(
   autocomplete.extractSystemdUnitsFromTerminalOutput(missingSystemdUnitOutput),
   [],
@@ -1795,12 +2198,7 @@ assertDeepEqual(
 );
 assertDeepEqual(
   raspberryPiSystemdUnits,
-  [
-    "avahi-daemon.service",
-    "dbus.service",
-    "dhcpcd.service",
-    "ssh.service",
-  ],
+  ["avahi-daemon.service", "dbus.service", "dhcpcd.service", "ssh.service"],
   "real systemd service output extraction",
 );
 assertDeepEqual(
@@ -1822,6 +2220,18 @@ assertDeepEqual(
   [],
   "backend systemd service list-units not-found exclusion",
 );
+assertDeepEqual(
+  freeBsdRcServices,
+  ["cron", "devd", "netif", "routing", "sshd", "zfs"],
+  "FreeBSD rc service first-column extraction",
+);
+assertDeepEqual(
+  serviceAutocomplete.extractFreeBsdRcServicesForAutocomplete(
+    "Usage: service [-j jail] -l\ncron\n/usr/local/etc/rc.d/nginx\nsshd",
+  ),
+  ["cron", "sshd"],
+  "FreeBSD rc service parser ignores usage and paths",
+);
 assertEqual(
   systemdAutocomplete.SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY,
   [
@@ -1829,6 +2239,90 @@ assertEqual(
     "systemctl list-unit-files --type=service --plain --no-legend --no-pager",
   ].join("; "),
   "backend systemd service query commands",
+);
+assertEqual(
+  terminalCapabilities.TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY.includes(
+    "command -v",
+  ),
+  true,
+  "backend capability query detects commands",
+);
+assertEqual(
+  debianCapabilities.osFamily,
+  "linux",
+  "Debian capabilities detect Linux",
+);
+assertEqual(
+  debianCapabilities.serviceProviders.includes("systemd"),
+  true,
+  "Debian capabilities enable systemd provider",
+);
+assertEqual(
+  debianCapabilities.commandCatalogs.includes("debian-like"),
+  true,
+  "Debian capabilities enable Debian catalog",
+);
+assertEqual(
+  raspberryPiCapabilities.osFamily,
+  "linux",
+  "Raspberry Pi OS capabilities detect Linux",
+);
+assertEqual(
+  raspberryPiCapabilities.commandCatalogs.includes("debian-like"),
+  true,
+  "Raspberry Pi OS capabilities enable Debian-like catalog",
+);
+assertEqual(
+  raspberryPiCapabilities.serviceProviders.includes("systemd"),
+  true,
+  "Raspberry Pi OS capabilities enable systemd provider",
+);
+assertEqual(
+  ubuntuCapabilities.osFamily,
+  "linux",
+  "Ubuntu capabilities detect Linux",
+);
+assertEqual(
+  ubuntuCapabilities.commandCatalogs.includes("debian-like"),
+  true,
+  "Ubuntu capabilities enable Debian-like catalog",
+);
+assertEqual(
+  ubuntuCapabilities.serviceProviders.includes("systemd"),
+  true,
+  "Ubuntu capabilities enable systemd provider",
+);
+assertEqual(
+  archCapabilities.packageManagers.includes("pacman"),
+  true,
+  "Arch capabilities detect pacman",
+);
+assertEqual(
+  archCapabilities.commandCatalogs.includes("arch"),
+  true,
+  "Arch capabilities enable Arch catalog",
+);
+assertEqual(
+  freeBsdCapabilities.osFamily,
+  "freebsd",
+  "FreeBSD capabilities detect FreeBSD",
+);
+assertEqual(
+  freeBsdCapabilities.serviceProviders.includes("freebsd-rc"),
+  true,
+  "FreeBSD capabilities enable rc service provider",
+);
+assertEqual(
+  terminalCapabilities.shouldUseSystemdAutocompleteProvider(debianCapabilities),
+  true,
+  "systemd provider selected for Debian",
+);
+assertEqual(
+  terminalCapabilities.shouldUseFreeBsdRcAutocompleteProvider(
+    freeBsdCapabilities,
+  ),
+  true,
+  "FreeBSD rc provider selected for FreeBSD",
 );
 assertEqual(
   autocomplete.isSystemdUnitAutocompleteContext("sudo systemctl status "),
@@ -1843,10 +2337,19 @@ assertEqual(
 assertRuntimeFirst("systemctl status ", "systemctl status certbot.service");
 assertRuntimeIncludes("systemctl status c", "systemctl status certbot.service");
 assertRuntimeIncludes("systemctl status c", "systemctl status certbot.timer");
-assertRuntimeIncludes("sudo systemctl stop ", "sudo systemctl stop ssh.service");
+assertRuntimeIncludes(
+  "sudo systemctl stop ",
+  "sudo systemctl stop ssh.service",
+);
 assertRuntimeIncludes("systemctl restart n", "systemctl restart nginx.service");
-assertRuntimeIncludes("systemctl reload ", "systemctl reload custom-runtime.service");
-assertRuntimeIncludes("journalctl -u c", "journalctl -u custom-runtime.service");
+assertRuntimeIncludes(
+  "systemctl reload ",
+  "systemctl reload custom-runtime.service",
+);
+assertRuntimeIncludes(
+  "journalctl -u c",
+  "journalctl -u custom-runtime.service",
+);
 assertSystemdUnitsIncludes(
   "sudo systemctl status bl",
   backendSystemdServices,
@@ -1864,6 +2367,42 @@ freshSessionBackendSystemdServices.forEach((service) => {
     `sudo systemctl status ${service}`,
   );
 });
+assertCapabilitiesInclude(
+  "sudo systemctl status ",
+  debianCapabilities,
+  "sudo systemctl status bluetooth.service",
+  {
+    history: [],
+    systemdUnits: freshSessionBackendSystemdServices,
+  },
+);
+assertCapabilitiesNotInclude(
+  "systemctl status ",
+  freeBsdCapabilities,
+  "systemctl status ssh.service",
+  {
+    history: [],
+    systemdUnits: ["ssh.service"],
+  },
+);
+assertCapabilitiesInclude("sudo pac", archCapabilities, "sudo pacman", {
+  history: [],
+});
+assertCapabilitiesNotInclude("sudo apt ", archCapabilities, "sudo apt update", {
+  history: [],
+});
+assertCapabilitiesInclude("service ssh", freeBsdCapabilities, "service sshd", {
+  history: [],
+  serviceNames: freeBsdRcServices,
+});
+assertCapabilitiesNotInclude(
+  "sudo systemctl ",
+  freeBsdCapabilities,
+  "sudo systemctl status",
+  {
+    history: [],
+  },
+);
 assertRuntimeSource(
   "sudo systemctl stop ",
   "sudo systemctl stop ssh.service",
@@ -2037,10 +2576,7 @@ assertIncludes("ssh a", "ssh admin@10.10.10.10");
 assertIncludes("ssh a", "ssh admin@server.example");
 assertNotIncludes("ssh a", "ssh admin@10.10.10.10 uptime");
 assertIncludes("ssh -p 2222 a", "ssh -p 2222 admin@server.example");
-assertNotIncludes(
-  "ssh -p 2222 a",
-  "ssh -p 2222 admin@server.example uptime",
-);
+assertNotIncludes("ssh -p 2222 a", "ssh -p 2222 admin@server.example uptime");
 assertNotIncludes("ssh ", "ssh-keygen");
 assertIncludes("ssh -o ", "ssh -o StrictHostKeyChecking=accept-new");
 assertSource("ssh -o ", "ssh -o StrictHostKeyChecking=accept-new", "catalog");
@@ -2077,15 +2613,25 @@ assertSuggestionDescription(
   "Startzeit für zeitraumbezogene Ausgabe setzen",
 );
 assertFirst("systemctl list-", "systemctl list-units");
-assertBefore("systemctl list-", "systemctl list-unit-files", "systemctl list-jobs");
+assertBefore(
+  "systemctl list-",
+  "systemctl list-unit-files",
+  "systemctl list-jobs",
+);
 assertBefore(
   "systemctl re",
   "systemctl reload-or-restart <unit>",
   "systemctl reset-failed <unit>",
 );
-assertIncludes("systemctl list-units --state ", "systemctl list-units --state running");
+assertIncludes(
+  "systemctl list-units --state ",
+  "systemctl list-units --state running",
+);
 assertIncludes("systemctl status nginx ", "systemctl status nginx --no-pager");
-assertIncludes("systemctl restart nginx ", "systemctl restart nginx --no-block");
+assertIncludes(
+  "systemctl restart nginx ",
+  "systemctl restart nginx --no-block",
+);
 assertFirst("journalctl -o ", "journalctl -o short");
 
 assertIncludes("git checkout ", "git checkout main");
@@ -2209,11 +2755,7 @@ assertSuggestionDescription(
   "nur anzeigen, was entfernt würde",
 );
 
-assertSuggestionDescription(
-  "git --",
-  "git --no-pager",
-  "Pager deaktivieren",
-);
+assertSuggestionDescription("git --", "git --no-pager", "Pager deaktivieren");
 assertSuggestionDescription(
   "git -",
   "git -C",
@@ -2280,7 +2822,11 @@ assertFirst("docker compose logs ", "docker compose logs payments");
 assertNotIncludes("docker compose logs ", "docker compose logs payments -f");
 assertIncludes("docker compose exec ", "docker compose exec app");
 assertIncludes("docker compose exec ", "docker compose exec scheduler");
-assertSource("docker compose exec ", "docker compose exec scheduler", "history");
+assertSource(
+  "docker compose exec ",
+  "docker compose exec scheduler",
+  "history",
+);
 assertNotIncludes("docker compose exec ", "docker compose exec scheduler sh");
 assertIncludes("docker compose exec app ", "docker compose exec app bash");
 assertIncludes("docker compose logs api ", "docker compose logs api -f");
@@ -2310,7 +2856,11 @@ assertIncludes("apt install d", "apt install docker.io");
 assertIncludes("sudo apt install d", "sudo apt install docker.io");
 assertIncludes("sudo apt install ", "sudo apt install nginx");
 assertIncludes("sudo apt install ", "sudo apt install wireguard-tools");
-assertSource("sudo apt install ", "sudo apt install wireguard-tools", "history");
+assertSource(
+  "sudo apt install ",
+  "sudo apt install wireguard-tools",
+  "history",
+);
 assertFirst("sudo apt install ", "sudo apt install wireguard-tools");
 assertIncludes("apt remove ", "apt remove nginx");
 assertIncludes("apt purge ", "apt purge nginx");
@@ -2357,7 +2907,11 @@ assertStartsWithSequence("npm run ", [
 ]);
 assertIncludes("npm ", "npm audit");
 assertIncludes("npm ", "npm list --depth=0");
-assertSuggestionDescription("npm ", "npm run dev", "Entwicklungs-Skript starten");
+assertSuggestionDescription(
+  "npm ",
+  "npm run dev",
+  "Entwicklungs-Skript starten",
+);
 assertSuggestionDescription(
   "npm ",
   "npm ci",
@@ -2387,7 +2941,11 @@ assertStartsWithSequence("yarn ", [
   "yarn dev",
 ]);
 assertIncludes("yarn ", "yarn --immutable");
-assertSuggestionDescription("yarn ", "yarn --immutable", "Yarn-Install ohne Lockfile-Änderung erzwingen");
+assertSuggestionDescription(
+  "yarn ",
+  "yarn --immutable",
+  "Yarn-Install ohne Lockfile-Änderung erzwingen",
+);
 
 assertMinCount("node ", 12);
 assertStartsWithSequence("node ", [
@@ -2397,7 +2955,11 @@ assertStartsWithSequence("node ", [
   "node -e",
 ]);
 assertIncludes("node ", "node --inspect-brk");
-assertSuggestionDescription("node ", "node --watch", "Skript bei Dateiänderungen neu starten");
+assertSuggestionDescription(
+  "node ",
+  "node --watch",
+  "Skript bei Dateiänderungen neu starten",
+);
 
 assertMinCount("python ", 18);
 assertMinCount("python3 ", 18);
@@ -2411,7 +2973,11 @@ assertStartsWithSequence("python3 ", [
   "python3 -m pip install -r requirements.txt",
   "python3 -m pip list",
 ]);
-assertSuggestionDescription("python ", "python -m venv .venv", "virtuelle Umgebung erstellen");
+assertSuggestionDescription(
+  "python ",
+  "python -m venv .venv",
+  "virtuelle Umgebung erstellen",
+);
 assertSuggestionDescription(
   "python3 ",
   "python3 -m pip install -r requirements.txt",
@@ -2435,7 +3001,11 @@ assertSuggestionDescription(
   "pip install -r requirements.txt",
   "Requirements-Datei installieren",
 );
-assertSuggestionDescription("pip3 ", "pip3 freeze > requirements.txt", "Requirements-Datei erzeugen");
+assertSuggestionDescription(
+  "pip3 ",
+  "pip3 freeze > requirements.txt",
+  "Requirements-Datei erzeugen",
+);
 
 assertMinCount("make ", 16);
 assertStartsWithSequence("make ", [
@@ -2473,8 +3043,16 @@ assertStartsWithSequence("kubectl rollout ", [
 ]);
 assertIncludes("kubectl ", "kubectl apply -f <file>");
 assertIncludes("kubectl ", "kubectl config get-contexts");
-assertSuggestionDescription("kubectl ", "kubectl get pods -A", "Pods in allen Namespaces anzeigen");
-assertSuggestionDescription("kubectl logs ", "kubectl logs -f deployment/app", "Logs live verfolgen");
+assertSuggestionDescription(
+  "kubectl ",
+  "kubectl get pods -A",
+  "Pods in allen Namespaces anzeigen",
+);
+assertSuggestionDescription(
+  "kubectl logs ",
+  "kubectl logs -f deployment/app",
+  "Logs live verfolgen",
+);
 assertSuggestionDescription(
   "kubectl rollout ",
   "kubectl rollout status deployment/<name>",
@@ -2501,7 +3079,11 @@ assertStartsWithSequence("helm upgrade ", [
 ]);
 assertIncludes("helm ", "helm repo add <name> <url>");
 assertIncludes("helm ", "helm dependency update");
-assertSuggestionDescription("helm list ", "helm list -A", "Releases in allen Namespaces auflisten");
+assertSuggestionDescription(
+  "helm list ",
+  "helm list -A",
+  "Releases in allen Namespaces auflisten",
+);
 assertSuggestionDescription(
   "helm upgrade ",
   "helm upgrade --install app ./chart -n prod",
@@ -2626,7 +3208,10 @@ assertStartsWithSequence("gcloud ", [
   "gcloud projects list",
   "gcloud compute instances list",
 ]);
-assertIncludes("gcloud ", "gcloud container clusters get-credentials <cluster>");
+assertIncludes(
+  "gcloud ",
+  "gcloud container clusters get-credentials <cluster>",
+);
 assertIncludes("gcloud logging ", "gcloud logging tail <filter>");
 assertSuggestionDescription(
   "gcloud ",
@@ -2652,8 +3237,14 @@ assertStartsWithSequence("az ", [
   "az account list --query",
   "az group list",
 ]);
-assertIncludes("az ", "az aks get-credentials --resource-group <group> --name <cluster>");
-assertIncludes("az ", "az webapp log tail --name <app> --resource-group <group>");
+assertIncludes(
+  "az ",
+  "az aks get-credentials --resource-group <group> --name <cluster>",
+);
+assertIncludes(
+  "az ",
+  "az webapp log tail --name <app> --resource-group <group>",
+);
 assertSuggestionDescription(
   "az account ",
   "az account list -o table",
@@ -2696,7 +3287,11 @@ assertStartsWithSequence("pg_dump ", [
   "pg_dump -F",
   "pg_dump -Fc",
 ]);
-assertSuggestionDescription("pg_dump ", "pg_dump -Fc", "Custom-Format-Dump erzeugen");
+assertSuggestionDescription(
+  "pg_dump ",
+  "pg_dump -Fc",
+  "Custom-Format-Dump erzeugen",
+);
 assertSuggestionDescription(
   "pg_dump ",
   "pg_dump --schema-only",
@@ -2780,7 +3375,11 @@ assertStartsWithSequence("redis-cli ", [
   "redis-cli --scan",
   "redis-cli dbsize",
 ]);
-assertSuggestionDescription("redis-cli ", "redis-cli --scan", "Keys per SCAN iterieren");
+assertSuggestionDescription(
+  "redis-cli ",
+  "redis-cli --scan",
+  "Keys per SCAN iterieren",
+);
 assertSuggestionDescription(
   "redis-cli ",
   "redis-cli -h localhost -p 6379",
@@ -2812,7 +3411,11 @@ assertSuggestionDescription(
   "crontab -T crontab.backup",
   "Backup-Datei vor Installation prüfen",
 );
-assertSuggestionDescription("crontab ", "crontab -", "Crontab aus Standardeingabe installieren");
+assertSuggestionDescription(
+  "crontab ",
+  "crontab -",
+  "Crontab aus Standardeingabe installieren",
+);
 
 assertMinCount("nginx ", 16);
 assertStartsWithSequence("nginx ", [
@@ -2822,8 +3425,16 @@ assertStartsWithSequence("nginx ", [
   "nginx -s reopen",
   "nginx -q -t",
 ]);
-assertSuggestionDescription("nginx ", "nginx -s reload", "Nginx-Konfiguration neu laden");
-assertSuggestionDescription("nginx ", "nginx -g \"daemon off;\"", "Nginx im Vordergrund starten");
+assertSuggestionDescription(
+  "nginx ",
+  "nginx -s reload",
+  "Nginx-Konfiguration neu laden",
+);
+assertSuggestionDescription(
+  "nginx ",
+  'nginx -g "daemon off;"',
+  "Nginx im Vordergrund starten",
+);
 
 assertMinCount("apachectl ", 12);
 assertStartsWithSequence("apachectl ", [
@@ -2832,7 +3443,11 @@ assertStartsWithSequence("apachectl ", [
   "apachectl -M",
   "apachectl status",
 ]);
-assertSuggestionDescription("apachectl ", "apachectl -S", "VirtualHost-Konfiguration anzeigen");
+assertSuggestionDescription(
+  "apachectl ",
+  "apachectl -S",
+  "VirtualHost-Konfiguration anzeigen",
+);
 assertMinCount("apache2ctl ", 12);
 assertStartsWithSequence("apache2ctl ", [
   "apache2ctl configtest",
@@ -2840,7 +3455,11 @@ assertStartsWithSequence("apache2ctl ", [
   "apache2ctl -M",
   "apache2ctl status",
 ]);
-assertSuggestionDescription("apache2ctl ", "apache2ctl -S", "VirtualHost-Konfiguration anzeigen");
+assertSuggestionDescription(
+  "apache2ctl ",
+  "apache2ctl -S",
+  "VirtualHost-Konfiguration anzeigen",
+);
 
 assertMinCount("certbot ", 16);
 assertStartsWithSequence("certbot ", [
@@ -2849,7 +3468,11 @@ assertStartsWithSequence("certbot ", [
   "certbot renew",
   "certbot plugins",
 ]);
-assertSuggestionDescription("certbot ", "certbot renew --dry-run", "Zertifikatserneuerung testen");
+assertSuggestionDescription(
+  "certbot ",
+  "certbot renew --dry-run",
+  "Zertifikatserneuerung testen",
+);
 assertSuggestionDescription(
   "certbot ",
   "certbot certonly --nginx -d",
@@ -2877,7 +3500,11 @@ assertStartsWithSequence("pm2 ", [
   "pm2 logs --lines",
 ]);
 assertIncludes("pm2 ", "pm2 start app.js --name app");
-assertSuggestionDescription("pm2 ", "pm2 start app.js --name", "app.js mit Namen starten");
+assertSuggestionDescription(
+  "pm2 ",
+  "pm2 start app.js --name",
+  "app.js mit Namen starten",
+);
 
 assertMinCount("nslookup ", 16);
 assertStartsWithSequence("nslookup ", [
@@ -2886,8 +3513,16 @@ assertStartsWithSequence("nslookup ", [
   "nslookup -type=MX example.com",
   "nslookup -type=TXT example.com",
 ]);
-assertSuggestionDescription("nslookup ", "nslookup -type=TXT example.com", "TXT-Records abfragen");
-assertSuggestionDescription("nslookup ", "nslookup -type=SOA", "SOA-Record abfragen");
+assertSuggestionDescription(
+  "nslookup ",
+  "nslookup -type=TXT example.com",
+  "TXT-Records abfragen",
+);
+assertSuggestionDescription(
+  "nslookup ",
+  "nslookup -type=SOA",
+  "SOA-Record abfragen",
+);
 
 assertMinCount("tracepath ", 12);
 assertStartsWithSequence("tracepath ", [
@@ -2896,7 +3531,11 @@ assertStartsWithSequence("tracepath ", [
   "tracepath -b example.com",
   "tracepath -m 20 example.com",
 ]);
-assertSuggestionDescription("tracepath ", "tracepath -l 1200 example.com", "Paketlänge auf 1200 Bytes setzen");
+assertSuggestionDescription(
+  "tracepath ",
+  "tracepath -l 1200 example.com",
+  "Paketlänge auf 1200 Bytes setzen",
+);
 
 assertMinCount("mtr ", 24);
 assertStartsWithSequence("mtr ", [
@@ -2904,7 +3543,11 @@ assertStartsWithSequence("mtr ", [
   "mtr -rw -c 100 example.com",
   "mtr -T -P 443 example.com",
 ]);
-assertSuggestionDescription("mtr ", "mtr --json example.com", "MTR-Ergebnis als JSON ausgeben");
+assertSuggestionDescription(
+  "mtr ",
+  "mtr --json example.com",
+  "MTR-Ergebnis als JSON ausgeben",
+);
 
 assertMinCount("iw ", 13);
 assertStartsWithSequence("iw ", [
@@ -2913,7 +3556,11 @@ assertStartsWithSequence("iw ", [
   "iw dev wlan0 scan",
   "iw dev wlan0 station dump",
 ]);
-assertSuggestionDescription("iw ", "iw dev wlan0 set power_save off", "WLAN-Energiesparen deaktivieren");
+assertSuggestionDescription(
+  "iw ",
+  "iw dev wlan0 set power_save off",
+  "WLAN-Energiesparen deaktivieren",
+);
 
 assertMinCount("nft ", 18);
 assertStartsWithSequence("nft ", [
@@ -2923,11 +3570,21 @@ assertStartsWithSequence("nft ", [
   "nft list counters",
 ]);
 assertNotIncludes("nft ", "nft flush ruleset");
-assertSuggestionDescription("nft ", "nft --check -f rules.nft", "Regeldatei validieren, ohne sie anzuwenden");
+assertSuggestionDescription(
+  "nft ",
+  "nft --check -f rules.nft",
+  "Regeldatei validieren, ohne sie anzuwenden",
+);
 
 assertMinCount("openssl s_client ", 16);
-assertIncludes("openssl s_client ", "openssl s_client -brief -connect example.com:443");
-assertIncludes("openssl s_client ", "openssl s_client -verify_return_error -connect example.com:443");
+assertIncludes(
+  "openssl s_client ",
+  "openssl s_client -brief -connect example.com:443",
+);
+assertIncludes(
+  "openssl s_client ",
+  "openssl s_client -verify_return_error -connect example.com:443",
+);
 assertSuggestionDescription(
   "openssl s_client ",
   "openssl s_client -connect example.com:443 -servername example.com",
@@ -2962,7 +3619,11 @@ assertStartsWithSequence("lsof ", [
   "lsof -iTCP -sTCP:LISTEN",
 ]);
 assertIncludes("lsof ", "lsof -i");
-assertSuggestionDescription("lsof ", "lsof +D /var/log", "offene Dateien unter /var/log suchen");
+assertSuggestionDescription(
+  "lsof ",
+  "lsof +D /var/log",
+  "offene Dateien unter /var/log suchen",
+);
 
 assertMinCount("pkill ", 18);
 assertStartsWithSequence("pkill ", [
@@ -2970,7 +3631,11 @@ assertStartsWithSequence("pkill ", [
   "pkill -HUP nginx",
   "pkill -f 'python app.py'",
 ]);
-assertSuggestionDescription("pkill ", "pkill -e -TERM nginx", "beendete nginx-Prozesse ausgeben");
+assertSuggestionDescription(
+  "pkill ",
+  "pkill -e -TERM nginx",
+  "beendete nginx-Prozesse ausgeben",
+);
 
 assertIncludes("docker ps -", "docker ps -a");
 assertUnique("docker ps -");
@@ -2979,14 +3644,23 @@ assertIncludes("sudo tcpdump -i ", "sudo tcpdump -i any");
 assertIncludes("resolvectl query g", "resolvectl query github.com");
 assertIncludes("resolvectl query ", "resolvectl query pihole.lan");
 assertSource("resolvectl query ", "resolvectl query pihole.lan", "history");
-assertIncludes("openssl s_client -connect g", "openssl s_client -connect github.com:443");
-assertIncludes("openssl s_client -connect ", "openssl s_client -connect mail.example.com:993");
+assertIncludes(
+  "openssl s_client -connect g",
+  "openssl s_client -connect github.com:443",
+);
+assertIncludes(
+  "openssl s_client -connect ",
+  "openssl s_client -connect mail.example.com:993",
+);
 assertSource(
   "openssl s_client -connect ",
   "openssl s_client -connect mail.example.com:993",
   "history",
 );
-assertFirst("openssl s_client -connect ", "openssl s_client -connect mail.example.com:993");
+assertFirst(
+  "openssl s_client -connect ",
+  "openssl s_client -connect mail.example.com:993",
+);
 assertNotIncludes(
   "openssl s_client -connect ",
   "openssl s_client -connect mail.example.com:993 -servername mail.example.com",
@@ -3068,7 +3742,11 @@ assertIncludes("jq -r ", "jq -r .[]");
 assertMinCount("uptime", 13);
 assertIncludes("uptime", "uptime --pretty");
 assertIncludes("uptime", "uptime --version");
-assertSuggestionDescription("uptime", "uptime --pretty", "Laufzeit menschenlesbar anzeigen");
+assertSuggestionDescription(
+  "uptime",
+  "uptime --pretty",
+  "Laufzeit menschenlesbar anzeigen",
+);
 assertSuggestionDescription(
   "uptime",
   "uptime | sed 's/.*load average: //'",
@@ -3077,10 +3755,18 @@ assertSuggestionDescription(
 assertMinCount("who ", 14);
 assertIncludes("who ", "who -b");
 assertIncludes("who ", "who --heading");
-assertSuggestionDescription("who ", "who -b", "Zeit des letzten Systemstarts anzeigen");
+assertSuggestionDescription(
+  "who ",
+  "who -b",
+  "Zeit des letzten Systemstarts anzeigen",
+);
 assertMinCount("printenv", 6);
 assertIncludes("printenv", "printenv --null");
-assertSuggestionDescription("printenv", "printenv --null", "Ausgabe mit NUL statt Zeilenumbruch trennen");
+assertSuggestionDescription(
+  "printenv",
+  "printenv --null",
+  "Ausgabe mit NUL statt Zeilenumbruch trennen",
+);
 assertMinCount("awk ", 20);
 assertStartsWithSequence("awk ", [
   "awk '{print $1}' file.txt",
@@ -3094,7 +3780,11 @@ assertSuggestionDescription(
   "awk '{sum += $1} END {print sum}' numbers.txt",
   "erste Spalte aufsummieren",
 );
-assertSuggestionDescription("awk ", "awk -v", "Variable vor Programmausführung setzen");
+assertSuggestionDescription(
+  "awk ",
+  "awk -v",
+  "Variable vor Programmausführung setzen",
+);
 assertMinCount("base64 ", 17);
 assertStartsWithSequence("base64 ", [
   "base64 file.bin",
@@ -3135,17 +3825,33 @@ assertMinCount("xargs ", 14);
 assertIncludes("xargs ", "xargs --no-run-if-empty");
 assertIncludes("xargs ", "xargs --max-procs");
 assertNotIncludes("xargs ", "xargs rm");
-assertSuggestionDescription("xargs ", "xargs -0", "Eingabe mit NUL-Trennung lesen");
+assertSuggestionDescription(
+  "xargs ",
+  "xargs -0",
+  "Eingabe mit NUL-Trennung lesen",
+);
 assertMinCount("tee ", 12);
 assertIncludes("tee ", "tee --append");
 assertIncludes("tee ", "tee --output-error");
 assertIncludes("tee ", "tee file.txt");
-assertSuggestionDescription("tee ", "tee -a", "an Dateien anhängen statt überschreiben");
-assertSuggestionDescription("tee ", "tee file1.log file2.log", "Ausgabe in mehrere Logdateien schreiben");
+assertSuggestionDescription(
+  "tee ",
+  "tee -a",
+  "an Dateien anhängen statt überschreiben",
+);
+assertSuggestionDescription(
+  "tee ",
+  "tee file1.log file2.log",
+  "Ausgabe in mehrere Logdateien schreiben",
+);
 assertMinCount("env ", 12);
 assertIncludes("env ", "env --ignore-environment");
 assertIncludes("env ", "env --split-string");
-assertSuggestionDescription("env ", "env | grep PATH", "Umgebung anzeigen oder Befehl mit Umgebung starten");
+assertSuggestionDescription(
+  "env ",
+  "env | grep PATH",
+  "Umgebung anzeigen oder Befehl mit Umgebung starten",
+);
 assertMinCount("date ", 12);
 assertIncludes("date ", "date --iso-8601");
 assertIncludes("date ", "date +<format>");
@@ -3197,15 +3903,19 @@ assertSuggestionDescription(
 assertMinCount("lsmod", 12);
 assertIncludes("lsmod", "lsmod | grep bluetooth");
 assertIncludes("lsmod", "lsmod | column -t");
-assertSuggestionDescription("lsmod", "lsmod | wc -l", "Anzahl geladener Module zaehlen");
+assertSuggestionDescription(
+  "lsmod",
+  "lsmod | wc -l",
+  "Anzahl geladener Module zaehlen",
+);
 
 assertMinCount("vmstat ", 20);
-assertStartsWithSequence("vmstat ", [
-  "vmstat 1",
-  "vmstat 1 5",
-  "vmstat -s",
-]);
-assertSuggestionDescription("vmstat ", "vmstat -S M 1", "Speicherwerte in MiB anzeigen");
+assertStartsWithSequence("vmstat ", ["vmstat 1", "vmstat 1 5", "vmstat -s"]);
+assertSuggestionDescription(
+  "vmstat ",
+  "vmstat -S M 1",
+  "Speicherwerte in MiB anzeigen",
+);
 
 assertMinCount("iostat ", 24);
 assertStartsWithSequence("iostat ", [
@@ -3240,7 +3950,10 @@ assertSuggestionDescription(
 );
 
 assertMinCount("realpath ", 20);
-assertIncludes("realpath ", "realpath --relative-base=/srv /srv/app/config.yml");
+assertIncludes(
+  "realpath ",
+  "realpath --relative-base=/srv /srv/app/config.yml",
+);
 assertSuggestionDescription(
   "realpath ",
   "realpath --relative-to /var /var/log/syslog",
@@ -3271,6 +3984,84 @@ assertSuggestionDescription(
   "Signal fuer Timeout-Abbruch setzen",
 );
 
+assertMinCount("install ", 32);
+assertIncludes("install ", "install -C -m 644 config.yml /etc/app/config.yml");
+assertIncludes("install ", "install -b -S .bak file /etc/app/file");
+assertIncludes("install --", "install --target-directory");
+assertIncludes("install --", "install --compare");
+assertSuggestionDescription(
+  "install ",
+  "install -C -m 644 config.yml /etc/app/config.yml",
+  "nur kopieren, wenn Inhalt, Besitzer oder Rechte abweichen",
+);
+assertSuggestionDescription(
+  "install --",
+  "install --context",
+  "SELinux- oder SMACK-Sicherheitskontext setzen",
+);
+assertDefaultSuggestionDescription(
+  "install ",
+  "install -t /usr/local/bin app helper",
+  "Copy app and helper into /usr/local/bin",
+);
+
+assertSuggestionDescription(
+  "cd ",
+  "cd -P",
+  "physische Verzeichnisstruktur ohne Symlink-Aufloesung verwenden",
+);
+assertSuggestionDescription(
+  "dd ",
+  "dd conv=noerror,sync",
+  "nach Lesefehlern fortfahren und kurze Bloecke auffuellen",
+);
+assertSuggestionDescription(
+  "nano ",
+  "nano --syntax",
+  "Syntax-Highlighting-Definition waehlen",
+);
+assertSuggestionDescription(
+  "sudo ",
+  "sudo --validate",
+  "sudo-Anmeldedaten pruefen und erneuern",
+);
+assertSuggestionDescription(
+  "rm ",
+  "rm --one-file-system",
+  "beim rekursiven Entfernen auf demselben Dateisystem bleiben",
+);
+assertSuggestionDescription(
+  "whereis ",
+  "whereis -g",
+  "Namen als Glob-Muster interpretieren",
+);
+
+assertMinCount("memusage ", 28);
+assertIncludes("memusage ", "memusage --png=memory.png ./app");
+assertIncludes(
+  "memusage ",
+  "memusage --time-based --total --png=memory.png ./app",
+);
+assertIncludes(
+  "memusage ",
+  "memusage --title='Memory profile' --x-size=1200 --y-size=800 --png=memory.png ./app",
+);
+assertSuggestionDescription(
+  "memusage ",
+  "memusage -m ./app",
+  "auch mmap und verwandte Allokationsaufrufe verfolgen",
+);
+assertSuggestionDescription(
+  "memusage ",
+  "memusage --title='Memory profile' --x-size=1200 --y-size=800 --png=memory.png ./app",
+  "PNG-Grafik mit Titel und festen Abmessungen erzeugen",
+);
+assertDefaultSuggestionDescription(
+  "memusage ",
+  "memusage --png=memory.png ./app",
+  "Write a PNG memory graph to memory.png",
+);
+
 assertMinCount("sha256sum ", 20);
 assertIncludes("sha256sum ", "sha256sum --ignore-missing -c checksums.txt");
 assertSuggestionDescription(
@@ -3299,13 +4090,17 @@ assertMinCount("hexdump ", 24);
 assertIncludes("hexdump ", "hexdump -C -s 512 file.bin");
 assertSuggestionDescription(
   "hexdump ",
-  "hexdump -e '16/1 \"%02x \" \"\\n\"' file.bin",
+  'hexdump -e \'16/1 "%02x " "\\n"\' file.bin',
   "Bytes mit eigenem Format ausgeben",
 );
 
 assertMinCount("xxd ", 18);
 assertIncludes("xxd ", "xxd -i file.bin");
-assertSuggestionDescription("xxd ", "xxd -g 1 file.bin", "Bytes einzeln gruppieren");
+assertSuggestionDescription(
+  "xxd ",
+  "xxd -g 1 file.bin",
+  "Bytes einzeln gruppieren",
+);
 
 assertMinCount("lsblk ", 15);
 assertStartsWithSequence("lsblk ", [
@@ -3327,7 +4122,11 @@ assertStartsWithSequence("blkid ", [
   "blkid -s UUID /dev/sda1",
   "blkid -L data",
 ]);
-assertSuggestionDescription("blkid ", "blkid -U <uuid>", "Gerät mit dieser UUID finden");
+assertSuggestionDescription(
+  "blkid ",
+  "blkid -U <uuid>",
+  "Gerät mit dieser UUID finden",
+);
 assertSuggestionDescription("blkid ", "blkid -c", "Cache-Datei setzen");
 
 assertMinCount("mount ", 20);
@@ -3337,8 +4136,16 @@ assertStartsWithSequence("mount ", [
   "mount /dev/sdb1 /mnt",
   "mount -t nfs server:/share /mnt",
 ]);
-assertSuggestionDescription("mount ", "mount -o remount,rw /", "Root-Dateisystem schreibbar remounten");
-assertSuggestionDescription("mount ", "mount --bind /srv/data /mnt/data", "Verzeichnis per Bind-Mount einhängen");
+assertSuggestionDescription(
+  "mount ",
+  "mount -o remount,rw /",
+  "Root-Dateisystem schreibbar remounten",
+);
+assertSuggestionDescription(
+  "mount ",
+  "mount --bind /srv/data /mnt/data",
+  "Verzeichnis per Bind-Mount einhängen",
+);
 
 assertMinCount("umount ", 14);
 assertStartsWithSequence("umount ", [
@@ -3348,7 +4155,11 @@ assertStartsWithSequence("umount ", [
   "umount /dev/sdb1",
 ]);
 assertNotIncludes("umount ", "umount -a");
-assertSuggestionDescription("umount ", "umount --recursive /mnt", "Submounts unter /mnt rekursiv aushängen");
+assertSuggestionDescription(
+  "umount ",
+  "umount --recursive /mnt",
+  "Submounts unter /mnt rekursiv aushängen",
+);
 
 assertMinCount("findmnt ", 24);
 assertStartsWithSequence("findmnt ", [
@@ -3369,7 +4180,11 @@ assertStartsWithSequence("free ", [
   "free -m",
   "free -h -s 2",
 ]);
-assertSuggestionDescription("free ", "free -w -h", "Speicher breit und menschenlesbar anzeigen");
+assertSuggestionDescription(
+  "free ",
+  "free -w -h",
+  "Speicher breit und menschenlesbar anzeigen",
+);
 
 assertMinCount("dmesg ", 20);
 assertStartsWithSequence("dmesg ", [
@@ -3391,7 +4206,11 @@ assertStartsWithSequence("sysctl ", [
   "sysctl vm.swappiness",
   "sysctl -n kernel.hostname",
 ]);
-assertSuggestionDescription("sysctl ", "sysctl vm.swappiness", "Swappiness-Parameter anzeigen");
+assertSuggestionDescription(
+  "sysctl ",
+  "sysctl vm.swappiness",
+  "Swappiness-Parameter anzeigen",
+);
 assertSuggestionDescription(
   "sysctl ",
   "sysctl -p /etc/sysctl.conf",
@@ -3412,7 +4231,11 @@ assertSuggestionDescription(
 
 assertMinCount("df ", 15);
 assertStartsWithSequence("df ", ["df -h", "df -hT", "df -ih"]);
-assertSuggestionDescription("df ", "df -x tmpfs -x devtmpfs", "temporäre Dateisysteme ausblenden");
+assertSuggestionDescription(
+  "df ",
+  "df -x tmpfs -x devtmpfs",
+  "temporäre Dateisysteme ausblenden",
+);
 
 assertMinCount("du ", 18);
 assertStartsWithSequence("du ", [
@@ -3433,7 +4256,11 @@ assertMinCount("tar ", 25);
 assertIncludes("tar --", "tar --xz");
 assertIncludes("tar --", "tar --directory");
 assertIncludes("tar --", "tar --one-file-system");
-assertSuggestionDescription("tar --", "tar --directory", "vor Aktion in Verzeichnis wechseln");
+assertSuggestionDescription(
+  "tar --",
+  "tar --directory",
+  "vor Aktion in Verzeichnis wechseln",
+);
 assertIncludes("ncdu ", "ncdu /var/log");
 assertIncludes("ncdu ", "ncdu --one-file-system");
 assertStartsWithSequence("ncdu ", ["ncdu /var/log", "ncdu -x"]);
@@ -3451,7 +4278,11 @@ assertStartsWithSequence("screen ", [
   "screen -ls",
 ]);
 assertMinCount("screen ", 12);
-assertSuggestionDescription("screen ", "screen -x work", "Sitzung work gemeinsam anhaengen");
+assertSuggestionDescription(
+  "screen ",
+  "screen -x work",
+  "Sitzung work gemeinsam anhaengen",
+);
 assertMinCount("nohup ", 12);
 assertStartsWithSequence("nohup ", [
   "nohup ./server.sh &",
@@ -3466,13 +4297,25 @@ assertSuggestionDescription(
 );
 assertMinCount("jobs ", 12);
 assertStartsWithSequence("jobs ", ["jobs -l", "jobs -p", "jobs -r", "jobs -s"]);
-assertSuggestionDescription("jobs ", "jobs -l %%", "aktuellen Job mit Prozess-ID anzeigen");
+assertSuggestionDescription(
+  "jobs ",
+  "jobs -l %%",
+  "aktuellen Job mit Prozess-ID anzeigen",
+);
 assertMinCount("fg ", 12);
 assertStartsWithSequence("fg ", ["fg %1", "fg %2", "fg %3", "fg %%"]);
-assertSuggestionDescription("fg ", "fg %?python", "Job mit python im Kommando in den Vordergrund holen");
+assertSuggestionDescription(
+  "fg ",
+  "fg %?python",
+  "Job mit python im Kommando in den Vordergrund holen",
+);
 assertMinCount("bg ", 12);
 assertStartsWithSequence("bg ", ["bg %1", "bg %2", "bg %3", "bg %%"]);
-assertSuggestionDescription("bg ", "bg %?python", "Job mit python im Kommando im Hintergrund fortsetzen");
+assertSuggestionDescription(
+  "bg ",
+  "bg %?python",
+  "Job mit python im Kommando im Hintergrund fortsetzen",
+);
 assertMinCount("disown ", 12);
 assertStartsWithSequence("disown ", [
   "disown %1",
@@ -3480,7 +4323,11 @@ assertStartsWithSequence("disown ", [
   "disown %%",
   "disown %+",
 ]);
-assertSuggestionDescription("disown ", "disown -h %%", "aktuellen Job vor SIGHUP schuetzen");
+assertSuggestionDescription(
+  "disown ",
+  "disown -h %%",
+  "aktuellen Job vor SIGHUP schuetzen",
+);
 assertMinCount("pidof ", 12);
 assertStartsWithSequence("pidof ", [
   "pidof sshd",
@@ -3488,7 +4335,11 @@ assertStartsWithSequence("pidof ", [
   "pidof systemd",
   "pidof -s nginx",
 ]);
-assertSuggestionDescription("pidof ", "pidof -o %PPID sshd", "aufrufenden Parent-Prozess ausschliessen");
+assertSuggestionDescription(
+  "pidof ",
+  "pidof -o %PPID sshd",
+  "aufrufenden Parent-Prozess ausschliessen",
+);
 assertMinCount("pstree ", 12);
 assertStartsWithSequence("pstree ", [
   "pstree -p",
@@ -3504,7 +4355,11 @@ assertStartsWithSequence("top ", [
   "top -p 1",
   "top -b -n 1",
 ]);
-assertSuggestionDescription("top ", "top -b -n 1 -o %CPU", "einmalige Batch-Ausgabe nach CPU sortieren");
+assertSuggestionDescription(
+  "top ",
+  "top -b -n 1 -o %CPU",
+  "einmalige Batch-Ausgabe nach CPU sortieren",
+);
 assertMinCount("htop ", 12);
 assertStartsWithSequence("htop ", [
   "htop -u root",
@@ -3512,7 +4367,11 @@ assertStartsWithSequence("htop ", [
   "htop -p 1",
   "htop -d 10",
 ]);
-assertSuggestionDescription("htop ", "htop -s PERCENT_CPU", "nach CPU-Auslastung sortieren");
+assertSuggestionDescription(
+  "htop ",
+  "htop -s PERCENT_CPU",
+  "nach CPU-Auslastung sortieren",
+);
 assertIncludes("grep --include ", "grep --include '*.log'");
 assertIncludes("grep -A ", "grep -A 3");
 assertMinCount("rg ", 20);
@@ -3540,18 +4399,34 @@ assertStartsWithSequence("zip ", [
   "zip -r archive.zip ./dir",
   "zip -r archive.zip ./dir -x '*.git*'",
 ]);
-assertSuggestionDescription("zip ", "zip -r encrypted.zip ./secrets -e", "verschluesseltes Archiv erstellen");
+assertSuggestionDescription(
+  "zip ",
+  "zip -r encrypted.zip ./secrets -e",
+  "verschluesseltes Archiv erstellen",
+);
 assertMinCount("unzip ", 20);
 assertStartsWithSequence("unzip ", [
   "unzip archive.zip",
   "unzip archive.zip -d /tmp",
   "unzip -l archive.zip",
 ]);
-assertSuggestionDescription("unzip ", "unzip -p archive.zip file.txt", "Datei aus Archiv auf stdout ausgeben");
+assertSuggestionDescription(
+  "unzip ",
+  "unzip -p archive.zip file.txt",
+  "Datei aus Archiv auf stdout ausgeben",
+);
 assertMinCount("zcat ", 16);
 assertIncludes("zcat ", "zcat *.log.gz | grep -i error");
-assertSuggestionDescription("zcat ", "zcat file.log.gz | wc -l", "Zeilen in komprimiertem Log zaehlen");
-assertSuggestionDescription("zip ", "zip -r", "Verzeichnisse rekursiv einpacken");
+assertSuggestionDescription(
+  "zcat ",
+  "zcat file.log.gz | wc -l",
+  "Zeilen in komprimiertem Log zaehlen",
+);
+assertSuggestionDescription(
+  "zip ",
+  "zip -r",
+  "Verzeichnisse rekursiv einpacken",
+);
 assertSuggestionDescription("unzip ", "unzip -l", "Archivinhalt anzeigen");
 assertIncludes("head -n ", "head -n 100");
 assertIncludes("tail -n ", "tail -n 100");
@@ -3575,7 +4450,10 @@ assertSuggestionDescription(
 assertIncludes("curl -H ", "curl -H 'Content-Type: application/json'");
 assertIncludes("curl -X ", "curl -X POST");
 assertIncludes("curl -o ", "curl -o response.json");
-assertIncludes("openssl s_client -servername ", "openssl s_client -servername example.com");
+assertIncludes(
+  "openssl s_client -servername ",
+  "openssl s_client -servername example.com",
+);
 assertIncludes("ps --sort ", "ps --sort -%mem");
 assertIncludes("lsof -i :", "lsof -i :443");
 assertIncludes("ss -tulpn ", "ss -tulpn | grep :443");
@@ -3595,7 +4473,11 @@ assertStartsWithSequence("hostnamectl ", [
   "hostnamectl hostname",
   "hostnamectl chassis",
 ]);
-assertSuggestionDescription("hostnamectl ", "hostnamectl location", "Standort-Metadatum anzeigen");
+assertSuggestionDescription(
+  "hostnamectl ",
+  "hostnamectl location",
+  "Standort-Metadatum anzeigen",
+);
 assertMinCount("timedatectl ", 20);
 assertStartsWithSequence("timedatectl ", [
   "timedatectl status",
@@ -3608,7 +4490,10 @@ assertSuggestionDescription(
   "Status von systemd-timesyncd anzeigen",
 );
 assertIncludes("loginctl show-user ", "loginctl show-user $USER");
-assertIncludes("loginctl session-status ", "loginctl session-status $XDG_SESSION_ID");
+assertIncludes(
+  "loginctl session-status ",
+  "loginctl session-status $XDG_SESSION_ID",
+);
 assertIncludes("localectl ", "localectl list-locales");
 assertIncludes("localectl ", "localectl set-keymap de");
 assertIncludes("networkctl ", "networkctl status <link>");
@@ -3687,7 +4572,10 @@ assertRuntimeIncludes(
   "systemd-analyze verify ",
   "systemd-analyze verify certbot.service",
 );
-assertIncludes("nmcli connection up ", "nmcli connection up 'Wired connection 1'");
+assertIncludes(
+  "nmcli connection up ",
+  "nmcli connection up 'Wired connection 1'",
+);
 assertIncludes("nmcli device show ", "nmcli device show eth0");
 assertNotIncludes("nmcli device show ", "nmcli device show any");
 assertIncludes("nmap -p ", "nmap -p 22,80,443");
@@ -3708,13 +4596,21 @@ assertStartsWithSequence("sudo iftop ", [
   "sudo iftop -P",
   "sudo iftop -n",
 ]);
-assertSuggestionDescription("iftop ", "iftop -f 'port 443'", "Traffic per pcap-Filter auf Port 443 begrenzen");
+assertSuggestionDescription(
+  "iftop ",
+  "iftop -f 'port 443'",
+  "Traffic per pcap-Filter auf Port 443 begrenzen",
+);
 assertSuggestionDescription("iftop ", "iftop -P", "Ports anzeigen");
 assertMinCount("nload ", 16);
 assertIncludes("nload ", "nload eth0");
 assertIncludes("nload ", "nload wlan0");
 assertIncludes("nload -u ", "nload -u M -t 500 eth0");
-assertSuggestionDescription("nload ", "nload -m", "mehrere Interfaces gleichzeitig anzeigen");
+assertSuggestionDescription(
+  "nload ",
+  "nload -m",
+  "mehrere Interfaces gleichzeitig anzeigen",
+);
 assertSuggestionDescription(
   "nload ",
   "nload -i 10000 -o 10000 eth0",
@@ -3726,12 +4622,12 @@ assertSuggestionDescription("vnstat ", "vnstat -l", "Live-Verkehr anzeigen");
 assertIncludes("iperf3 ", "iperf3 -s");
 assertIncludes("iperf3 -c ", "iperf3 -c 192.168.1.10");
 assertIncludes("iperf3 ", "iperf3 -R");
-assertStartsWithSequence("iperf3 ", [
-  "iperf3 -s",
-  "iperf3 -c",
+assertStartsWithSequence("iperf3 ", ["iperf3 -s", "iperf3 -c", "iperf3 -R"]);
+assertSuggestionDescription(
+  "iperf3 ",
   "iperf3 -R",
-]);
-assertSuggestionDescription("iperf3 ", "iperf3 -R", "Reverse-Test vom Server zum Client");
+  "Reverse-Test vom Server zum Client",
+);
 assertIncludes("ping -c ", "ping -c 4");
 assertIncludes("ping -I ", "ping -I eth0");
 assertNotIncludes("ping -I ", "ping -I any");
@@ -3765,7 +4661,9 @@ assertIncludes("ls -la ", "ls -la /etc/ssh");
 assertBefore("ls", "ls -la", "lsof");
 assertBefore("ls", "ls -a", "lsblk");
 assertBefore("ls", "ls -l", "lscpu");
-assertFirst("ls -", "ls -a");
+assertIncludes("ls ", "ls -lah");
+assertFirst("ls -", "ls -lah");
+assertFirst("ls -l", "ls -lah");
 assertNotIncludes("ls -", "ls - /etc/ssh");
 assertFirst("cp -", "cp -r");
 assertNotIncludes("cp -", "cp - /etc/termix/config.yml");
@@ -3792,7 +4690,10 @@ assertSource("tar -C ", "tar -C /srv/app", "history");
 assertNotIncludes("tar -C ", "tar -C /srv/app -xzf release.tar.gz");
 assertIncludes("curl -o ", "curl -o /tmp/api-response.json");
 assertSource("curl -o ", "curl -o /tmp/api-response.json", "history");
-assertNotIncludes("curl -o ", "curl -o /tmp/api-response.json https://example.com/api");
+assertNotIncludes(
+  "curl -o ",
+  "curl -o /tmp/api-response.json https://example.com/api",
+);
 assertIncludes("ssh -L ", "ssh -L 8080:localhost:80");
 assertIncludes("ssh -R ", "ssh -R 2222:localhost:22");
 assertIncludes("ssh -D ", "ssh -D 1080");
@@ -3805,7 +4706,11 @@ assertMinCount("ssh -D ", 8);
 assertNotIncludes("ssh -p ", "ssh -p pi@192.168.178.20");
 assertIncludes("scp file.txt ", "scp file.txt user@host:/tmp/");
 assertIncludes("scp file.txt ", "scp file.txt admin@10.10.10.10:/srv/backups/");
-assertSource("scp file.txt ", "scp file.txt admin@10.10.10.10:/srv/backups/", "history");
+assertSource(
+  "scp file.txt ",
+  "scp file.txt admin@10.10.10.10:/srv/backups/",
+  "history",
+);
 assertFirst("scp file.txt ", "scp file.txt admin@10.10.10.10:/srv/backups/");
 assertMinCount("scp file.txt ", 10);
 assertIncludes("scp -P ", "scp -P 2222");
@@ -3813,15 +4718,42 @@ assertMinCount("scp -P ", 8);
 assertIncludes("scp -i ", "scp -i ~/.ssh/id_ed25519");
 assertMinCount("scp -i ", 8);
 assertIncludes("rsync -avz ./dist/ ", "rsync -avz ./dist/ user@host:/tmp/");
-assertIncludes("rsync -avz ./build/ ", "rsync -avz ./build/ deploy@10.10.10.11:/srv/app/");
-assertSource("rsync -avz ./build/ ", "rsync -avz ./build/ deploy@10.10.10.11:/srv/app/", "history");
+assertIncludes(
+  "rsync -avz ./build/ ",
+  "rsync -avz ./build/ deploy@10.10.10.11:/srv/app/",
+);
+assertSource(
+  "rsync -avz ./build/ ",
+  "rsync -avz ./build/ deploy@10.10.10.11:/srv/app/",
+  "history",
+);
 assertMinCount("rsync -avz ./dist/ ", 10);
 assertMinCount("rsync -e ", 8);
-assertNotIncludes("rsync --exclude ", "rsync --exclude admin@10.10.10.10:/srv/backups/");
+assertNotIncludes(
+  "rsync --exclude ",
+  "rsync --exclude admin@10.10.10.10:/srv/backups/",
+);
 assertNotIncludes("find . -", "find . -name '*.tmp' -delete");
 assertNotIncludes("find . -", "find . -name '*.log' | xargs rm");
 assertNotIncludes("rm ", "rm -rf ./dir");
 assertNotIncludes("sudo rm ", "sudo rm -rf ./dir");
+
+assertDeepEqual(
+  commandHistoryEvents.applyCommandHistoryChangeToList(
+    ["sudo apt update", "ls -lah", "journalctl -u ssh.service"],
+    { action: "delete", hostId: 1, command: "ls -lah" },
+  ),
+  ["sudo apt update", "journalctl -u ssh.service"],
+  "command history delete event removes autocomplete history entry",
+);
+assertDeepEqual(
+  commandHistoryEvents.applyCommandHistoryChangeToList(
+    ["sudo apt update", "ls -lah"],
+    { action: "clear", hostId: 1 },
+  ),
+  [],
+  "command history clear event empties autocomplete history",
+);
 
 assertUsefulHistory("sudo systemctl status certbot.timer", true);
 assertUsefulHistory("sudo systemctl restart ssh", false);
@@ -3891,12 +4823,24 @@ async function assertSystemdServiceCacheReuse() {
     () => now,
     1000,
   );
-  assertEqual(second.status, "pending-reuse", "pending cache request reuses fetch");
+  assertEqual(
+    second.status,
+    "pending-reuse",
+    "pending cache request reuses fetch",
+  );
   assertEqual(fetchCount, 1, "pending cache request avoids duplicate command");
 
   resolvePending(["cron.service"]);
-  assertDeepEqual(await first.promise, ["cron.service"], "first pending result");
-  assertDeepEqual(await second.promise, ["cron.service"], "second pending result");
+  assertDeepEqual(
+    await first.promise,
+    ["cron.service"],
+    "first pending result",
+  );
+  assertDeepEqual(
+    await second.promise,
+    ["cron.service"],
+    "second pending result",
+  );
 
   const third = systemdAutocomplete.getOrFetchCachedSystemdServiceAutocomplete(
     cache,

@@ -2,6 +2,7 @@ import { type Client, type ClientChannel } from "ssh2";
 import { WebSocket } from "ws";
 import { sshLogger } from "../utils/logger.js";
 import { getDb } from "../database/db/index.js";
+import type { TerminalAutocompleteHostCapabilities } from "./terminal-capabilities.js";
 
 const MAX_BUFFER_BYTES = 512 * 1024;
 const DEFAULT_TIMEOUT_MINUTES = 30;
@@ -32,7 +33,9 @@ export interface TerminalSession {
   outputBuffer: string[];
   outputBufferBytes: number;
   tmuxSessionName: string | null;
+  autocompleteHostCapabilities: TerminalAutocompleteHostCapabilities | null;
   autocompleteSystemdUnits: string[];
+  autocompleteRuntimeServices: string[];
 }
 
 class TerminalSessionManager {
@@ -127,7 +130,9 @@ class TerminalSessionManager {
       outputBuffer: [],
       outputBufferBytes: 0,
       tmuxSessionName: null,
+      autocompleteHostCapabilities: null,
       autocompleteSystemdUnits: [],
+      autocompleteRuntimeServices: [],
     };
     this.sessions.set(id, session);
 

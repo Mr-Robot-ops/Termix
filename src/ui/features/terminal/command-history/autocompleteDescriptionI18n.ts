@@ -1,8 +1,6 @@
 import {
   getTerminalAutocompleteHelpDescription,
-  getTerminalAutocompleteHelpDescriptionInfo,
   getTerminalAutocompleteSuggestionDescription,
-  getTerminalAutocompleteSuggestionDescriptionInfo,
   type TerminalAutocompleteHelp,
 } from "@/lib/terminal-autocomplete.ts";
 
@@ -11,51 +9,23 @@ type Translate = (
   options: Record<string, string | number | undefined>,
 ) => string;
 
-function isGermanLanguage(language?: string) {
-  return language?.toLowerCase().startsWith("de") ?? false;
-}
-
 export function getLocalizedTerminalAutocompleteSuggestionDescription(
-  t: Translate,
+  _t: Translate,
   language: string | undefined,
   currentCommand: string,
   suggestion: string,
 ) {
-  if (isGermanLanguage(language)) {
-    return getTerminalAutocompleteSuggestionDescription(
-      currentCommand,
-      suggestion,
-      { language },
-    );
-  }
-
-  const info = getTerminalAutocompleteSuggestionDescriptionInfo(
+  return getTerminalAutocompleteSuggestionDescription(
     currentCommand,
     suggestion,
+    { language },
   );
-
-  if (!info) {
-    return "";
-  }
-
-  return t(info.key, {
-    ...info.values,
-    defaultValue: info.defaultValue,
-  });
 }
 
 export function getLocalizedTerminalAutocompleteHelpDescription(
-  t: Translate,
+  _t: Translate,
   language: string | undefined,
   help: TerminalAutocompleteHelp,
 ) {
-  if (isGermanLanguage(language)) {
-    return getTerminalAutocompleteHelpDescription(help, { language });
-  }
-
-  const info = getTerminalAutocompleteHelpDescriptionInfo(help);
-  return t(info.key, {
-    ...info.values,
-    defaultValue: info.defaultValue,
-  });
+  return getTerminalAutocompleteHelpDescription(help, { language });
 }

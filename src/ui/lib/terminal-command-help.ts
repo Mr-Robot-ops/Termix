@@ -2,6 +2,8 @@
 // Curated from official manuals plus short, rewritten examples inspired by
 // TLDR Pages (CC-BY 4.0) and cheat/cheatsheets (CC0).
 
+import { getTerminalAutocompleteHelpDescriptionText } from "@/lib/terminal-autocomplete-i18n.ts";
+
 export interface TerminalAutocompleteHelp {
   command: string;
   description: string;
@@ -32,32 +34,59 @@ export interface TerminalAutocompleteHelp {
   commonPatterns?: Record<string, string[]>;
 }
 
-export const TERMINAL_AUTOCOMPLETE_HELP = [
+type TerminalAutocompleteHelpSeed = Omit<
+  TerminalAutocompleteHelp,
+  "description"
+>;
+
+const TERMINAL_AUTOCOMPLETE_HELP_SEED: TerminalAutocompleteHelpSeed[] = [
   {
     command: "sudo",
-    description: "Befehl mit erhöhten Rechten ausführen",
     examples: ["sudo <command>", "sudo -u www-data <command>", "sudo -i"],
     options: [
+      "-A",
+      "--askpass",
+      "-b",
+      "--background",
+      "-B",
+      "--bell",
+      "-C <num>",
+      "--close-from <num>",
+      "-D <directory>",
+      "--chdir <directory>",
       "-E",
+      "-e",
+      "--edit",
       "-H",
       "-k",
       "-K",
       "-l",
       "-n",
+      "-P",
+      "--preserve-groups",
       "-S",
       "-s",
+      "-v",
+      "--validate",
+      "-V",
+      "--version",
+      "-h",
+      "--help",
       "-u <user>",
       "-g <group>",
       "--preserve-env",
+      "--preserve-env <list>",
+      "--non-interactive",
+      "--stdin",
       "--user <user>",
       "--group <group>",
       "--login",
       "--shell",
+      "--",
     ],
   },
   {
     command: "su",
-    description: "Zu einem anderen Benutzer oder einer Login-Shell wechseln",
     category: "users",
     risk: "caution",
     examples: [
@@ -82,7 +111,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "systemctl",
-    description: "systemd Services, Units und Systemzustand verwalten",
     examples: [
       "sudo systemctl status nginx",
       "sudo systemctl restart ssh",
@@ -166,7 +194,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "journalctl",
-    description: "Logs von systemd anzeigen",
     examples: [
       "journalctl -u nginx -f",
       "journalctl -u ssh --since today",
@@ -194,7 +221,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ip",
-    description: "Netzwerkinterfaces, IPs, Routing und Nachbarn verwalten",
     examples: [
       "ip a",
       "ip -br a",
@@ -268,7 +294,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ifconfig",
-    description: "Legacy Netzwerkinterface-Tool",
     examples: [
       "ifconfig",
       "ifconfig -a",
@@ -291,7 +316,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ping",
-    description: "Host-Erreichbarkeit testen",
     examples: [
       "ping 8.8.8.8",
       "ping -c 4 google.com",
@@ -319,7 +343,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ps",
-    description: "Prozesse anzeigen",
     examples: [
       "ps aux",
       "ps -ef",
@@ -351,7 +374,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "top",
-    description: "Live-Prozessübersicht",
     category: "system",
     risk: "safe",
     examples: [
@@ -381,7 +403,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "htop",
-    description: "Interaktive Prozessübersicht",
     category: "system",
     risk: "safe",
     examples: [
@@ -413,7 +434,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "kill",
-    description: "Signal an Prozess senden",
     examples: [
       "kill <pid>",
       "kill -9 <pid>",
@@ -424,7 +444,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pkill",
-    description: "Prozesse per Namen beenden",
     examples: [
       "pkill nginx",
       "pkill -TERM nginx",
@@ -451,7 +470,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "killall",
-    description: "Prozesse per Programmnamen beenden",
     category: "system",
     risk: "caution",
     examples: [
@@ -480,7 +498,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pgrep",
-    description: "Prozess-IDs suchen",
     examples: [
       "pgrep nginx",
       "pgrep -af python",
@@ -513,7 +530,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "netstat",
-    description: "Legacy Netzwerkstatus anzeigen",
     examples: ["netstat -tulpn", "netstat -plant", "netstat -rn"],
     options: [
       "-t",
@@ -531,7 +547,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ss",
-    description: "Sockets anzeigen, moderner Ersatz für netstat",
     examples: ["ss -tulpn", "ss -ltnp", "ss -tunap", "ss -s"],
     options: [
       "-t",
@@ -551,7 +566,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "curl",
-    description: "HTTP/API Requests und Downloads",
     examples: [
       "curl -I https://example.com",
       "curl -L https://example.com",
@@ -581,7 +595,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "wget",
-    description: "Dateien herunterladen",
     examples: [
       "wget https://example.com/file.tar.gz",
       "wget -O output.html https://example.com",
@@ -603,7 +616,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ssh",
-    description: "SSH-Verbindung herstellen",
     examples: [
       "ssh user@host",
       "ssh -p 2222 user@host",
@@ -629,7 +641,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "scp",
-    description: "Dateien über SSH kopieren",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -657,7 +668,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "rsync",
-    description: "Dateien synchronisieren",
     examples: [
       "rsync -avz ./dir/ user@host:/backup/dir/",
       "rsync -avz --delete ./site/ user@host:/var/www/site/",
@@ -699,7 +709,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "df",
-    description: "Dateisystem-Speicher anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -725,7 +734,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "du",
-    description: "Speicherverbrauch von Dateien/Ordnern anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -753,7 +761,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "free",
-    description: "RAM und Swap anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -786,7 +793,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "uptime",
-    description: "Laufzeit und Load Average anzeigen",
     examples: [
       "uptime",
       "uptime -p",
@@ -813,7 +819,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "lsof",
-    description: "Offene Dateien und Ports anzeigen",
     category: "network",
     risk: "safe",
     examples: [
@@ -842,7 +847,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "find",
-    description: "Dateien suchen",
     examples: [
       "find /var/log -type f -name '*.log'",
       "find . -type f -mtime +7",
@@ -867,7 +871,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "grep",
-    description: "Text suchen",
     examples: [
       "grep -i error /var/log/syslog",
       "grep -rn 'TODO' .",
@@ -893,7 +896,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "rg",
-    description: "Dateien schnell rekursiv nach Text durchsuchen",
     category: "text",
     risk: "safe",
     examples: [
@@ -926,7 +928,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "tar",
-    description: "Archive erstellen und entpacken",
     examples: [
       "tar -czvf archive.tar.gz ./dir",
       "tar -xzvf archive.tar.gz",
@@ -965,12 +966,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "cd",
-    description: "Arbeitsverzeichnis wechseln; Shell-Builtin",
     examples: ["cd", "cd ~", "cd /var/www", "cd ..", "cd -"],
+    options: ["-L", "-P", "-e", "-@"],
   },
   {
     command: "pwd",
-    description: "Aktuelles Arbeitsverzeichnis anzeigen",
     category: "files",
     risk: "safe",
     examples: [
@@ -995,8 +995,14 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ls",
-    description: "Dateien und Verzeichnisse auflisten",
-    examples: ["ls", "ls -la", "ls -lah /var/log", "ls -ltr", "ls -lhS"],
+    examples: [
+      "ls",
+      "ls -lah",
+      "ls -la",
+      "ls -lah /var/log",
+      "ls -ltr",
+      "ls -lhS",
+    ],
     options: [
       "-a",
       "-A",
@@ -1019,7 +1025,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "cp",
-    description: "Dateien und Verzeichnisse kopieren",
     examples: [
       "cp file.txt backup.txt",
       "cp file.txt /tmp/",
@@ -1058,7 +1063,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "mv",
-    description: "Dateien und Verzeichnisse verschieben oder umbenennen",
     examples: [
       "mv old.txt new.txt",
       "mv file.txt /tmp/",
@@ -1087,7 +1091,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "rm",
-    description: "Dateien und Verzeichnisse löschen",
     examples: ["rm file.txt", "rm -i file.txt", "rm -rf ./dir", "rm -v *.tmp"],
     options: [
       "-r",
@@ -1100,15 +1103,20 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "--recursive",
       "--force",
       "--interactive",
+      "--interactive=once",
+      "--interactive=always",
       "--verbose",
       "--dir",
+      "--one-file-system",
       "--preserve-root",
+      "--preserve-root=all",
       "--no-preserve-root",
+      "--help",
+      "--version",
     ],
   },
   {
     command: "mkdir",
-    description: "Verzeichnisse erstellen",
     examples: ["mkdir newdir", "mkdir -p /opt/app/data", "mkdir -m 755 public"],
     options: [
       "-p",
@@ -1121,7 +1129,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "rmdir",
-    description: "Leere Verzeichnisse löschen",
     examples: ["rmdir emptydir", "rmdir -p path/to/emptydir"],
     options: [
       "-p",
@@ -1129,11 +1136,12 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "--parents",
       "--verbose",
       "--ignore-fail-on-non-empty",
+      "--help",
+      "--version",
     ],
   },
   {
     command: "touch",
-    description: "Datei erstellen oder Zeitstempel ändern",
     examples: [
       "touch file.txt",
       "touch -c existing.txt",
@@ -1159,7 +1167,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ln",
-    description: "Hardlinks und symbolische Links erstellen",
     examples: [
       "ln source hardlink",
       "ln -s /opt/app/current /usr/local/bin/app",
@@ -1171,16 +1178,28 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "-n",
       "-v",
       "-T",
+      "-L",
+      "-P",
+      "-r",
       "--symbolic",
       "--force",
       "--no-dereference",
       "--verbose",
+      "--logical",
+      "--physical",
+      "--relative",
+      "-b",
+      "--backup",
+      "-S <suffix>",
+      "--suffix <suffix>",
+      "-t <dir>",
       "--target-directory <dir>",
+      "--help",
+      "--version",
     ],
   },
   {
     command: "readlink",
-    description: "Symbolische Links auslesen",
     examples: [
       "readlink symlink",
       "readlink -f ./path",
@@ -1206,7 +1225,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "realpath",
-    description: "Absoluten Pfad auflösen",
     examples: [
       "realpath file.txt",
       "realpath --relative-to /var /var/log/syslog",
@@ -1236,7 +1254,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "basename",
-    description: "Dateinamen ohne Pfad ausgeben",
     category: "files",
     risk: "safe",
     examples: [
@@ -1264,7 +1281,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "dirname",
-    description: "Verzeichnisteil eines Pfads ausgeben",
     category: "files",
     risk: "safe",
     examples: [
@@ -1285,22 +1301,24 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "file",
-    description: "Dateityp erkennen",
     examples: ["file file.txt", "file -i image.png", "file -L symlink"],
     options: ["-b", "-i", "-L", "-z", "-s"],
   },
   {
     command: "stat",
-    description: "Datei- oder Dateisystemstatus anzeigen",
     examples: ["stat file.txt", "stat -c '%U %G %a %n' file.txt", "stat -f /"],
     options: ["-c <format>", "-f", "-L", "-t"],
   },
   {
     command: "tree",
-    description: "Verzeichnisbaum anzeigen",
     category: "files",
     risk: "safe",
-    examples: ["tree", "tree -L 2", "tree -a -I node_modules", "tree -h /var/log"],
+    examples: [
+      "tree",
+      "tree -L 2",
+      "tree -a -I node_modules",
+      "tree -h /var/log",
+    ],
     options: [
       "-a",
       "-d",
@@ -1315,7 +1333,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "cat",
-    description: "Dateien ausgeben oder zusammenführen",
     examples: [
       "cat file.txt",
       "cat -n file.txt",
@@ -1325,7 +1342,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "less",
-    description: "Dateien seitenweise anzeigen",
     examples: [
       "less file.txt",
       "less -N /var/log/syslog",
@@ -1335,7 +1351,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "more",
-    description: "Dateien seitenweise anzeigen",
     category: "text",
     risk: "safe",
     examples: [
@@ -1353,18 +1368,75 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nano",
-    description: "Datei im Nano-Editor bearbeiten",
     category: "text",
     examples: [
       "nano file.txt",
       "sudo nano /etc/ssh/sshd_config",
       "nano +20 README.md",
     ],
-    options: ["-l", "--linenumbers", "-m", "--mouse", "-R", "--restricted"],
+    options: [
+      "-l",
+      "--linenumbers",
+      "-m",
+      "--mouse",
+      "-R",
+      "--restricted",
+      "-B",
+      "--backup",
+      "-C <dir>",
+      "--backupdir <dir>",
+      "-E",
+      "--tabstospaces",
+      "-F",
+      "--multibuffer",
+      "-H",
+      "--historylog",
+      "-I",
+      "--ignorercfiles",
+      "-J <number>",
+      "--guidestripe <number>",
+      "-L",
+      "--nonewlines",
+      "-N",
+      "--noconvert",
+      "-S",
+      "--softwrap",
+      "-T <number>",
+      "--tabsize <number>",
+      "-Y <name>",
+      "--syntax <name>",
+      "-a",
+      "--atblanks",
+      "-b",
+      "--breaklonglines",
+      "-i",
+      "--autoindent",
+      "-n",
+      "--noread",
+      "-o <dir>",
+      "--operatingdir <dir>",
+      "-r <number>",
+      "--fill <number>",
+      "-s <program>",
+      "--speller <program>",
+      "-v",
+      "--view",
+      "-w",
+      "--nowrap",
+      "-x",
+      "--nohelp",
+      "-z",
+      "--listsyntaxes",
+      "-@",
+      "--colonparsing",
+      "-h",
+      "--help",
+      "-V",
+      "--version",
+    ],
   },
   {
     command: "vim",
-    description: "Datei im Vim-Editor bearbeiten",
     category: "text",
     aliases: ["vi", "nvim"],
     examples: [
@@ -1378,13 +1450,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "head",
-    description: "Anfang einer Datei anzeigen",
     examples: ["head file.txt", "head -n 50 file.txt", "head -c 100 file.txt"],
     options: ["-n <lines>", "-c <bytes>", "-q", "-v"],
   },
   {
     command: "tail",
-    description: "Ende einer Datei anzeigen",
     examples: [
       "tail file.txt",
       "tail -n 100 /var/log/syslog",
@@ -1414,7 +1484,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "wc",
-    description: "Zeilen, Wörter und Bytes zählen",
     category: "text",
     risk: "safe",
     examples: [
@@ -1429,11 +1498,21 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "find . -type f | wc -l",
       "printf '%s\\n' a b c | wc -l",
     ],
-    options: ["-l", "--lines", "-w", "--words", "-c", "--bytes", "-m", "--chars", "-L", "--max-line-length"],
+    options: [
+      "-l",
+      "--lines",
+      "-w",
+      "--words",
+      "-c",
+      "--bytes",
+      "-m",
+      "--chars",
+      "-L",
+      "--max-line-length",
+    ],
   },
   {
     command: "sort",
-    description: "Zeilen sortieren",
     examples: [
       "sort file.txt",
       "sort -u file.txt",
@@ -1454,7 +1533,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "uniq",
-    description: "Doppelte benachbarte Zeilen filtern",
     category: "text",
     risk: "safe",
     examples: [
@@ -1468,11 +1546,22 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "uniq -f 1 data.txt",
       "uniq -s 4 data.txt",
     ],
-    options: ["-c", "--count", "-d", "--repeated", "-u", "--unique", "-i", "--ignore-case", "-f <fields>", "-s <chars>", "-w <chars>"],
+    options: [
+      "-c",
+      "--count",
+      "-d",
+      "--repeated",
+      "-u",
+      "--unique",
+      "-i",
+      "--ignore-case",
+      "-f <fields>",
+      "-s <chars>",
+      "-w <chars>",
+    ],
   },
   {
     command: "cut",
-    description: "Spalten oder Zeichenbereiche extrahieren",
     category: "text",
     risk: "safe",
     examples: [
@@ -1497,7 +1586,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "awk",
-    description: "Textverarbeitung mit Mustern und Aktionen",
     examples: [
       "awk '{print $1}' file.txt",
       "awk -F ':' '{print $1}' /etc/passwd",
@@ -1527,7 +1615,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sed",
-    description: "Stream-Editor für Text-Ersetzungen und Filter",
     category: "text",
     risk: "safe",
     examples: [
@@ -1542,11 +1629,20 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "sed -f script.sed file.txt",
       "printf '%s\\n' one two | sed 's/o/O/'",
     ],
-    options: ["-n", "-i", "-E", "-r", "-e <script>", "-f <scriptfile>", "--follow-symlinks", "--sandbox", "--posix"],
+    options: [
+      "-n",
+      "-i",
+      "-E",
+      "-r",
+      "-e <script>",
+      "-f <scriptfile>",
+      "--follow-symlinks",
+      "--sandbox",
+      "--posix",
+    ],
   },
   {
     command: "tee",
-    description: "Ausgabe gleichzeitig anzeigen und in Datei schreiben",
     category: "text",
     risk: "safe",
     examples: [
@@ -1577,7 +1673,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "xargs",
-    description: "Argumentlisten aus stdin bauen",
     examples: [
       "find . -name '*.log' | xargs rm",
       "find . -name '*.log' -print0 | xargs -0 rm",
@@ -1604,13 +1699,37 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "echo",
-    description: "Text ausgeben; oft Shell-Builtin",
-    examples: ["echo hello", "echo $PATH", "echo 'text' >> file.txt"],
-    options: ["-n", "-e", "-E"],
+    examples: [
+      "echo hello",
+      "echo $PATH",
+      "echo 'text' >> file.txt",
+      "echo -n 'prompt: '",
+      "echo -e 'line1\\nline2'",
+      "echo -e 'name\\tvalue'",
+      "echo -e '\\x41'",
+    ],
+    options: [
+      "-n",
+      "-e",
+      "-E",
+      "--help",
+      "--version",
+      "\\\\",
+      "\\a",
+      "\\b",
+      "\\c",
+      "\\e",
+      "\\f",
+      "\\n",
+      "\\r",
+      "\\t",
+      "\\v",
+      "\\0NNN",
+      "\\xHH",
+    ],
   },
   {
     command: "printf",
-    description: "Formatierten Text ausgeben",
     category: "text",
     risk: "safe",
     examples: [
@@ -1624,11 +1743,20 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "printf '%-20s %s\\n' name value",
       "printf '%s\\n' \"$PWD\"",
     ],
-    options: ["%s", "%d", "%04d", "%q", "%b", "%-20s", "%(%F %T)T", "\\n", "\\0"],
+    options: [
+      "%s",
+      "%d",
+      "%04d",
+      "%q",
+      "%b",
+      "%-20s",
+      "%(%F %T)T",
+      "\\n",
+      "\\0",
+    ],
   },
   {
     command: "env",
-    description: "Umgebung anzeigen oder Befehl mit Umgebung starten",
     examples: [
       "env",
       "env | grep PATH",
@@ -1650,7 +1778,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "printenv",
-    description: "Umgebungsvariablen anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1669,7 +1796,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "who",
-    description: "angemeldete Benutzer und Sessions anzeigen",
     examples: ["who", "who -a", "who -b", "who -u", "who am i"],
     options: [
       "-a",
@@ -1691,7 +1817,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "export",
-    description: "Umgebungsvariable setzen; Shell-Builtin",
     category: "system",
     risk: "safe",
     examples: [
@@ -1712,7 +1837,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "unset",
-    description: "Variable oder Funktion entfernen; Shell-Builtin",
     category: "system",
     risk: "safe",
     examples: [
@@ -1731,7 +1855,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "alias",
-    description: "Shell-Alias anzeigen oder setzen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1752,7 +1875,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "unalias",
-    description: "Shell-Alias entfernen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1772,7 +1894,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "history",
-    description: "Shell-History anzeigen oder bearbeiten",
     category: "system",
     risk: "safe",
     examples: [
@@ -1791,13 +1912,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "clear",
-    description: "Terminal leeren",
     examples: ["clear", "clear -x", "clear -T xterm-256color"],
     options: ["-x", "-T <terminal>", "-V"],
   },
   {
     command: "which",
-    description: "Pfad eines Befehls suchen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1815,7 +1934,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "whereis",
-    description: "Binary, Source und Manpage suchen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1830,11 +1948,25 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "whereis -B /usr/bin -f bash",
       "whereis -M /usr/share/man -f systemctl",
     ],
-    options: ["-b", "-m", "-s", "-u", "-B <dir>", "-M <dir>", "-S <dir>", "-f", "-l"],
+    options: [
+      "-b",
+      "-m",
+      "-s",
+      "-u",
+      "-B <dir>",
+      "-M <dir>",
+      "-S <dir>",
+      "-f",
+      "-g",
+      "-l",
+      "-h",
+      "--help",
+      "-V",
+      "--version",
+    ],
   },
   {
     command: "type",
-    description: "Befehlstyp in der Shell anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1851,7 +1983,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "command",
-    description: "Shell-Befehl ohne Funktionen/Aliase ausführen oder prüfen",
     category: "system",
     risk: "safe",
     examples: [
@@ -1869,7 +2000,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "gzip",
-    description: "Dateien mit gzip komprimieren",
     examples: ["gzip file.txt", "gzip -k file.txt", "gzip -d file.txt.gz"],
     options: [
       "-d",
@@ -1890,8 +2020,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "gunzip",
-    description: "gzip-Dateien entpacken",
-    examples: ["gunzip file.txt.gz", "gunzip -k file.txt.gz", "gunzip -c file.txt.gz"],
+    examples: [
+      "gunzip file.txt.gz",
+      "gunzip -k file.txt.gz",
+      "gunzip -c file.txt.gz",
+    ],
     options: [
       "-k",
       "--keep",
@@ -1909,14 +2042,9 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "bzip2",
-    description: "Dateien mit bzip2 komprimieren",
     category: "files",
     risk: "safe",
-    examples: [
-      "bzip2 file.log",
-      "bzip2 -k file.log",
-      "bzip2 -dc file.log.bz2",
-    ],
+    examples: ["bzip2 file.log", "bzip2 -k file.log", "bzip2 -dc file.log.bz2"],
     options: [
       "-d",
       "--decompress",
@@ -1936,7 +2064,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "bunzip2",
-    description: "bzip2-Dateien entpacken",
     category: "files",
     risk: "safe",
     examples: [
@@ -1959,7 +2086,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "xz",
-    description: "Dateien mit xz komprimieren",
     category: "files",
     risk: "safe",
     examples: ["xz file.tar", "xz -k file.tar", "xz -dc file.tar.xz"],
@@ -1984,7 +2110,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "unxz",
-    description: "xz-Dateien entpacken",
     category: "files",
     risk: "safe",
     examples: ["unxz file.xz", "unxz -k file.xz", "unxz -c file.xz"],
@@ -2003,7 +2128,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "zstd",
-    description: "Dateien mit Zstandard komprimieren oder entpacken",
     category: "files",
     risk: "safe",
     examples: ["zstd file.log", "zstd -d file.log.zst", "zstd -T0 file.tar"],
@@ -2027,7 +2151,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "zcat",
-    description: "gzip-komprimierte Dateien ausgeben",
     category: "files",
     risk: "safe",
     examples: [
@@ -2054,7 +2177,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "zgrep",
-    description: "In komprimierten Dateien suchen",
     category: "text",
     risk: "safe",
     examples: [
@@ -2080,7 +2202,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "zip",
-    description: "ZIP-Archive erstellen",
     examples: [
       "zip archive.zip file.txt",
       "zip -r archive.zip ./dir",
@@ -2111,7 +2232,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "unzip",
-    description: "ZIP-Archive entpacken",
     examples: [
       "unzip archive.zip",
       "unzip archive.zip -d /tmp",
@@ -2140,7 +2260,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "uname",
-    description: "Kernel- und Systeminformationen anzeigen",
     examples: ["uname -a", "uname -r", "uname -m", "uname -n"],
     options: [
       "-a",
@@ -2163,7 +2282,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "hostname",
-    description: "Hostname anzeigen oder setzen",
     examples: [
       "hostname",
       "hostname -f",
@@ -2194,7 +2312,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "hostnamectl",
-    description: "System-Hostname und Host-Metadaten verwalten",
     examples: [
       "hostnamectl",
       "hostnamectl status",
@@ -2232,13 +2349,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "whoami",
-    description: "Aktuellen Benutzer anzeigen",
     examples: ["whoami", "whoami --help", "whoami --version"],
     options: ["--help", "--version"],
   },
   {
     command: "id",
-    description: "Benutzer- und Gruppen-IDs anzeigen",
     examples: ["id", "id username", "id -u", "id -Gn"],
     options: [
       "-u",
@@ -2258,7 +2373,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "groups",
-    description: "Gruppen eines Benutzers anzeigen",
     category: "users",
     risk: "safe",
     examples: [
@@ -2279,7 +2393,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "date",
-    description: "Datum und Zeit anzeigen oder formatieren",
     examples: [
       "date",
       "date -u",
@@ -2303,7 +2416,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "timedatectl",
-    description: "Systemzeit und Zeitzone verwalten",
     examples: [
       "timedatectl",
       "timedatectl status",
@@ -2341,7 +2453,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "crontab",
-    description: "Cronjobs verwalten",
     category: "system",
     risk: "caution",
     examples: [
@@ -2357,7 +2468,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nginx",
-    description: "Nginx-Konfiguration prüfen und Masterprozess steuern",
     category: "web",
     risk: "caution",
     examples: [
@@ -2378,7 +2488,7 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "-s stop",
       "-c <file>",
       "-g <directives>",
-      "-g \"daemon off;\"",
+      '-g "daemon off;"',
       "-p <prefix>",
       "-e <file>",
       "-V",
@@ -2389,7 +2499,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   {
     command: "apachectl",
     aliases: ["apache2ctl"],
-    description: "Apache HTTP Server prüfen und steuern",
     category: "web",
     risk: "caution",
     examples: [
@@ -2416,7 +2525,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "certbot",
-    description: "Let's-Encrypt-Zertifikate verwalten",
     category: "web",
     risk: "caution",
     examples: [
@@ -2448,7 +2556,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "supervisorctl",
-    description: "Supervisor-Prozesse anzeigen und steuern",
     category: "system",
     risk: "caution",
     examples: [
@@ -2475,7 +2582,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pm2",
-    description: "Node.js-Prozesse mit PM2 verwalten",
     category: "developer",
     risk: "caution",
     examples: [
@@ -2508,7 +2614,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "mount",
-    description: "Dateisysteme einhängen",
     category: "system",
     risk: "caution",
     examples: [
@@ -2542,7 +2647,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "umount",
-    description: "Dateisysteme aushängen",
     category: "system",
     risk: "caution",
     examples: [
@@ -2552,11 +2656,20 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "sudo umount /dev/sdb1",
       "sudo umount --recursive /mnt",
     ],
-    options: ["-f", "--force", "-l", "--lazy", "-v", "--verbose", "-R", "--recursive", "-t <type>"],
+    options: [
+      "-f",
+      "--force",
+      "-l",
+      "--lazy",
+      "-v",
+      "--verbose",
+      "-R",
+      "--recursive",
+      "-t <type>",
+    ],
   },
   {
     command: "lsblk",
-    description: "Blockgeräte anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -2585,7 +2698,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "blkid",
-    description: "Blockgeräte-UUIDs und Dateisystemtypen anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -2610,7 +2722,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nc",
-    description: "Netcat: TCP/UDP-Verbindungen testen",
     aliases: ["netcat"],
     examples: ["nc -vz host 22", "nc -l -p 8080", "nc -u host 53"],
     options: [
@@ -2627,7 +2738,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "dig",
-    description: "DNS-Abfragen ausführen",
     examples: [
       "dig example.com",
       "dig +short example.com",
@@ -2638,7 +2748,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nslookup",
-    description: "DNS-Abfragen, legacy aber noch verbreitet",
     category: "network",
     risk: "safe",
     examples: [
@@ -2664,7 +2773,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "traceroute",
-    description: "Route zu einem Host verfolgen",
     examples: [
       "traceroute example.com",
       "traceroute -n 8.8.8.8",
@@ -2682,7 +2790,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "tracepath",
-    description: "Route ohne Root-Rechte verfolgen",
     category: "network",
     risk: "safe",
     examples: [
@@ -2696,7 +2803,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "mtr",
-    description: "Ping und Traceroute kombiniert",
     examples: [
       "mtr example.com",
       "mtr -rw -c 100 example.com",
@@ -2731,7 +2837,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ufw",
-    description: "Ubuntu Firewall verwalten",
     examples: [
       "sudo ufw status",
       "sudo ufw status verbose",
@@ -2755,7 +2860,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "iptables",
-    description: "Legacy Linux Firewall-Regeln verwalten",
     examples: [
       "sudo iptables -L -n -v",
       "sudo iptables -S",
@@ -2782,7 +2886,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nft",
-    description: "nftables Firewall verwalten",
     category: "network",
     risk: "caution",
     examples: [
@@ -2806,11 +2909,18 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "monitor",
       "monitor trace",
     ],
-    options: ["-a", "--handle", "-n", "--numeric", "-c", "--check", "-f <file>"],
+    options: [
+      "-a",
+      "--handle",
+      "-n",
+      "--numeric",
+      "-c",
+      "--check",
+      "-f <file>",
+    ],
   },
   {
     command: "chmod",
-    description: "Dateirechte ändern",
     examples: [
       "chmod +x script.sh",
       "chmod 644 file.txt",
@@ -2820,7 +2930,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "chown",
-    description: "Dateibesitzer ändern",
     examples: [
       "sudo chown user:group file",
       "sudo chown -R www-data:www-data /var/www",
@@ -2829,7 +2938,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "useradd",
-    description: "Benutzer erstellen",
     category: "users",
     risk: "caution",
     examples: [
@@ -2856,7 +2964,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "usermod",
-    description: "Benutzer ändern",
     category: "users",
     risk: "caution",
     examples: [
@@ -2888,18 +2995,33 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "passwd",
-    description: "Passwort ändern",
     examples: [
       "passwd",
       "sudo passwd username",
       "sudo passwd -S username",
       "sudo passwd -l username",
     ],
-    options: ["-S", "--status", "-l", "--lock", "-u", "--unlock", "-d", "--delete", "-e", "--expire", "-n <days>", "--mindays <days>", "-x <days>", "--maxdays <days>", "-w <days>", "--warndays <days>"],
+    options: [
+      "-S",
+      "--status",
+      "-l",
+      "--lock",
+      "-u",
+      "--unlock",
+      "-d",
+      "--delete",
+      "-e",
+      "--expire",
+      "-n <days>",
+      "--mindays <days>",
+      "-x <days>",
+      "--maxdays <days>",
+      "-w <days>",
+      "--warndays <days>",
+    ],
   },
   {
     command: "chage",
-    description: "Passwort- und Kontoablauf verwalten",
     category: "users",
     risk: "caution",
     examples: [
@@ -2927,7 +3049,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "apt",
-    description: "Debian/Ubuntu Paketverwaltung",
     examples: [
       "sudo apt update",
       "sudo apt upgrade -y",
@@ -2952,7 +3073,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "docker",
-    description: "Docker Container, Images, Volumes und Networks verwalten",
     examples: [
       "docker ps",
       "docker ps -a",
@@ -3103,7 +3223,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "docker compose",
-    description: "Docker Compose Projekte verwalten",
     examples: [
       "docker compose up -d",
       "docker compose down",
@@ -3153,7 +3272,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "git",
-    description: "Versionsverwaltung",
     examples: [
       "git status",
       "git pull",
@@ -3257,7 +3375,12 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       tag: ["-a <name>", "-d <name>", "-l"],
       remote: ["-v", "add origin <url>", "set-url origin <url>"],
       worktree: ["list", "add <path> <branch>", "remove <path>", "prune"],
-      submodule: ["status", "init", "update --init --recursive", "foreach <command>"],
+      submodule: [
+        "status",
+        "init",
+        "update --init --recursive",
+        "foreach <command>",
+      ],
       config: [
         "--list",
         "--global user.name <name>",
@@ -3280,7 +3403,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "diff",
-    description: "Dateien zeilenweise vergleichen",
     category: "text",
     risk: "safe",
     examples: [
@@ -3305,7 +3427,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "patch",
-    description: "Änderungen aus Patch-Dateien anwenden",
     category: "text",
     risk: "caution",
     examples: [
@@ -3327,7 +3448,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "cmp",
-    description: "Dateien bytegenau vergleichen",
     category: "text",
     risk: "safe",
     examples: [
@@ -3339,11 +3459,21 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "cmp --print-bytes file-a file-b",
       "cmp --verbose file-a file-b",
     ],
-    options: ["-b", "--print-bytes", "-l", "--verbose", "-s", "--quiet", "-i <skip>", "--ignore-initial <skip>", "-n <bytes>", "--bytes <bytes>"],
+    options: [
+      "-b",
+      "--print-bytes",
+      "-l",
+      "--verbose",
+      "-s",
+      "--quiet",
+      "-i <skip>",
+      "--ignore-initial <skip>",
+      "-n <bytes>",
+      "--bytes <bytes>",
+    ],
   },
   {
     command: "tr",
-    description: "Zeichen übersetzen, löschen oder zusammenfassen",
     category: "text",
     risk: "safe",
     examples: [
@@ -3369,7 +3499,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nl",
-    description: "Zeilen nummerieren",
     category: "text",
     risk: "safe",
     examples: [
@@ -3399,7 +3528,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "split",
-    description: "Dateien in kleinere Teile aufteilen",
     category: "files",
     risk: "safe",
     examples: [
@@ -3433,7 +3561,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "paste",
-    description: "Zeilen mehrerer Dateien nebeneinander zusammenführen",
     category: "text",
     risk: "safe",
     examples: [
@@ -3458,7 +3585,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "column",
-    description: "Tabellen lesbar ausrichten",
     category: "text",
     risk: "safe",
     examples: [
@@ -3488,7 +3614,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "jq",
-    description: "JSON filtern und formatieren",
     category: "text",
     risk: "safe",
     examples: [
@@ -3510,7 +3635,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "yq",
-    description: "YAML, JSON und strukturierte Daten filtern",
     category: "text",
     risk: "safe",
     examples: [
@@ -3539,7 +3663,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "watch",
-    description: "Befehl regelmäßig neu ausführen",
     category: "system",
     risk: "safe",
     examples: [
@@ -3573,7 +3696,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "timeout",
-    description: "Befehl nach einer Zeitgrenze beenden",
     category: "system",
     risk: "safe",
     examples: [
@@ -3600,8 +3722,51 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
     ],
   },
   {
+    command: "memusage",
+    category: "developer",
+    risk: "safe",
+    examples: [
+      "memusage ./app",
+      "memusage -p memory.png ./app",
+      "memusage --png=memory.png ./app",
+      "memusage -d memory.dat ./app",
+      "memusage --data=memory.dat ./app",
+      "memusage -m ./app",
+      "memusage --time-based --total --png=memory.png ./app",
+      "memusage --title='Memory profile' --x-size=1200 --y-size=800 --png=memory.png ./app",
+    ],
+    options: [
+      "-n <name>",
+      "--progname=<name>",
+      "-p <file>",
+      "--png=<file>",
+      "-d <file>",
+      "--data=<file>",
+      "-u",
+      "--unbuffered",
+      "-b <size>",
+      "--buffer=<size>",
+      "--no-timer",
+      "-m",
+      "--mmap",
+      "-t",
+      "--time-based",
+      "-T",
+      "--total",
+      "--title=<string>",
+      "-x <size>",
+      "--x-size=<size>",
+      "-y <size>",
+      "--y-size=<size>",
+      "-?",
+      "--help",
+      "--usage",
+      "-V",
+      "--version",
+    ],
+  },
+  {
     command: "yes",
-    description: "Text fortlaufend ausgeben",
     category: "text",
     risk: "caution",
     examples: [
@@ -3620,7 +3785,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "seq",
-    description: "Zahlenfolgen ausgeben",
     category: "text",
     risk: "safe",
     examples: [
@@ -3645,7 +3809,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sha256sum",
-    description: "SHA-256 Prüfsummen berechnen oder prüfen",
     category: "files",
     risk: "safe",
     examples: [
@@ -3677,7 +3840,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sha1sum",
-    description: "SHA-1 Prüfsummen berechnen oder prüfen",
     category: "files",
     risk: "safe",
     examples: [
@@ -3707,7 +3869,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "md5sum",
-    description: "MD5 Prüfsummen berechnen oder prüfen",
     category: "files",
     risk: "safe",
     examples: [
@@ -3737,7 +3898,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "base64",
-    description: "Daten als Base64 kodieren oder dekodieren",
     category: "text",
     risk: "safe",
     examples: [
@@ -3767,7 +3927,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "hexdump",
-    description: "Dateien hexadezimal anzeigen",
     category: "files",
     risk: "safe",
     examples: [
@@ -3777,7 +3936,7 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "hexdump -C -n 128 file.bin",
       "hexdump -C -s 512 file.bin",
       "hexdump -v file.bin",
-      "hexdump -e '16/1 \"%02x \" \"\\n\"' file.bin",
+      'hexdump -e \'16/1 "%02x " "\\n"\' file.bin',
       "hexdump -x file.bin",
     ],
     options: [
@@ -3802,7 +3961,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "xxd",
-    description: "Hexdump erzeugen oder zurückwandeln",
     category: "files",
     risk: "safe",
     examples: [
@@ -3830,7 +3988,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "dd",
-    description: "Daten blockweise kopieren und konvertieren",
     category: "files",
     risk: "dangerous",
     examples: [
@@ -3842,37 +3999,76 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "if=<file>",
       "of=<file>",
       "bs=<size>",
+      "cbs=<size>",
       "count=<n>",
+      "ibs=<size>",
+      "obs=<size>",
+      "iflag=<flags>",
+      "oflag=<flags>",
+      "seek=<n>",
+      "skip=<n>",
       "status=progress",
+      "status=none",
+      "status=noxfer",
       "conv=fsync",
       "conv=noerror,sync",
+      "conv=notrunc",
+      "conv=sync",
+      "conv=sparse",
+      "--help",
+      "--version",
     ],
   },
   {
     command: "install",
-    description: "Dateien kopieren und Rechte setzen",
     category: "files",
     risk: "caution",
     examples: [
       "install -m 755 app /usr/local/bin/app",
       "install -d -m 755 /opt/app",
       "install -o root -g root file /etc/app/file",
+      "install -C -m 644 config.yml /etc/app/config.yml",
+      "install -D -m 755 app /usr/local/bin/app",
+      "install -t /usr/local/bin app helper",
+      "install -b -S .bak file /etc/app/file",
     ],
     options: [
+      "--backup=<control>",
+      "-b",
+      "-c",
+      "-C",
+      "--compare",
       "-m <mode>",
       "--mode <mode>",
       "-d",
       "--directory",
+      "-D",
       "-o <owner>",
       "--owner <owner>",
       "-g <group>",
       "--group <group>",
-      "-D",
+      "-p",
+      "--preserve-timestamps",
+      "-s",
+      "--strip",
+      "--strip-program <program>",
+      "-S <suffix>",
+      "--suffix <suffix>",
+      "-t <directory>",
+      "--target-directory <directory>",
+      "-T",
+      "--no-target-directory",
+      "-v",
+      "--verbose",
+      "--preserve-context",
+      "-Z",
+      "--context <context>",
+      "--help",
+      "--version",
     ],
   },
   {
     command: "shred",
-    description: "Dateiinhalte überschreiben",
     category: "files",
     risk: "dangerous",
     examples: ["shred file.txt", "shred -v -n 3 file.txt", "shred -u file.txt"],
@@ -3889,7 +4085,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ssh-keygen",
-    description: "SSH-Schlüssel erzeugen und verwalten",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -3911,7 +4106,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ssh-copy-id",
-    description: "SSH-Public-Key auf einen Server kopieren",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -3934,7 +4128,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ssh-agent",
-    description: "SSH-Agent für Schlüssel starten",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -3966,7 +4159,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ssh-add",
-    description: "SSH-Schlüssel in den Agent laden",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -3976,11 +4168,26 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "ssh-add -D",
       "ssh-add -t 1h ~/.ssh/id_ed25519",
     ],
-    options: ["-l", "-L", "-D", "-d", "-t <life>", "-K", "-q", "-v", "-c", "-k", "-x", "-X", "-s <pkcs11_provider>", "-e <pkcs11_provider>", "-T <pubkey_file>"],
+    options: [
+      "-l",
+      "-L",
+      "-D",
+      "-d",
+      "-t <life>",
+      "-K",
+      "-q",
+      "-v",
+      "-c",
+      "-k",
+      "-x",
+      "-X",
+      "-s <pkcs11_provider>",
+      "-e <pkcs11_provider>",
+      "-T <pubkey_file>",
+    ],
   },
   {
     command: "ssh-keyscan",
-    description: "SSH-Host-Keys einsammeln",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -4003,7 +4210,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sftp",
-    description: "Dateien über SSH interaktiv übertragen",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -4034,7 +4240,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sshfs",
-    description: "Entferntes Verzeichnis per SSH einhängen",
     category: "ssh",
     risk: "safe",
     examples: [
@@ -4057,7 +4262,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "apt-get",
-    description: "Debian/Ubuntu Pakete skriptfreundlich verwalten",
     category: "packages",
     risk: "caution",
     examples: [
@@ -4088,7 +4292,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "apt-cache",
-    description: "APT-Paketinformationen durchsuchen",
     category: "packages",
     risk: "safe",
     examples: [
@@ -4107,7 +4310,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "dpkg",
-    description: "Debian-Pakete lokal abfragen und installieren",
     category: "packages",
     risk: "caution",
     examples: [
@@ -4143,7 +4345,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "npm",
-    description: "Node.js Pakete und Projekt-Skripte verwalten",
     category: "packages",
     risk: "safe",
     examples: [
@@ -4191,7 +4392,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pnpm",
-    description: "Schneller Node.js Paketmanager mit Workspace-Unterstützung",
     category: "packages",
     risk: "safe",
     examples: [
@@ -4234,7 +4434,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "yarn",
-    description: "Node.js Pakete und Projekt-Skripte mit Yarn verwalten",
     category: "packages",
     risk: "safe",
     examples: [
@@ -4272,14 +4471,13 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "node",
-    description: "JavaScript mit Node.js ausführen und prüfen",
     category: "developer",
     risk: "safe",
     examples: [
       "node server.js",
       "node --watch server.js",
       "node --version",
-      "node -e \"console.log(process.version)\"",
+      'node -e "console.log(process.version)"',
     ],
     options: [
       "-e <script>",
@@ -4297,7 +4495,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   {
     command: "python",
     aliases: ["python3"],
-    description: "Python-Skripte und Module ausführen",
     category: "developer",
     risk: "safe",
     examples: [
@@ -4331,7 +4528,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   {
     command: "pip",
     aliases: ["pip3"],
-    description: "Python-Pakete installieren und verwalten",
     category: "packages",
     risk: "safe",
     examples: [
@@ -4366,7 +4562,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "make",
-    description: "Makefile-Ziele ausführen",
     category: "developer",
     risk: "safe",
     examples: [
@@ -4388,19 +4583,10 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "-k",
       "--keep-going",
     ],
-    subcommands: [
-      "build",
-      "test",
-      "install",
-      "clean",
-      "lint",
-      "run",
-      "help",
-    ],
+    subcommands: ["build", "test", "install", "clean", "lint", "run", "help"],
   },
   {
     command: "kubectl",
-    description: "Kubernetes-Cluster abfragen und verwalten",
     category: "kubernetes",
     risk: "caution",
     examples: [
@@ -4492,7 +4678,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "helm",
-    description: "Kubernetes-Deployments mit Helm-Charts verwalten",
     category: "kubernetes",
     risk: "caution",
     examples: [
@@ -4569,7 +4754,12 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       history: ["-n <namespace>", "--max <count>"],
       rollback: ["-n <namespace>", "--wait"],
       uninstall: ["-n <namespace>", "--keep-history"],
-      template: ["-n <namespace>", "-f <values.yaml>", "--set <key=value>", "--debug"],
+      template: [
+        "-n <namespace>",
+        "-f <values.yaml>",
+        "--set <key=value>",
+        "--debug",
+      ],
       lint: ["-f <values.yaml>", "--strict"],
       "repo add": ["--username <user>", "--password <password>"],
       "search repo": ["--versions", "--devel"],
@@ -4577,7 +4767,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "terraform",
-    description: "Infrastructure-as-Code mit Terraform planen und verwalten",
     category: "automation",
     risk: "caution",
     examples: [
@@ -4655,7 +4844,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ansible",
-    description: "Ad-hoc-Automation auf Hosts ausführen",
     category: "automation",
     risk: "caution",
     examples: [
@@ -4689,7 +4877,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ansible-playbook",
-    description: "Ansible-Playbooks ausführen und prüfen",
     category: "automation",
     risk: "caution",
     examples: [
@@ -4729,7 +4916,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ansible-inventory",
-    description: "Ansible-Inventories anzeigen und prüfen",
     category: "automation",
     risk: "safe",
     examples: [
@@ -4753,7 +4939,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "aws",
-    description: "AWS-Ressourcen über die AWS CLI abfragen und verwalten",
     category: "cloud",
     risk: "caution",
     examples: [
@@ -4831,7 +5016,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "gcloud",
-    description: "Google Cloud Ressourcen über die gcloud CLI verwalten",
     category: "cloud",
     risk: "caution",
     examples: [
@@ -4878,7 +5062,11 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
         "--filter <expression>",
         "--format table",
       ],
-      "compute ssh": ["--zone <zone>", "--project <project>", "--tunnel-through-iap"],
+      "compute ssh": [
+        "--zone <zone>",
+        "--project <project>",
+        "--tunnel-through-iap",
+      ],
       "container clusters get-credentials": [
         "--zone <zone>",
         "--region <region>",
@@ -4894,7 +5082,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "az",
-    description: "Azure-Ressourcen über die Azure CLI verwalten",
     category: "cloud",
     risk: "caution",
     examples: [
@@ -4949,7 +5136,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "psql",
-    description: "PostgreSQL interaktiv abfragen und administrieren",
     category: "database",
     risk: "caution",
     examples: [
@@ -4988,7 +5174,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pg_dump",
-    description: "PostgreSQL-Datenbank sichern",
     category: "database",
     risk: "safe",
     examples: [
@@ -5016,7 +5201,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pg_restore",
-    description: "PostgreSQL-Dump wiederherstellen oder inspizieren",
     category: "database",
     risk: "caution",
     examples: [
@@ -5046,7 +5230,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   {
     command: "mysql",
     aliases: ["mariadb"],
-    description: "MySQL oder MariaDB interaktiv abfragen",
     category: "database",
     risk: "caution",
     examples: [
@@ -5076,7 +5259,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "mysqldump",
-    description: "MySQL oder MariaDB Datenbank sichern",
     category: "database",
     risk: "safe",
     examples: [
@@ -5105,7 +5287,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sqlite3",
-    description: "SQLite-Datenbank öffnen und abfragen",
     category: "database",
     risk: "caution",
     examples: [
@@ -5132,7 +5313,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "redis-cli",
-    description: "Redis Server abfragen und diagnostizieren",
     category: "database",
     risk: "caution",
     examples: [
@@ -5163,7 +5343,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "mongosh",
-    description: "MongoDB Shell öffnen und Datenbanken abfragen",
     category: "database",
     risk: "caution",
     examples: [
@@ -5189,7 +5368,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "dmesg",
-    description: "Kernel-Meldungen anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5224,7 +5402,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "sysctl",
-    description: "Kernel-Parameter anzeigen und setzen",
     category: "system",
     risk: "caution",
     examples: [
@@ -5256,7 +5433,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "findmnt",
-    description: "Mountpoints und Dateisysteme anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5296,7 +5472,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "loginctl",
-    description: "systemd-Logins, Sessions und Seats verwalten",
     category: "system",
     risk: "caution",
     examples: [
@@ -5322,7 +5497,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "localectl",
-    description: "Systemsprache, Tastatur und Locale verwalten",
     category: "system",
     risk: "caution",
     examples: [
@@ -5343,7 +5517,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "networkctl",
-    description: "systemd-networkd Links und Netzwerkstatus anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5352,7 +5525,13 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "networkctl status eth0",
       "networkctl lldp",
     ],
-    options: ["--no-pager", "--no-legend", "--all", "--json <mode>", "--type <type>"],
+    options: [
+      "--no-pager",
+      "--no-legend",
+      "--all",
+      "--json <mode>",
+      "--type <type>",
+    ],
     subcommands: [
       "list",
       "status <link>",
@@ -5367,7 +5546,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "busctl",
-    description: "D-Bus Services, Objekte und Methoden untersuchen",
     category: "system",
     risk: "caution",
     examples: [
@@ -5376,7 +5554,13 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "busctl introspect org.freedesktop.systemd1 /org/freedesktop/systemd1",
       "busctl monitor",
     ],
-    options: ["--system", "--user", "--no-pager", "--json <mode>", "--xml-interface"],
+    options: [
+      "--system",
+      "--user",
+      "--no-pager",
+      "--json <mode>",
+      "--xml-interface",
+    ],
     subcommands: [
       "list",
       "tree <service>",
@@ -5390,7 +5574,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "coredumpctl",
-    description: "Coredumps anzeigen und debuggen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5399,12 +5582,18 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "coredumpctl info nginx",
       "coredumpctl debug <pid>",
     ],
-    options: ["--no-pager", "--json <mode>", "--since <time>", "--until <time>", "-1", "--reverse"],
+    options: [
+      "--no-pager",
+      "--json <mode>",
+      "--since <time>",
+      "--until <time>",
+      "-1",
+      "--reverse",
+    ],
     subcommands: ["list", "info <match>", "dump <match>", "debug <match>"],
   },
   {
     command: "systemd-cgls",
-    description: "systemd Control-Groups als Baum anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5434,7 +5623,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "systemd-cgtop",
-    description: "Ressourcenverbrauch von systemd Control-Groups anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -5461,7 +5649,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "machinectl",
-    description: "systemd-Maschinen, Container und Images verwalten",
     category: "system",
     risk: "caution",
     examples: [
@@ -5470,7 +5657,14 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "machinectl shell <machine>",
       "machinectl list-images",
     ],
-    options: ["--no-pager", "--no-legend", "--all", "--full", "--kill-whom <leader|all>", "--signal <signal>"],
+    options: [
+      "--no-pager",
+      "--no-legend",
+      "--all",
+      "--full",
+      "--kill-whom <leader|all>",
+      "--signal <signal>",
+    ],
     subcommands: [
       "list",
       "status <machine>",
@@ -5487,7 +5681,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "logrotate",
-    description: "Logrotation prüfen und ausführen",
     category: "system",
     risk: "caution",
     examples: [
@@ -5510,7 +5703,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "systemd-analyze",
-    description: "Bootzeit und systemd-Abhängigkeiten analysieren",
     category: "system",
     risk: "safe",
     examples: [
@@ -5550,7 +5742,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "service",
-    description: "SysV/Systemdienste steuern",
     category: "system",
     risk: "caution",
     examples: [
@@ -5569,7 +5760,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "update-alternatives",
-    description: "Standardprogramme über Alternativen verwalten",
     category: "system",
     risk: "caution",
     examples: [
@@ -5598,7 +5788,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "chgrp",
-    description: "Gruppenbesitz von Dateien ändern",
     category: "users",
     risk: "caution",
     examples: [
@@ -5620,7 +5809,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "umask",
-    description: "Standardrechte für neue Dateien anzeigen oder setzen",
     category: "users",
     risk: "safe",
     examples: ["umask", "umask 022", "umask -S"],
@@ -5628,7 +5816,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "groupadd",
-    description: "Linux-Gruppe anlegen",
     category: "users",
     risk: "caution",
     examples: [
@@ -5650,7 +5837,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "groupdel",
-    description: "Linux-Gruppe löschen",
     category: "users",
     risk: "dangerous",
     examples: ["sudo groupdel oldgroup"],
@@ -5658,7 +5844,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "groupmod",
-    description: "Linux-Gruppe ändern",
     category: "users",
     risk: "caution",
     examples: [
@@ -5679,15 +5864,26 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "userdel",
-    description: "Linux-Benutzer löschen",
     category: "users",
     risk: "dangerous",
     examples: ["sudo userdel olduser", "sudo userdel -r olduser"],
-    options: ["-r", "--remove", "-f", "--force", "-Z", "--selinux-user"],
+    options: [
+      "-r",
+      "--remove",
+      "-f",
+      "--force",
+      "-R <dir>",
+      "--root <dir>",
+      "-P <dir>",
+      "--prefix <dir>",
+      "-Z",
+      "--selinux-user",
+      "-h",
+      "--help",
+    ],
   },
   {
     command: "visudo",
-    description: "sudoers-Dateien sicher bearbeiten",
     category: "users",
     risk: "caution",
     examples: [
@@ -5714,7 +5910,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "tcpdump",
-    description: "Netzwerkpakete mitschneiden und filtern",
     category: "network",
     risk: "caution",
     examples: [
@@ -5736,7 +5931,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "openssl s_client",
-    description: "TLS-Verbindungen und Zertifikate testen",
     category: "network",
     risk: "safe",
     examples: [
@@ -5762,7 +5956,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "resolvectl",
-    description: "DNS-Konfiguration und Auflösung prüfen",
     category: "network",
     risk: "safe",
     examples: [
@@ -5789,7 +5982,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "host",
-    description: "DNS-Namen einfach auflösen",
     category: "network",
     risk: "safe",
     examples: ["host example.com", "host -t MX example.com", "host 8.8.8.8"],
@@ -5797,7 +5989,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nmcli",
-    description: "NetworkManager über die CLI steuern",
     category: "network",
     risk: "caution",
     examples: [
@@ -5808,10 +5999,26 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
     options: [
       "-t",
       "--terse",
+      "-a",
+      "--ask",
+      "-c <auto|yes|no>",
+      "--colors <auto|yes|no>",
+      "-e <yes|no>",
+      "--escape <yes|no>",
       "-f <fields>",
       "--fields <fields>",
+      "-g <fields>",
+      "--get-values <fields>",
+      "-h",
+      "--help",
       "-p",
       "--pretty",
+      "-s",
+      "--show-secrets",
+      "-v",
+      "--version",
+      "-w <seconds>",
+      "--wait <seconds>",
       "-m <mode>",
       "--mode <mode>",
     ],
@@ -5822,11 +6029,16 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "connection up <name>",
       "connection down <name>",
       "radio wifi",
+      "general",
+      "networking",
+      "connection",
+      "device",
+      "agent",
+      "monitor",
     ],
   },
   {
     command: "ethtool",
-    description: "Ethernet-Geräte anzeigen und konfigurieren",
     category: "network",
     risk: "caution",
     examples: [
@@ -5841,15 +6053,36 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "--statistics",
       "-s",
       "--change",
+      "-a",
+      "--show-pause",
+      "-A",
+      "--pause",
+      "-c",
+      "--show-coalesce",
+      "-C",
+      "--coalesce",
+      "-g",
+      "--show-ring",
+      "-G",
+      "--set-ring",
       "-k",
       "--show-features",
       "-K",
       "--features",
+      "-T",
+      "--show-time-stamping",
+      "-l",
+      "--show-channels",
+      "-L",
+      "--set-channels",
+      "-h",
+      "--help",
+      "--version",
+      "--json",
     ],
   },
   {
     command: "iw",
-    description: "WLAN-Geräte und Verbindungen prüfen",
     category: "network",
     risk: "caution",
     examples: [
@@ -5882,7 +6115,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nmap",
-    description: "Hosts und Ports scannen",
     category: "network",
     risk: "caution",
     examples: ["nmap 192.168.1.1", "nmap -p 22,80,443 host", "nmap -sV host"],
@@ -5899,7 +6131,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "iftop",
-    description: "Live-Bandbreite pro Verbindung anzeigen",
     category: "network",
     risk: "safe",
     examples: [
@@ -5927,7 +6158,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nload",
-    description: "Live-Netzwerkdurchsatz pro Interface anzeigen",
     category: "network",
     risk: "safe",
     examples: [
@@ -5956,7 +6186,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "vnstat",
-    description: "Netzwerkverbrauch aus Interface-Statistiken anzeigen",
     category: "network",
     risk: "safe",
     examples: ["vnstat", "vnstat -i eth0", "vnstat -d", "vnstat -m"],
@@ -5978,7 +6207,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "iperf3",
-    description: "Netzwerkdurchsatz zwischen zwei Hosts messen",
     category: "network",
     risk: "safe",
     examples: [
@@ -6010,7 +6238,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "tmux",
-    description: "Terminal-Sitzungen multiplexen",
     category: "system",
     risk: "safe",
     examples: ["tmux", "tmux new -s work", "tmux attach -t work"],
@@ -6027,7 +6254,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "screen",
-    description: "Terminal-Sitzungen im Hintergrund halten",
     category: "system",
     risk: "safe",
     examples: [
@@ -6057,7 +6283,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "nohup",
-    description: "Befehl unabhängig vom Terminal weiterlaufen lassen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6080,7 +6305,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "jobs",
-    description: "Shell-Jobs anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6103,7 +6327,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "fg",
-    description: "Shell-Job in den Vordergrund holen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6124,7 +6347,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "bg",
-    description: "Shell-Job im Hintergrund fortsetzen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6145,7 +6367,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "disown",
-    description: "Shell-Job aus der Job-Tabelle lösen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6167,7 +6388,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pidof",
-    description: "Prozess-IDs nach Programmnamen finden",
     category: "system",
     risk: "safe",
     examples: [
@@ -6195,7 +6415,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "pstree",
-    description: "Prozessbaum anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6227,7 +6446,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "vmstat",
-    description: "Speicher-, CPU- und I/O-Statistiken anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6262,7 +6480,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "iostat",
-    description: "CPU- und Blockgeräte-I/O anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6301,7 +6518,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "iotop",
-    description: "Live-I/O pro Prozess anzeigen",
     category: "system",
     risk: "safe",
     examples: ["sudo iotop", "sudo iotop -o", "sudo iotop -P -a"],
@@ -6323,7 +6539,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ncdu",
-    description: "Interaktive Speicheranalyse im Terminal",
     category: "files",
     risk: "safe",
     examples: ["ncdu", "ncdu /var/log", "ncdu -x /"],
@@ -6343,7 +6558,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "lscpu",
-    description: "CPU-Architektur anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6379,7 +6593,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "lspci",
-    description: "PCI-Geräte anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6409,7 +6622,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "lsusb",
-    description: "USB-Geräte anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6434,7 +6646,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "lsmod",
-    description: "Geladene Kernel-Module anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6454,7 +6665,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "modprobe",
-    description: "Kernel-Module laden oder entfernen",
     category: "system",
     risk: "caution",
     examples: [
@@ -6465,18 +6675,51 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
     options: [
       "-r",
       "--remove",
+      "--remove-holders",
+      "-w <msec>",
+      "--wait <msec>",
+      "--first-time",
+      "-i",
+      "--ignore-install",
+      "--ignore-remove",
+      "-b",
+      "--use-blacklist",
+      "-f",
+      "--force",
+      "-R",
+      "--resolve-alias",
+      "-D",
       "-n",
       "--dry-run",
       "-v",
       "--verbose",
       "--show-depends",
+      "-c",
+      "--showconfig",
+      "--show-config",
+      "--show-modversions",
+      "--dump-modversions",
+      "--show-exports",
+      "-C <file>",
+      "--config <file>",
+      "-d <dir>",
+      "--dirname <dir>",
+      "-S <version>",
+      "--set-version <version>",
+      "-s",
+      "--syslog",
+      "-q",
+      "--quiet",
+      "-V",
+      "--version",
+      "-h",
+      "--help",
       "-a",
       "--all",
     ],
   },
   {
     command: "modinfo",
-    description: "Informationen zu Kernel-Modulen anzeigen",
     category: "system",
     risk: "safe",
     examples: [
@@ -6508,24 +6751,35 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "fdisk",
-    description: "Partitionstabellen anzeigen und bearbeiten",
     category: "system",
     risk: "dangerous",
     examples: ["sudo fdisk -l", "sudo fdisk /dev/sdX"],
     options: [
+      "-b <size>",
+      "--sector-size <size>",
+      "-B",
+      "--protect-boot",
       "-l",
       "--list",
       "-x",
       "--list-details",
+      "-o <list>",
+      "--output <list>",
+      "-t <type>",
+      "--type <type>",
       "-s <partition>",
       "--getsz <partition>",
       "-u",
       "--units <unit>",
+      "--bytes",
+      "-h",
+      "--help",
+      "-v",
+      "--version",
     ],
   },
   {
     command: "parted",
-    description: "Partitionen anzeigen und verwalten",
     category: "system",
     risk: "dangerous",
     examples: [
@@ -6538,15 +6792,35 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "--list",
       "-s",
       "--script",
+      "-f",
+      "--fix",
       "-a <type>",
       "--align <type>",
       "-m",
       "--machine",
+      "-j",
+      "--json",
+      "-h",
+      "--help",
+      "-v",
+      "--version",
+    ],
+    subcommands: [
+      "print",
+      "print free",
+      "print devices",
+      "mklabel gpt",
+      "mkpart primary",
+      "name <number> <name>",
+      "resizepart <number> <end>",
+      "rm <number>",
+      "select <device>",
+      "unit MiB",
+      "align-check optimal <number>",
     ],
   },
   {
     command: "fsck",
-    description: "Dateisysteme prüfen und reparieren",
     category: "system",
     risk: "dangerous",
     examples: [
@@ -6558,7 +6832,6 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
   },
   {
     command: "ipcalc",
-    description: "IP-Netze, CIDR und Bereiche berechnen",
     category: "network",
     risk: "safe",
     examples: [
@@ -6579,7 +6852,13 @@ export const TERMINAL_AUTOCOMPLETE_HELP = [
       "--split",
     ],
   },
-] satisfies TerminalAutocompleteHelp[];
+];
+
+export const TERMINAL_AUTOCOMPLETE_HELP: TerminalAutocompleteHelp[] =
+  TERMINAL_AUTOCOMPLETE_HELP_SEED.map((entry) => ({
+    ...entry,
+    description: getTerminalAutocompleteHelpDescriptionText(entry.command),
+  }));
 
 export const TERMINAL_AUTOCOMPLETE_HELP_BY_COMMAND = new Map(
   TERMINAL_AUTOCOMPLETE_HELP.flatMap((entry) => [
@@ -6596,7 +6875,11 @@ function normalizeHelpSuggestionToken(token: string) {
 }
 
 function normalizeHelpSuggestion(command: string) {
-  return command.trim().split(/\s+/).map(normalizeHelpSuggestionToken).join(" ");
+  return command
+    .trim()
+    .split(/\s+/)
+    .map(normalizeHelpSuggestionToken)
+    .join(" ");
 }
 
 function optionToHelpSuggestionSuffix(option: string) {

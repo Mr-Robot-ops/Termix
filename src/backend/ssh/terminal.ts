@@ -37,6 +37,25 @@ import {
   getOrFetchCachedSystemdServiceAutocomplete,
   type SystemdServiceAutocompleteCacheEntry,
 } from "./systemd-autocomplete.js";
+import {
+  TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY,
+  TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY_MAX_BYTES,
+  TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY_TIMEOUT_MS,
+  getOrFetchCachedTerminalAutocompleteCapabilities,
+  parseTerminalAutocompleteHostCapabilities,
+  shouldUseFreeBsdRcAutocompleteProvider,
+  shouldUseSystemdAutocompleteProvider,
+  type TerminalAutocompleteCapabilitiesCacheEntry,
+  type TerminalAutocompleteHostCapabilities,
+} from "./terminal-capabilities.js";
+import {
+  FREEBSD_RC_SERVICE_LIST_COMMAND,
+  RUNTIME_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES,
+  RUNTIME_SERVICE_AUTOCOMPLETE_QUERY_TIMEOUT_MS,
+  extractFreeBsdRcServicesForAutocomplete,
+  getOrFetchCachedRuntimeServiceAutocomplete,
+  type RuntimeServiceAutocompleteCacheEntry,
+} from "./service-autocomplete.js";
 
 interface ConnectToHostData {
   cols: number;
@@ -97,8 +116,19 @@ const authManager = AuthManager.getInstance();
 const userCrypto = UserCrypto.getInstance();
 
 const userConnections = new Map<string, Set<WebSocket>>();
-const systemdServiceAutocompleteCache =
-  new Map<string, SystemdServiceAutocompleteCacheEntry>();
+const systemdServiceAutocompleteCache = new Map<
+  string,
+  SystemdServiceAutocompleteCacheEntry
+>();
+const terminalAutocompleteCapabilitiesCache = new Map<
+  string,
+  TerminalAutocompleteCapabilitiesCacheEntry
+>();
+const runtimeServiceAutocompleteCache = new Map<
+  string,
+  RuntimeServiceAutocompleteCacheEntry
+>();
+const AUTOCOMPLETE_METADATA_START_DELAY_MS = 900;
 
 function shouldLogSystemdAutocompleteDebug() {
   return (
@@ -162,43 +192,227 @@ function querySystemdServicesForAutocomplete(
 
     logSystemdAutocompleteDebug("Fetching systemd autocomplete services");
 
-    conn.exec(SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY, { pty: false }, (err, stream) => {
-      if (err) {
-        finishFailure(err instanceof Error ? err : new Error(String(err)));
-        return;
-      }
-
-      streamRef = stream;
-      stream.on("data", (chunk: Buffer) => {
-        if (stdout.length < SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES) {
-          stdout += chunk.toString("utf-8");
-        }
-      });
-      stream.stderr.on("data", () => {
-        // systemctl errors are intentionally ignored for autocomplete metadata.
-      });
-      stream.on("exit", (code: number | null) => {
-        exitCode = typeof code === "number" ? code : null;
-      });
-      stream.on("error", (error) =>
-        finishFailure(error instanceof Error ? error : new Error(String(error))),
-      );
-      stream.on("close", () => {
-        const services = extractSystemdServiceUnitsForAutocomplete(stdout);
-        logSystemdAutocompleteDebug("Parsed systemd autocomplete services", {
-          count: services.length,
-          sample: getSystemdAutocompleteSample(services),
-        });
-        if (services.length === 0 && exitCode !== null && exitCode !== 0) {
-          finishFailure(
-            new Error(`systemd autocomplete query exited with ${exitCode}`),
-          );
+    conn.exec(
+      SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY,
+      { pty: false },
+      (err, stream) => {
+        if (err) {
+          finishFailure(err instanceof Error ? err : new Error(String(err)));
           return;
         }
 
-        finishSuccess(services);
-      });
-    });
+        streamRef = stream;
+        stream.on("data", (chunk: Buffer) => {
+          if (stdout.length < SYSTEMD_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES) {
+            stdout += chunk.toString("utf-8");
+          }
+        });
+        stream.stderr.on("data", () => {
+          // systemctl errors are intentionally ignored for autocomplete metadata.
+        });
+        stream.on("exit", (code: number | null) => {
+          exitCode = typeof code === "number" ? code : null;
+        });
+        stream.on("error", (error) =>
+          finishFailure(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        );
+        stream.on("close", () => {
+          const services = extractSystemdServiceUnitsForAutocomplete(stdout);
+          logSystemdAutocompleteDebug("Parsed systemd autocomplete services", {
+            count: services.length,
+            sample: getSystemdAutocompleteSample(services),
+          });
+          if (services.length === 0 && exitCode !== null && exitCode !== 0) {
+            finishFailure(
+              new Error(`systemd autocomplete query exited with ${exitCode}`),
+            );
+            return;
+          }
+
+          finishSuccess(services);
+        });
+      },
+    );
+  });
+}
+
+function queryHostCapabilitiesForAutocomplete(
+  conn: SSHClientType,
+): Promise<TerminalAutocompleteHostCapabilities> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = "";
+    let streamRef: ClientChannel | null = null;
+
+    function finishSuccess(capabilities: TerminalAutocompleteHostCapabilities) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      resolve(capabilities);
+    }
+
+    function finishFailure(error: Error) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    }
+
+    const timeout = setTimeout(() => {
+      try {
+        streamRef?.close();
+      } catch {
+        /* ignore */
+      }
+      finishFailure(
+        new Error("terminal autocomplete capability query timed out"),
+      );
+    }, TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY_TIMEOUT_MS);
+
+    logSystemdAutocompleteDebug("Fetching terminal autocomplete capabilities");
+
+    conn.exec(
+      TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY,
+      { pty: false },
+      (err, stream) => {
+        if (err) {
+          finishFailure(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
+
+        streamRef = stream;
+        stream.on("data", (chunk: Buffer) => {
+          if (
+            stdout.length < TERMINAL_AUTOCOMPLETE_CAPABILITIES_QUERY_MAX_BYTES
+          ) {
+            stdout += chunk.toString("utf-8");
+          }
+        });
+        stream.stderr.on("data", () => {
+          // Capability discovery is best-effort and intentionally quiet.
+        });
+        stream.on("error", (error) =>
+          finishFailure(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        );
+        stream.on("close", () => {
+          const capabilities =
+            parseTerminalAutocompleteHostCapabilities(stdout);
+          logSystemdAutocompleteDebug(
+            "Parsed terminal autocomplete capabilities",
+            {
+              osFamily: capabilities.osFamily,
+              osId: capabilities.osId,
+              commands: capabilities.commands,
+              serviceProviders: capabilities.serviceProviders,
+              packageManagers: capabilities.packageManagers,
+              commandCatalogs: capabilities.commandCatalogs,
+            },
+          );
+          finishSuccess(capabilities);
+        });
+      },
+    );
+  });
+}
+
+function queryFreeBsdRcServicesForAutocomplete(
+  conn: SSHClientType,
+): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = "";
+    let exitCode: number | null = null;
+    let streamRef: ClientChannel | null = null;
+
+    function finishSuccess(services: string[]) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      resolve(services);
+    }
+
+    function finishFailure(error: Error) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    }
+
+    const timeout = setTimeout(() => {
+      try {
+        streamRef?.close();
+      } catch {
+        /* ignore */
+      }
+      finishFailure(new Error("runtime service autocomplete query timed out"));
+    }, RUNTIME_SERVICE_AUTOCOMPLETE_QUERY_TIMEOUT_MS);
+
+    logSystemdAutocompleteDebug("Fetching FreeBSD rc autocomplete services");
+
+    conn.exec(
+      FREEBSD_RC_SERVICE_LIST_COMMAND,
+      { pty: false },
+      (err, stream) => {
+        if (err) {
+          finishFailure(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
+
+        streamRef = stream;
+        stream.on("data", (chunk: Buffer) => {
+          if (stdout.length < RUNTIME_SERVICE_AUTOCOMPLETE_QUERY_MAX_BYTES) {
+            stdout += chunk.toString("utf-8");
+          }
+        });
+        stream.stderr.on("data", () => {
+          // service(8) warnings are not terminal output and stay out of autocomplete.
+        });
+        stream.on("exit", (code: number | null) => {
+          exitCode = typeof code === "number" ? code : null;
+        });
+        stream.on("error", (error) =>
+          finishFailure(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
+        );
+        stream.on("close", () => {
+          const services = extractFreeBsdRcServicesForAutocomplete(stdout);
+          logSystemdAutocompleteDebug(
+            "Parsed FreeBSD rc autocomplete services",
+            {
+              count: services.length,
+              sample: getSystemdAutocompleteSample(services),
+            },
+          );
+          if (services.length === 0 && exitCode !== null && exitCode !== 0) {
+            finishFailure(
+              new Error(
+                `FreeBSD rc autocomplete query exited with ${exitCode}`,
+              ),
+            );
+            return;
+          }
+
+          finishSuccess(services);
+        });
+      },
+    );
   });
 }
 
@@ -226,6 +440,54 @@ function sendSystemdServicesForAutocomplete(ws: WebSocket, services: string[]) {
     JSON.stringify({
       type: "autocomplete_systemd_units",
       units: services,
+      services,
+    }),
+  );
+}
+
+function sendHostCapabilitiesForAutocomplete(
+  ws: WebSocket,
+  capabilities: TerminalAutocompleteHostCapabilities,
+) {
+  if (ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  logSystemdAutocompleteDebug("Sending terminal autocomplete capabilities", {
+    osFamily: capabilities.osFamily,
+    osId: capabilities.osId,
+    commands: capabilities.commands,
+    serviceProviders: capabilities.serviceProviders,
+    packageManagers: capabilities.packageManagers,
+  });
+
+  ws.send(
+    JSON.stringify({
+      type: "autocomplete_host_capabilities",
+      capabilities,
+    }),
+  );
+}
+
+function sendRuntimeServicesForAutocomplete(
+  ws: WebSocket,
+  provider: string,
+  services: string[],
+) {
+  if (ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  logSystemdAutocompleteDebug("Sending runtime autocomplete services", {
+    provider,
+    count: services.length,
+    sample: getSystemdAutocompleteSample(services),
+  });
+
+  ws.send(
+    JSON.stringify({
+      type: "autocomplete_runtime_services",
+      provider,
       services,
     }),
   );
@@ -337,7 +599,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
     sessionIdForCache: string | null,
   ) {
     if (!conn) {
-      return;
+      return null;
     }
 
     const cacheKey = getSystemdServiceAutocompleteCacheKey(
@@ -345,10 +607,13 @@ wss.on("connection", async (ws: WebSocket, req) => {
       sessionIdForCache,
     );
 
-    logSystemdAutocompleteDebug("Starting systemd autocomplete service refresh", {
-      sessionId: sessionIdForCache,
-      userId,
-    });
+    logSystemdAutocompleteDebug(
+      "Starting systemd autocomplete service refresh",
+      {
+        sessionId: sessionIdForCache,
+        userId,
+      },
+    );
 
     const cacheResult = getOrFetchCachedSystemdServiceAutocomplete(
       systemdServiceAutocompleteCache,
@@ -380,23 +645,229 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
       const targetWs = session?.attachedWs ?? ws;
       sendSystemdServicesForAutocomplete(targetWs, services);
+      return services;
     } catch (error) {
-      sshLogger.warn("Failed to refresh systemd service autocomplete metadata", {
-        operation: "terminal_autocomplete_systemd_services",
+      sshLogger.warn(
+        "Failed to refresh systemd service autocomplete metadata",
+        {
+          operation: "terminal_autocomplete_systemd_services",
+          sessionId: sessionIdForCache,
+          userId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      );
+      return null;
+    }
+  }
+
+  async function refreshAutocompleteHostCapabilities(
+    conn: SSHClientType | null | undefined,
+    sessionIdForCache: string | null,
+  ) {
+    if (!conn) {
+      return null;
+    }
+
+    const cacheKey = getSystemdServiceAutocompleteCacheKey(
+      userId,
+      sessionIdForCache,
+    );
+
+    logSystemdAutocompleteDebug(
+      "Starting terminal autocomplete capability refresh",
+      {
+        sessionId: sessionIdForCache,
+        userId,
+      },
+    );
+
+    const cacheResult = getOrFetchCachedTerminalAutocompleteCapabilities(
+      terminalAutocompleteCapabilitiesCache,
+      cacheKey,
+      () =>
+        queryHostCapabilitiesForAutocomplete(conn).catch((error) => {
+          sshLogger.warn("Failed to fetch terminal autocomplete capabilities", {
+            operation: "terminal_autocomplete_capabilities",
+            sessionId: sessionIdForCache,
+            userId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          throw error;
+        }),
+    );
+
+    logSystemdAutocompleteDebug(
+      "Terminal autocomplete capability cache status",
+      {
+        status: cacheResult.status,
+        sessionId: sessionIdForCache,
+        userId,
+      },
+    );
+
+    try {
+      const capabilities = await cacheResult.promise;
+      const session = sessionManager.getSession(sessionIdForCache);
+      if (session) {
+        session.autocompleteHostCapabilities = capabilities;
+      }
+
+      const targetWs = session?.attachedWs ?? ws;
+      sendHostCapabilitiesForAutocomplete(targetWs, capabilities);
+      return capabilities;
+    } catch (error) {
+      sshLogger.warn("Failed to refresh terminal autocomplete capabilities", {
+        operation: "terminal_autocomplete_capabilities",
         sessionId: sessionIdForCache,
         userId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+      return sessionManager.getSession(sessionIdForCache)
+        ?.autocompleteHostCapabilities;
     }
   }
 
-  function sendCachedAutocompleteSystemdUnits(sessionIdForCache: string | null) {
+  async function refreshAutocompleteFreeBsdRcServices(
+    conn: SSHClientType | null | undefined,
+    sessionIdForCache: string | null,
+  ) {
+    if (!conn) {
+      return null;
+    }
+
+    const cacheKey = getSystemdServiceAutocompleteCacheKey(
+      userId,
+      sessionIdForCache,
+    );
+
+    const cacheResult = getOrFetchCachedRuntimeServiceAutocomplete(
+      runtimeServiceAutocompleteCache,
+      cacheKey,
+      () =>
+        queryFreeBsdRcServicesForAutocomplete(conn).catch((error) => {
+          sshLogger.warn("Failed to fetch FreeBSD rc autocomplete services", {
+            operation: "terminal_autocomplete_runtime_services",
+            sessionId: sessionIdForCache,
+            userId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          throw error;
+        }),
+    );
+
+    logSystemdAutocompleteDebug("Runtime service autocomplete cache status", {
+      status: cacheResult.status,
+      provider: "freebsd-rc",
+      sessionId: sessionIdForCache,
+      userId,
+    });
+
+    try {
+      const services = await cacheResult.promise;
+      const session = sessionManager.getSession(sessionIdForCache);
+      if (session) {
+        session.autocompleteRuntimeServices = services;
+      }
+
+      const targetWs = session?.attachedWs ?? ws;
+      sendRuntimeServicesForAutocomplete(targetWs, "freebsd-rc", services);
+      return services;
+    } catch (error) {
+      sshLogger.warn(
+        "Failed to refresh FreeBSD rc service autocomplete metadata",
+        {
+          operation: "terminal_autocomplete_runtime_services",
+          sessionId: sessionIdForCache,
+          userId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      );
+      return null;
+    }
+  }
+
+  async function refreshAutocompleteRuntimeServices(
+    conn: SSHClientType | null | undefined,
+    sessionIdForCache: string | null,
+  ) {
+    if (!conn) {
+      return;
+    }
+
+    const session = sessionManager.getSession(sessionIdForCache);
+    const capabilities =
+      session?.autocompleteHostCapabilities ??
+      (await refreshAutocompleteHostCapabilities(conn, sessionIdForCache));
+
+    if (shouldUseSystemdAutocompleteProvider(capabilities)) {
+      void refreshAutocompleteSystemdUnits(conn, sessionIdForCache);
+      return;
+    }
+
+    if (shouldUseFreeBsdRcAutocompleteProvider(capabilities)) {
+      void refreshAutocompleteFreeBsdRcServices(conn, sessionIdForCache);
+    }
+  }
+
+  function scheduleAutocompleteRuntimeServicesRefresh(
+    conn: SSHClientType | null | undefined,
+    sessionIdForCache: string | null,
+  ) {
+    if (!conn) {
+      return;
+    }
+
+    setTimeout(() => {
+      const session = sessionManager.getSession(sessionIdForCache);
+      if (sessionIdForCache && session?.sshConn !== conn) {
+        return;
+      }
+      if (ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      void refreshAutocompleteRuntimeServices(conn, sessionIdForCache);
+    }, AUTOCOMPLETE_METADATA_START_DELAY_MS);
+  }
+
+  function sendCachedAutocompleteSystemdUnits(
+    sessionIdForCache: string | null,
+  ) {
     const session = sessionManager.getSession(sessionIdForCache);
     if (!session || session.autocompleteSystemdUnits.length === 0) {
       return;
     }
 
     sendSystemdServicesForAutocomplete(ws, session.autocompleteSystemdUnits);
+  }
+
+  function sendCachedAutocompleteHostCapabilities(
+    sessionIdForCache: string | null,
+  ) {
+    const session = sessionManager.getSession(sessionIdForCache);
+    if (!session?.autocompleteHostCapabilities) {
+      return;
+    }
+
+    sendHostCapabilitiesForAutocomplete(
+      ws,
+      session.autocompleteHostCapabilities,
+    );
+  }
+
+  function sendCachedAutocompleteRuntimeServices(
+    sessionIdForCache: string | null,
+  ) {
+    const session = sessionManager.getSession(sessionIdForCache);
+    if (!session || session.autocompleteRuntimeServices.length === 0) {
+      return;
+    }
+
+    sendRuntimeServicesForAutocomplete(
+      ws,
+      "freebsd-rc",
+      session.autocompleteRuntimeServices,
+    );
   }
 
   ws.on("pong", () => {
@@ -593,8 +1064,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
               message: "Session reattached",
             }),
           );
+          sendCachedAutocompleteHostCapabilities(attachData.sessionId);
           sendCachedAutocompleteSystemdUnits(attachData.sessionId);
-          void refreshAutocompleteSystemdUnits(
+          sendCachedAutocompleteRuntimeServices(attachData.sessionId);
+          scheduleAutocompleteRuntimeServicesRefresh(
             session.sshConn,
             attachData.sessionId,
           );
@@ -670,6 +1143,20 @@ wss.on("connection", async (ws: WebSocket, req) => {
         const activeSession = sessionManager.getSession(currentSessionId);
         const activeConn = activeSession?.sshConn ?? sshConn;
         void refreshAutocompleteSystemdUnits(activeConn, currentSessionId);
+        break;
+      }
+
+      case "refresh_autocomplete_capabilities": {
+        const activeSession = sessionManager.getSession(currentSessionId);
+        const activeConn = activeSession?.sshConn ?? sshConn;
+        void refreshAutocompleteHostCapabilities(activeConn, currentSessionId);
+        break;
+      }
+
+      case "refresh_runtime_services": {
+        const activeSession = sessionManager.getSession(currentSessionId);
+        const activeConn = activeSession?.sshConn ?? sshConn;
+        void refreshAutocompleteRuntimeServices(activeConn, currentSessionId);
         break;
       }
 
@@ -1374,8 +1861,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
         ws.send(
           JSON.stringify({ type: "connected", message: "Session reattached" }),
         );
+        sendCachedAutocompleteHostCapabilities(currentSessionId);
         sendCachedAutocompleteSystemdUnits(currentSessionId);
-        void refreshAutocompleteSystemdUnits(
+        sendCachedAutocompleteRuntimeServices(currentSessionId);
+        scheduleAutocompleteRuntimeServicesRefresh(
           existingSession.sshConn,
           currentSessionId,
         );
@@ -1782,7 +2271,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           ws.send(
             JSON.stringify({ type: "connected", message: "SSH connected" }),
           );
-          void refreshAutocompleteSystemdUnits(conn, boundSessionId);
+          scheduleAutocompleteRuntimeServicesRefresh(conn, boundSessionId);
 
           if (id && hostConfig.userId) {
             (async () => {
