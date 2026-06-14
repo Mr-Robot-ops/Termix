@@ -310,23 +310,26 @@ const BASH_BUILTIN_ECHO_OPTION_CANDIDATES = new Set([
   "echo -e",
   "echo -E",
 ]);
-const BASH_BUILTIN_ECHO_ESCAPE_CANDIDATES = new Set([
-  "echo \\\\",
-  "echo \\a",
-  "echo \\b",
-  "echo \\c",
-  "echo \\e",
-  "echo \\E",
-  "echo \\f",
-  "echo \\n",
-  "echo \\r",
-  "echo \\t",
-  "echo \\v",
-  "echo \\0nnn",
-  "echo \\xHH",
-  "echo \\uHHHH",
-  "echo \\UHHHHHHHH",
-]);
+const BASH_BUILTIN_ECHO_ESCAPE_VALUES = [
+  "\\a",
+  "\\b",
+  "\\c",
+  "\\e",
+  "\\E",
+  "\\f",
+  "\\n",
+  "\\r",
+  "\\t",
+  "\\v",
+  "\\\\",
+  "\\0nnn",
+  "\\xHH",
+  "\\uHHHH",
+  "\\UHHHHHHHH",
+];
+const BASH_BUILTIN_ECHO_ESCAPE_VALUE_SET = new Set(
+  BASH_BUILTIN_ECHO_ESCAPE_VALUES,
+);
 const COMMON_SSH_LOCAL_FORWARDS = [
   "8080:localhost:80",
   "8443:localhost:443",
@@ -3534,22 +3537,74 @@ function getEffectiveCandidate(
   return candidate;
 }
 
-function getBashBuiltinEchoLastArgument(command: string) {
+function getBashBuiltinEchoArgumentContext(command: string) {
   const match = command.match(/^\s*echo(?:\s+(.*))?$/i);
   if (!match) {
     return null;
   }
 
   const argumentsText = match[1] ?? "";
+  const argumentTokens = argumentsText.split(/\s+/).filter(Boolean);
+  let lastArgument: string | null = null;
   if (!argumentsText) {
-    return /\s$/.test(command) ? "" : null;
-  }
-  if (/\s$/.test(command)) {
-    return "";
+    lastArgument = /\s$/.test(command) ? "" : null;
+  } else if (/\s$/.test(command)) {
+    lastArgument = "";
+  } else {
+    lastArgument = argumentTokens[argumentTokens.length - 1] ?? "";
   }
 
-  const argumentTokens = argumentsText.split(/\s+/).filter(Boolean);
-  return argumentTokens[argumentTokens.length - 1] ?? "";
+  let interpretsEscapes = false;
+  let suppressesEscapes = false;
+  for (const token of argumentTokens) {
+    if (!/^-[neE]+$/.test(token)) {
+      break;
+    }
+
+    if (token.includes("e")) {
+      interpretsEscapes = true;
+    }
+    if (token.includes("E")) {
+      suppressesEscapes = true;
+    }
+  }
+
+  return {
+    argumentTokens,
+    interpretsEscapes: interpretsEscapes && !suppressesEscapes,
+    lastArgument,
+  };
+}
+
+function getBashBuiltinEchoCandidateValue(candidate: string) {
+  if (getKnownCommandName(candidate) !== "echo") {
+    return null;
+  }
+
+  const tokens = splitCommandTokens(candidate);
+  const commandTokenCount = getKnownCommandTokenCount(candidate);
+  return tokens[tokens.length - 1] && tokens.length > commandTokenCount
+    ? tokens[tokens.length - 1]
+    : null;
+}
+
+function getBashBuiltinEchoEscapeSuggestionPrefix(command: string) {
+  const echoContext = getBashBuiltinEchoArgumentContext(command);
+  if (!echoContext?.interpretsEscapes) {
+    return null;
+  }
+
+  const { lastArgument } = echoContext;
+  if (lastArgument === null) {
+    return null;
+  }
+  if (lastArgument !== "" && !lastArgument.startsWith("\\")) {
+    return null;
+  }
+
+  const tokens = splitCommandTokens(command);
+  const prefixTokens = lastArgument === "" ? tokens : tokens.slice(0, -1);
+  return `${prefixTokens.join(" ")} `;
 }
 
 function isBashBuiltinEchoCandidateAllowed(
@@ -3567,16 +3622,28 @@ function isBashBuiltinEchoCandidateAllowed(
     return true;
   }
 
-  const lastArgument = getBashBuiltinEchoLastArgument(context.matchCommand);
-  if (lastArgument === null) {
+  const echoContext = getBashBuiltinEchoArgumentContext(context.matchCommand);
+  if (!echoContext || echoContext.lastArgument === null) {
     return true;
   }
 
-  if (lastArgument.startsWith("\\")) {
-    return BASH_BUILTIN_ECHO_ESCAPE_CANDIDATES.has(effectiveCandidate);
+  const candidateValue = getBashBuiltinEchoCandidateValue(effectiveCandidate);
+  if (!candidateValue) {
+    return true;
   }
 
-  if (lastArgument === "" || lastArgument.startsWith("-")) {
+  if (BASH_BUILTIN_ECHO_ESCAPE_VALUE_SET.has(candidateValue)) {
+    return (
+      echoContext.interpretsEscapes &&
+      (echoContext.lastArgument === "" ||
+        echoContext.lastArgument.startsWith("\\"))
+    );
+  }
+
+  if (
+    echoContext.lastArgument === "" ||
+    echoContext.lastArgument.startsWith("-")
+  ) {
     return BASH_BUILTIN_ECHO_OPTION_CANDIDATES.has(effectiveCandidate);
   }
 
@@ -4864,6 +4931,9 @@ function buildContextualCatalogSuggestions(
     getLongOptionAssignmentSuggestionPrefix(context.matchCommand, "systemctl", [
       "--state",
     ]);
+  const bashBuiltinEchoEscapePrefix = getBashBuiltinEchoEscapeSuggestionPrefix(
+    context.matchCommand,
+  );
   const systemctlFollowupSuggestions = getSystemctlFollowupSuggestions(
     context.matchCommand,
   );
@@ -5265,6 +5335,12 @@ function buildContextualCatalogSuggestions(
   if (systemctlStatePrefix) {
     SYSTEMD_UNIT_STATES.forEach((state) => {
       suggestions.push(`${systemctlStatePrefix}${state}`);
+    });
+  }
+
+  if (bashBuiltinEchoEscapePrefix) {
+    BASH_BUILTIN_ECHO_ESCAPE_VALUES.forEach((value) => {
+      suggestions.push(`${bashBuiltinEchoEscapePrefix}${value}`);
     });
   }
 
@@ -7738,6 +7814,20 @@ export function getTerminalAutocompleteInsertCommand(command: string) {
   return command.replace(/\s+(?:<[^>\n]+>|\{\{[^}\n]+\}\})/g, "").trimEnd();
 }
 
+function getBashBuiltinEchoEscapeDisplayLabel(
+  argumentTokens: string[],
+): string | null {
+  const lastToken = argumentTokens[argumentTokens.length - 1] ?? "";
+  if (!BASH_BUILTIN_ECHO_ESCAPE_VALUE_SET.has(lastToken)) {
+    return null;
+  }
+
+  const hasEscapeOption = argumentTokens.some(
+    (token) => /^-[neE]+$/.test(token) && token.includes("e"),
+  );
+  return hasEscapeOption ? lastToken : null;
+}
+
 export function getTerminalAutocompleteCatalogDisplayLabel(
   currentCommand: string,
   suggestion: string,
@@ -7751,7 +7841,16 @@ export function getTerminalAutocompleteCatalogDisplayLabel(
     return effectiveSuggestion;
   }
 
-  return suggestionTokens.slice(commandTokenCount).join(" ");
+  const argumentTokens = suggestionTokens.slice(commandTokenCount);
+  if (getKnownCommandName(effectiveSuggestion) === "echo") {
+    const echoEscapeDisplayLabel =
+      getBashBuiltinEchoEscapeDisplayLabel(argumentTokens);
+    if (echoEscapeDisplayLabel) {
+      return echoEscapeDisplayLabel;
+    }
+  }
+
+  return argumentTokens.join(" ");
 }
 
 export function getTerminalAutocompleteCatalogDisplayQuery(

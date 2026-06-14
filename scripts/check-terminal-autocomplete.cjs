@@ -3919,7 +3919,7 @@ assertDeepEqual(
   autocomplete
     .buildTerminalAutocompleteMatchItems(
       "echo ",
-      ["echo --help", "echo --version"],
+      ["echo --help", "echo --version", "echo \\n"],
       { mode: "popup" },
     )
     .map((item) => item.command),
@@ -3935,24 +3935,52 @@ assertNotIncludes("echo --", "echo --help");
 assertNotIncludes("echo --", "echo --version");
 assertDeepEqual(
   commandsFor("echo \\"),
+  [],
+  "echo does not suggest escapes unless -e is active",
+);
+assertDeepEqual(
+  commandsFor("echo -e "),
   [
-    "echo \\\\",
-    "echo \\a",
-    "echo \\b",
-    "echo \\c",
-    "echo \\e",
-    "echo \\E",
-    "echo \\f",
-    "echo \\n",
-    "echo \\r",
-    "echo \\t",
-    "echo \\v",
-    "echo \\0nnn",
-    "echo \\xHH",
-    "echo \\uHHHH",
-    "echo \\UHHHHHHHH",
+    "echo -e \\a",
+    "echo -e \\b",
+    "echo -e \\c",
+    "echo -e \\e",
+    "echo -e \\E",
+    "echo -e \\f",
+    "echo -e \\n",
+    "echo -e \\r",
+    "echo -e \\t",
+    "echo -e \\v",
+    "echo -e \\\\",
+    "echo -e \\0nnn",
+    "echo -e \\xHH",
+    "echo -e \\uHHHH",
+    "echo -e \\UHHHHHHHH",
   ],
-  "echo escape suggestions match Bash builtin help",
+  "echo -e escape suggestions match Bash builtin help",
+);
+assertDeepEqual(
+  commandsFor("echo -e \\"),
+  commandsFor("echo -e "),
+  "echo -e keeps escape suggestions while typing a backslash escape",
+);
+assertEqual(
+  autocomplete.getTerminalAutocompleteCatalogDisplayLabel(
+    "echo -e ",
+    "echo -e \\n",
+  ),
+  "\\n",
+  "echo -e escape suggestions display the escape value",
+);
+assertDeepEqual(
+  commandsFor("echo -E "),
+  [],
+  "echo -E suppresses escape suggestions",
+);
+assertDeepEqual(
+  commandsFor("echo -e -E "),
+  [],
+  "echo -E suppresses escape suggestions even after -e",
 );
 assertSuggestionDescription(
   "echo ",
@@ -3960,8 +3988,8 @@ assertSuggestionDescription(
   "keinen abschliessenden Zeilenumbruch anhaengen",
 );
 assertSuggestionDescription(
-  "echo \\",
-  "echo \\t",
+  "echo -e ",
+  "echo -e \\t",
   "horizontaler Tabulator",
 );
 assertDefaultSuggestionDescription(
@@ -3970,8 +3998,8 @@ assertDefaultSuggestionDescription(
   "Enable interpretation of the following backslash escapes",
 );
 assertDefaultSuggestionDescription(
-  "echo \\",
-  "echo \\UHHHHHHHH",
+  "echo -e ",
+  "echo -e \\UHHHHHHHH",
   "The Unicode character whose value is the hexadecimal value HHHHHHHH. HHHHHHHH can be one to eight hex digits",
 );
 {
@@ -3994,6 +4022,11 @@ assertDeepEqual(
   commandsFor("sudo echo "),
   ["sudo echo -n", "sudo echo -e", "sudo echo -E"],
   "sudo echo suggestions use only Bash builtin options",
+);
+assertDeepEqual(
+  commandsFor("sudo echo -e "),
+  commandsFor("sudo echo -e \\"),
+  "sudo echo -e keeps escape suggestions while typing a backslash escape",
 );
 assertMinCount("printf ", 12);
 assertIncludes("printf ", "printf '%04d\\n' 42");
