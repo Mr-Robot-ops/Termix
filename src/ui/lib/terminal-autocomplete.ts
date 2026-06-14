@@ -305,6 +305,28 @@ const COMMON_SSH_KEY_FILES = [
   "~/.ssh/work",
   "~/.ssh/github",
 ];
+const BASH_BUILTIN_ECHO_OPTION_CANDIDATES = new Set([
+  "echo -n",
+  "echo -e",
+  "echo -E",
+]);
+const BASH_BUILTIN_ECHO_ESCAPE_CANDIDATES = new Set([
+  "echo \\\\",
+  "echo \\a",
+  "echo \\b",
+  "echo \\c",
+  "echo \\e",
+  "echo \\E",
+  "echo \\f",
+  "echo \\n",
+  "echo \\r",
+  "echo \\t",
+  "echo \\v",
+  "echo \\0nnn",
+  "echo \\xHH",
+  "echo \\uHHHH",
+  "echo \\UHHHHHHHH",
+]);
 const COMMON_SSH_LOCAL_FORWARDS = [
   "8080:localhost:80",
   "8443:localhost:443",
@@ -2698,7 +2720,9 @@ const TERMINAL_AUTOCOMPLETE_PRIORITY: Record<string, string[]> = {
 };
 
 function normalizeAutocompleteToken(token: string) {
-  return /^-[A-Za-z]+$/.test(token) ? token : token.toLowerCase();
+  return /^-[A-Za-z]+$/.test(token) || /^\\[A-Za-z0-9]+$/.test(token)
+    ? token
+    : token.toLowerCase();
 }
 
 function normalizeAutocompleteCommand(command: string) {
@@ -3508,6 +3532,55 @@ function getEffectiveCandidate(
   }
 
   return candidate;
+}
+
+function getBashBuiltinEchoLastArgument(command: string) {
+  const match = command.match(/^\s*echo(?:\s+(.*))?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const argumentsText = match[1] ?? "";
+  if (!argumentsText) {
+    return /\s$/.test(command) ? "" : null;
+  }
+  if (/\s$/.test(command)) {
+    return "";
+  }
+
+  const argumentTokens = argumentsText.split(/\s+/).filter(Boolean);
+  return argumentTokens[argumentTokens.length - 1] ?? "";
+}
+
+function isBashBuiltinEchoCatalogCandidateAllowed(
+  candidate: string,
+  context: TerminalAutocompleteContext,
+) {
+  if (getKnownCommandName(context.matchCommand) !== "echo") {
+    return true;
+  }
+
+  const effectiveCandidate = getEffectiveCandidate(candidate, context)
+    .trim()
+    .replace(/\s+/g, " ");
+  if (getKnownCommandName(effectiveCandidate) !== "echo") {
+    return true;
+  }
+
+  const lastArgument = getBashBuiltinEchoLastArgument(context.matchCommand);
+  if (lastArgument === null) {
+    return true;
+  }
+
+  if (lastArgument.startsWith("\\")) {
+    return BASH_BUILTIN_ECHO_ESCAPE_CANDIDATES.has(effectiveCandidate);
+  }
+
+  if (lastArgument === "" || lastArgument.startsWith("-")) {
+    return BASH_BUILTIN_ECHO_OPTION_CANDIDATES.has(effectiveCandidate);
+  }
+
+  return false;
 }
 
 function getPrivilegeUnwrappedCommand(command: string) {
@@ -7417,6 +7490,8 @@ export function buildTerminalAutocompleteMatchItems(
     const trimmedMatchCandidate = matchCandidate.trim();
     const candidateHasPlaceholder = hasPlaceholder(trimmedCandidate);
     if (
+      (source === "catalog" &&
+        !isBashBuiltinEchoCatalogCandidateAllowed(trimmedCandidate, context)) ||
       (candidateHasPlaceholder && (source === "history" || mode === "ghost")) ||
       (source === "history" &&
         isOverlongSingleValueCandidate(trimmedCandidate, context)) ||

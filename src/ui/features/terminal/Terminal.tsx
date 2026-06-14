@@ -79,6 +79,7 @@ import {
   getCommandAutocompletePopupKeyAction,
   type CommandAutocompleteInputMode,
 } from "./command-history/commandAutocompleteKeys.ts";
+import { shouldRenderCommandAutocomplete } from "./command-history/commandAutocompleteVisibility.ts";
 import { SimpleLoader } from "@/lib/SimpleLoader.tsx";
 import { useConfirmation } from "@/hooks/use-confirmation.ts";
 import {
@@ -738,6 +739,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     );
 
     const closeAutocomplete = useCallback(() => {
+      if (autocompleteRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(autocompleteRefreshTimeoutRef.current);
+        autocompleteRefreshTimeoutRef.current = null;
+      }
+
       const hasRenderableAutocomplete =
         showAutocompleteRef.current ||
         autocompleteSuggestionsRef.current.length > 0 ||
@@ -1084,6 +1090,17 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     useEffect(() => {
       closeAutocompleteRef.current = closeAutocomplete;
     }, [closeAutocomplete]);
+
+    useEffect(() => {
+      if (showDisconnectedOverlay || connectionError || !isConnected) {
+        closeAutocomplete();
+      }
+    }, [
+      closeAutocomplete,
+      connectionError,
+      isConnected,
+      showDisconnectedOverlay,
+    ]);
 
     const applyCommandHistoryChangeToAutocomplete = useCallback(
       (detail: CommandHistoryChangedEventDetail) => {
@@ -2220,6 +2237,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     }
 
     async function connectToHost(cols: number, rows: number) {
+      closeAutocompleteRef.current();
+
       if (isConnectingRef.current) {
         return;
       }
@@ -4192,7 +4211,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         )}
 
         <CommandAutocomplete
-          visible={showAutocomplete}
+          visible={shouldRenderCommandAutocomplete({
+            connectionError,
+            isConnected,
+            isConnecting,
+            showAutocomplete,
+            showDisconnectedOverlay,
+            suggestionCount: autocompleteSuggestions.length,
+          })}
           automatic={autocompleteOpenMode === "automatic"}
           currentCommand={currentAutocompleteCommand.current}
           historySuggestions={autocompleteHistory.current}

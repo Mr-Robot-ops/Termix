@@ -1795,20 +1795,21 @@ const TERMINAL_AUTOCOMPLETE_HELP_SEED: TerminalAutocompleteHelpSeed[] = [
       "-n",
       "-e",
       "-E",
-      "--help",
-      "--version",
       "\\\\",
       "\\a",
       "\\b",
       "\\c",
       "\\e",
+      "\\E",
       "\\f",
       "\\n",
       "\\r",
       "\\t",
       "\\v",
-      "\\0NNN",
+      "\\0nnn",
       "\\xHH",
+      "\\uHHHH",
+      "\\UHHHHHHHH",
     ],
   },
   {
@@ -7354,7 +7355,9 @@ const UNSAFE_AUTOCOMPLETE_HELP_SUGGESTION_RE =
   /\b(?:rm\s+(?:-[^\n]*[rf]|--(?:force|recursive|no-preserve-root))|mkfs(?:\.\w+)?|dd\s+(?:if=|of=)|shutdown|poweroff|reboot|halt|iptables\s+-F|nft\s+flush|docker\s+system\s+prune|history\s+-c|userdel\s+-r|find\s+-delete)\b/i;
 
 function normalizeHelpSuggestionToken(token: string) {
-  return /^-[A-Za-z]+$/.test(token) ? token : token.toLowerCase();
+  return /^-[A-Za-z]+$/.test(token) || /^\\[A-Za-z0-9]+$/.test(token)
+    ? token
+    : token.toLowerCase();
 }
 
 function normalizeHelpSuggestion(command: string) {

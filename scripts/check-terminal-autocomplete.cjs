@@ -42,6 +42,7 @@ require.extensions[".ts"] = function loadTypeScript(module, filename) {
 
 const autocomplete = require("../src/ui/lib/terminal-autocomplete.ts");
 const autocompleteKeys = require("../src/ui/features/terminal/command-history/commandAutocompleteKeys.ts");
+const autocompleteVisibility = require("../src/ui/features/terminal/command-history/commandAutocompleteVisibility.ts");
 const commandHistoryEvents = require("../src/ui/features/terminal/command-history/commandHistoryEvents.ts");
 const autocompleteLayout = require("../src/ui/features/terminal/command-history/commandAutocompleteLayout.ts");
 const commandHelp = require("../src/ui/lib/terminal-command-help.ts");
@@ -1479,6 +1480,82 @@ function assertAutocompleteResourceCoverage() {
     "zstd",
     "ifconfig",
     "nano",
+    "ufw",
+    "zgrep",
+    "visudo",
+    "groupmod",
+    "patch",
+    "ssh-keyscan",
+    "service",
+    "alias",
+    "systemd-cgtop",
+    "lsof",
+    "machinectl",
+    "groupdel",
+    "ncdu",
+    "pidof",
+    "ssh-copy-id",
+    "vim",
+    "kubectl",
+    "aws",
+    "az",
+    "gcloud",
+    "terraform",
+    "helm",
+    "ansible-inventory",
+    "pg_dump",
+    "pg_restore",
+  ];
+  const fullyLocalizedHelpKeys = [
+    "fsck",
+    "lsmod",
+    "node",
+    "shred",
+    "ssh-add",
+    "ssh-keygen",
+    "lspci",
+    "lsusb",
+    "ufw",
+    "zgrep",
+    "ifconfig",
+    "ipcalc",
+    "journalctl",
+    "ss",
+    "su",
+    "visudo",
+    "groupmod",
+    "patch",
+    "ssh-keyscan",
+    "resolvectl",
+    "sshfs",
+    "service",
+    "alias",
+    "systemd-cgtop",
+    "lsof",
+    "machinectl",
+    "groupdel",
+    "tree",
+    "nc",
+    "ncdu",
+    "pidof",
+    "ssh-copy-id",
+    "iotop",
+    "logrotate",
+    "vim",
+    "env",
+    "ps",
+    "apt-cache",
+    "tcpdump",
+    "git",
+    "kubectl",
+    "aws",
+    "az",
+    "gcloud",
+    "terraform",
+    "helm",
+    "ansible-inventory",
+    "pg_dump",
+    "pg_restore",
   ];
 
   for (const language of supportedAutocompleteLanguages) {
@@ -1490,6 +1567,22 @@ function assertAutocompleteResourceCoverage() {
     );
     for (const key of coreVisibleHelpKeys) {
       const actual = resource.help?.[key];
+      if (actual === en.help[key]) {
+        fail(
+          `Expected ${language} autocomplete help.${key} to be localized, got English fallback ${actual}`,
+        );
+      }
+      if (/: [A-Z][A-Za-z]/.test(actual)) {
+        fail(
+          `Expected ${language} autocomplete help.${key} to avoid generated filler text, got ${actual}`,
+        );
+      }
+    }
+    for (const key of fullyLocalizedHelpKeys) {
+      const actual = resource.help?.[key];
+      if (typeof actual !== "string" || actual.trim().length === 0) {
+        fail(`Expected ${language} autocomplete help.${key} to be present`);
+      }
       if (actual === en.help[key]) {
         fail(
           `Expected ${language} autocomplete help.${key} to be localized, got English fallback ${actual}`,
@@ -1516,7 +1609,191 @@ function assertAutocompleteResourceCoverage() {
     }
   }
 
-  const fullyLocalizedDetailCommands = ["ssh", "sudo"];
+  const genericAutocompleteFillerPattern =
+    /Use this suggestion for:|Usa esta sugerencia para:|Utiliser cette suggestion pour|この候補を使って|Gebruik hierdie opdrag vir:|Gebruik deze opdracht om:|Bruk denne kommandoen til|Brug denne kommando til|Kies 'n voorstel vir:|Elige una sugerencia para:|Choisis une suggestion pour/;
+  for (const language of supportedAutocompleteLanguages) {
+    if (language === "en" || language === "de") {
+      continue;
+    }
+    const resource = autocompleteI18n.getTerminalAutocompleteI18nResource(
+      language,
+    );
+    const visitResource = (node, path = []) => {
+      for (const [key, value] of Object.entries(node ?? {})) {
+        const nextPath = path.concat(key);
+        if (typeof value === "string") {
+          if (genericAutocompleteFillerPattern.test(value)) {
+            fail(
+              `Expected ${language} autocomplete ${nextPath.join(".")} to avoid generated filler text, got ${value}`,
+            );
+          }
+          continue;
+        }
+        if (value && typeof value === "object") {
+          visitResource(value, nextPath);
+        }
+      }
+    };
+    visitResource(resource);
+  }
+
+  const fullyLocalizedDetailCommands = [
+    "ssh",
+    "sudo",
+    "nano",
+    "memusage",
+    "install",
+    "npm",
+    "pnpm",
+    "yarn",
+    "docker",
+    "tar",
+    "zip",
+    "unzip",
+    "gzip",
+    "gunzip",
+    "bzip2",
+    "bunzip2",
+    "whereis",
+    "man",
+    "systemctl",
+    "rsync",
+    "dd",
+    "ethtool",
+    "fdisk",
+    "parted",
+    "passwd",
+    "chage",
+    "useradd",
+    "groupadd",
+    "usermod",
+    "userdel",
+    "groups",
+    "id",
+    "whoami",
+    "uname",
+    "hostname",
+    "uptime",
+    "lscpu",
+    "vmstat",
+    "iostat",
+    "top",
+    "htop",
+    "watch",
+    "nload",
+    "iperf3",
+    "iftop",
+    "curl",
+    "wget",
+    "openssl s_client",
+    "nft",
+    "make",
+    "dpkg",
+    "modprobe",
+    "nmcli",
+    "certbot",
+    "pm2",
+    "psql",
+    "mysql",
+    "ansible",
+    "ansible-playbook",
+    "git",
+    "kubectl",
+    "aws",
+    "az",
+    "gcloud",
+    "terraform",
+    "ansible-inventory",
+    "helm",
+    "modinfo",
+    "fsck",
+    "lsmod",
+    "lspci",
+    "lsusb",
+    "node",
+    "shred",
+    "pip",
+    "nl",
+    "pgrep",
+    "rg",
+    "sqlite3",
+    "supervisorctl",
+    "docker compose",
+    "yq",
+    "xxd",
+    "mysqldump",
+    "python",
+    "redis-cli",
+    "mongosh",
+    "nginx",
+    "timeout",
+    "split",
+    "scp",
+    "ssh-agent",
+    "ssh-add",
+    "ssh-keygen",
+    "ufw",
+    "zgrep",
+    "ifconfig",
+    "ipcalc",
+    "journalctl",
+    "ss",
+    "su",
+    "visudo",
+    "groupmod",
+    "patch",
+    "which",
+    "ssh-keyscan",
+    "resolvectl",
+    "sshfs",
+    "service",
+    "alias",
+    "systemd-cgtop",
+    "lsof",
+    "machinectl",
+    "groupdel",
+    "tree",
+    "nc",
+    "ncdu",
+    "pidof",
+    "ssh-copy-id",
+    "iotop",
+    "logrotate",
+    "vim",
+    "env",
+    "ps",
+    "apt-cache",
+    "tcpdump",
+    "locate",
+    "iptables",
+    "seq",
+    "pstree",
+    "ip",
+    "zcat",
+    "zstd",
+    "vnstat",
+    "paste",
+    "apachectl",
+    "info",
+    "apt",
+    "apt-get",
+    "sftp",
+    "crontab",
+    "pg_dump",
+    "pg_restore",
+    "nohup",
+    "xargs",
+    "jq",
+    "cksum",
+    "who",
+    "shuf",
+    "test",
+    "od",
+    "pkill",
+    "iw",
+    "cal",
+    "printenv",
+  ];
   const localizedDetailKeyExpectations = {
     git: [
       "status",
@@ -1544,29 +1821,6 @@ function assertAutocompleteResourceCoverage() {
       "config",
       "clean",
       "show",
-    ],
-    systemctl: [
-      "status",
-      "start",
-      "stop",
-      "restart",
-      "reload",
-      "try-restart",
-      "reload-or-restart",
-      "enable",
-      "disable",
-      "is-enabled",
-      "is-active",
-      "mask",
-      "unmask",
-      "list-units",
-      "list-unit-files",
-      "list-timers",
-      "list-sockets",
-      "list-jobs",
-      "list-dependencies",
-      "daemon-reload",
-      "status <unit>",
     ],
   };
   for (const language of supportedAutocompleteLanguages) {
@@ -2998,7 +3252,11 @@ function normalizeSuggestionForDuplicateCheck(value) {
   return String(value)
     .trim()
     .split(/\s+/)
-    .map((token) => (/^-[A-Za-z]+$/.test(token) ? token : token.toLowerCase()))
+    .map((token) =>
+      /^-[A-Za-z]+$/.test(token) || /^\\[A-Za-z0-9]+$/.test(token)
+        ? token
+        : token.toLowerCase(),
+    )
     .join(" ");
 }
 
@@ -3652,23 +3910,79 @@ assertSuggestionDescription(
   "clear -x",
   "Scrollback-Puffer nicht löschen",
 );
-assertMinCount("echo ", 18);
-assertIncludes("echo ", "echo -e 'line1\\nline2'");
-assertIncludes("echo ", "echo \\t");
-assertSuggestionDescription(
-  "echo ",
-  "echo -e 'name\\tvalue'",
-  "Tabulator-Escape zwischen Name und Wert auswerten",
+assertDeepEqual(
+  commandsFor("echo "),
+  ["echo -n", "echo -e", "echo -E"],
+  "echo suggestions use only Bash builtin options",
+);
+assertDeepEqual(
+  commandsFor("echo --"),
+  [],
+  "echo long options are not suggested for the Bash builtin",
+);
+assertNotIncludes("echo --", "echo --help");
+assertNotIncludes("echo --", "echo --version");
+assertDeepEqual(
+  commandsFor("echo \\"),
+  [
+    "echo \\\\",
+    "echo \\a",
+    "echo \\b",
+    "echo \\c",
+    "echo \\e",
+    "echo \\E",
+    "echo \\f",
+    "echo \\n",
+    "echo \\r",
+    "echo \\t",
+    "echo \\v",
+    "echo \\0nnn",
+    "echo \\xHH",
+    "echo \\uHHHH",
+    "echo \\UHHHHHHHH",
+  ],
+  "echo escape suggestions match Bash builtin help",
 );
 assertSuggestionDescription(
   "echo ",
+  "echo -n",
+  "keinen abschliessenden Zeilenumbruch anhaengen",
+);
+assertSuggestionDescription(
+  "echo \\",
   "echo \\t",
-  "horizontalen Tabulator ausgeben, wenn Escapes aktiviert sind",
+  "horizontaler Tabulator",
 );
 assertDefaultSuggestionDescription(
   "echo ",
-  "echo -e 'line1\\nline2'",
-  "Interpret newline escape and print two lines",
+  "echo -e",
+  "Enable interpretation of the following backslash escapes",
+);
+assertDefaultSuggestionDescription(
+  "echo \\",
+  "echo \\UHHHHHHHH",
+  "The Unicode character whose value is the hexadecimal value HHHHHHHH. HHHHHHHH can be one to eight hex digits",
+);
+{
+  const echoHelp = autocomplete.getTerminalAutocompleteHelp("echo");
+  if (!echoHelp) {
+    fail("Expected echo to have autocomplete help");
+  }
+  assertEqual(
+    autocomplete.getTerminalAutocompleteHelpDescription(echoHelp),
+    "Write arguments to the standard output.",
+    "echo help description is Bash builtin help",
+  );
+  assertDefaultSuggestionDescription(
+    "echo ",
+    "echo custom",
+    "Display the ARGs, separated by a single space character and followed by a newline, on the standard output.",
+  );
+}
+assertDeepEqual(
+  commandsFor("sudo echo "),
+  ["sudo echo -n", "sudo echo -e", "sudo echo -E"],
+  "sudo echo suggestions use only Bash builtin options",
 );
 assertMinCount("printf ", 12);
 assertIncludes("printf ", "printf '%04d\\n' 42");
@@ -7070,6 +7384,55 @@ assertDeepEqual(
   ),
   [],
   "command history clear event empties autocomplete history",
+);
+
+assertEqual(
+  autocompleteVisibility.shouldRenderCommandAutocomplete({
+    isConnected: true,
+    showAutocomplete: true,
+    suggestionCount: 5,
+  }),
+  true,
+  "autocomplete popup renders while connected",
+);
+assertEqual(
+  autocompleteVisibility.shouldRenderCommandAutocomplete({
+    isConnected: false,
+    showAutocomplete: true,
+    suggestionCount: 5,
+  }),
+  false,
+  "autocomplete popup hides after disconnect",
+);
+assertEqual(
+  autocompleteVisibility.shouldRenderCommandAutocomplete({
+    isConnected: true,
+    showAutocomplete: true,
+    showDisconnectedOverlay: true,
+    suggestionCount: 5,
+  }),
+  false,
+  "autocomplete popup hides behind reconnect overlay",
+);
+assertEqual(
+  autocompleteVisibility.shouldRenderCommandAutocomplete({
+    isConnected: true,
+    isConnecting: true,
+    showAutocomplete: true,
+    suggestionCount: 5,
+  }),
+  false,
+  "autocomplete popup hides while reconnecting",
+);
+assertEqual(
+  autocompleteVisibility.shouldRenderCommandAutocomplete({
+    connectionError: "Connection lost",
+    isConnected: true,
+    showAutocomplete: true,
+    suggestionCount: 5,
+  }),
+  false,
+  "autocomplete popup hides on connection error",
 );
 
 assertUsefulHistory("sudo systemctl status certbot.timer", true);
