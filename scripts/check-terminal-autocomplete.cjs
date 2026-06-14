@@ -752,6 +752,34 @@ function assertAutocompleteResourceCoverage() {
     const [language, region] = basename.split("_");
     return region ? `${language}-${region}` : language;
   });
+  const supportedAutocompleteLanguages =
+    autocompleteI18n.TERMINAL_AUTOCOMPLETE_SUPPORTED_LANGUAGES;
+  const missingAutocompleteLanguages = supportedLanguageCodes.filter(
+    (language) =>
+      !supportedAutocompleteLanguages.some((autocompleteLanguage) => {
+        const expected = language.toLowerCase();
+        const actual = autocompleteLanguage.toLowerCase();
+        return (
+          actual === expected ||
+          actual.split("-", 1)[0] === expected.split("-", 1)[0]
+        );
+      }),
+  );
+  if (missingAutocompleteLanguages.length > 0) {
+    fail(
+      `Autocomplete i18n is missing supported app languages: ${missingAutocompleteLanguages.join(", ")}`,
+    );
+  }
+  for (const language of supportedAutocompleteLanguages) {
+    const autocompleteLocaleFile = path.join(
+      root,
+      "src/ui/locales/autocomplete",
+      `${language}.json`,
+    );
+    if (!fs.existsSync(autocompleteLocaleFile)) {
+      fail(`Autocomplete locale file is missing for ${language}`);
+    }
+  }
 
   for (const language of supportedLanguageCodes) {
     const resource =
@@ -760,6 +788,474 @@ function assertAutocompleteResourceCoverage() {
     for (const key of enKeys) {
       if (!keys.has(key)) {
         fail(`Autocomplete resource for ${language} is missing key ${key}`);
+      }
+    }
+
+    if (!language.toLowerCase().startsWith("de")) {
+      const leakedNonGerman = collectAutocompleteResourceStrings(resource).find(
+        (value) => forbiddenGermanText.test(value.replace(/[^\x00-\x7F]/g, "")),
+      );
+      if (leakedNonGerman) {
+        fail(
+          `Autocomplete resource for ${language} contains German text: ${leakedNonGerman}`,
+        );
+      }
+    }
+  }
+
+  const localizedRawDetailCommands = [
+    "ls",
+    "cd",
+    "echo",
+    "pwd",
+    "cat",
+    "less",
+    "head",
+    "tail",
+    "printf",
+    "mkdir",
+    "touch",
+    "cp",
+    "mv",
+    "rm",
+    "ln",
+    "chmod",
+    "chown",
+    "find",
+    "grep",
+    "sed",
+    "awk",
+    "sort",
+    "uniq",
+    "cut",
+    "tr",
+    "file",
+    "stat",
+    "whoami",
+    "clear",
+    "umask",
+    "chgrp",
+    "sum",
+    "sleep",
+    "logger",
+    "host",
+    "hostnamectl",
+    "nslookup",
+    "tracepath",
+    "mtr",
+    "nmap",
+    "netstat",
+    "lsof",
+    "dig",
+    "ping",
+    "traceroute",
+    "gzip",
+    "gunzip",
+    "bzip2",
+    "bunzip2",
+    "xz",
+    "unxz",
+    "sync",
+    "rmdir",
+    "comm",
+    "wc",
+    "tee",
+    "date",
+    "yes",
+    "updatedb",
+    "truncate",
+    "strings",
+    "numfmt",
+    "join",
+    "basename",
+    "dirname",
+    "readlink",
+    "realpath",
+    "df",
+    "du",
+    "cmp",
+    "diff",
+    "base64",
+    "free",
+    "md5sum",
+    "sha1sum",
+    "sha256sum",
+    "kill",
+    "killall",
+    "jobs",
+    "fg",
+    "bg",
+    "disown",
+    "tmux",
+    "screen",
+    "alias",
+    "unalias",
+    "export",
+    "unset",
+    "history",
+    "type",
+    "command",
+    "coredumpctl",
+    "systemd-cgls",
+    "systemd-cgtop",
+    "systemd-analyze",
+    "machinectl",
+    "timedatectl",
+    "service",
+    "more",
+    "column",
+    "hexdump",
+    "lsblk",
+    "blkid",
+    "findmnt",
+    "mount",
+    "umount",
+    "dmesg",
+    "sysctl",
+    "update-alternatives",
+    "loginctl",
+    "localectl",
+    "networkctl",
+    "busctl",
+  ];
+  const representativeDetailKeys = {
+    cat: "-n",
+    cd: "~",
+    echo: "-n",
+    head: "-n",
+    less: "-N",
+    ls: "-lah",
+    pwd: "| cat",
+    tail: "-f",
+    printf: "%s",
+    mkdir: "-p",
+    touch: "file.txt",
+    cp: "-r",
+    mv: "-v",
+    rm: "-i",
+    ln: "-s",
+    chmod: "+x",
+    chown: "-R",
+    find: "-name",
+    grep: "-n",
+    sed: "-i",
+    awk: "-F",
+    sort: "-n",
+    uniq: "--count",
+    cut: "-f",
+    tr: "-d",
+    file: "-i",
+    stat: "-c",
+    whoami: "--help",
+    clear: "-x",
+    umask: "022",
+    chgrp: "-R",
+    sum: "-r",
+    sleep: "infinity",
+    logger: "--journald",
+    host: "-t",
+    hostnamectl: "status",
+    nslookup: "-type=MX example.com",
+    tracepath: "-n 8.8.8.8",
+    mtr: "-T -P 443 example.com",
+    nmap: "-sV",
+    netstat: "-tulpn",
+    lsof: "-i :443",
+    dig: "+short",
+    ping: "-c",
+    traceroute: "-n",
+    gzip: "-9",
+    gunzip: "-l",
+    bzip2: "-t",
+    bunzip2: "-c",
+    xz: "-T",
+    unxz: "-t",
+    sync: "-d",
+    rmdir: "--ignore-fail-on-non-empty",
+    comm: "--output-delimiter",
+    wc: "--max-line-length",
+    tee: "--output-error=warn",
+    date: "+<format>",
+    yes: "ok | head -n 10",
+    updatedb: "--require-visibility",
+    truncate: "--reference",
+    strings: "--encoding",
+    numfmt: "--to",
+    join: "--ignore-case",
+    basename: "/var/log/syslog",
+    dirname: "/var/log/syslog",
+    readlink: "-m missing/path",
+    realpath: "--relative-to /var /var/log/syslog",
+    df: "-hT",
+    du: "-sh *",
+    cmp: "-s file-a file-b",
+    diff: "-u",
+    base64: "-d encoded.txt",
+    free: "-h",
+    md5sum: "-c checksums.txt",
+    sha1sum: "-c checksums.txt",
+    sha256sum: "find . -type f -print0 | xargs -0 sha256sum",
+    kill: "-9",
+    killall: "-i",
+    jobs: "-l %%",
+    fg: "%1",
+    bg: "%1",
+    disown: "-h %1",
+    tmux: "attach -t",
+    screen: "-ls",
+    alias: "ll='ls -lah'",
+    unalias: "-a",
+    export: "HISTCONTROL=ignoredups",
+    unset: "HISTFILE",
+    history: "| grep ssh",
+    type: "-t systemctl",
+    command: "-V history",
+    coredumpctl: "debug",
+    "systemd-cgls": "--unit ssh.service",
+    "systemd-cgtop": "--order=memory",
+    "systemd-analyze": "blame",
+    machinectl: "status",
+    timedatectl: "list-timezones",
+    service: "--status-all",
+    more: "+/error /var/log/syslog",
+    column: "-t -s ':' /etc/passwd",
+    hexdump: "-C -n 128 file.bin",
+    lsblk: "-f",
+    blkid: "-o export /dev/sda1",
+    findmnt: "-o TARGET,SOURCE,FSTYPE,OPTIONS",
+    mount: "-o remount,rw /",
+    umount: "--recursive /mnt",
+    dmesg: "-T --level=err,warn",
+    sysctl: "-p /etc/sysctl.conf",
+    "update-alternatives": "--set editor /usr/bin/vim",
+    loginctl: "show-user",
+    localectl: "list-locales",
+    networkctl: "lldp",
+    busctl: "introspect",
+  };
+
+  for (const command of localizedRawDetailCommands) {
+    const enDetailKeys = Object.keys(en.suggestionDetails?.[command] ?? {});
+    if (enDetailKeys.length === 0) {
+      fail(
+        `English autocomplete resource is missing ${command} suggestion details`,
+      );
+    }
+  }
+
+  for (const language of supportedAutocompleteLanguages) {
+    if (language === "en" || language === "de") {
+      continue;
+    }
+
+    const autocompleteLocaleFile = path.join(
+      root,
+      "src/ui/locales/autocomplete",
+      `${language}.json`,
+    );
+    const rawResource = JSON.parse(
+      fs.readFileSync(autocompleteLocaleFile, "utf8"),
+    );
+    const rawKeys = new Set(collectAutocompleteResourceKeys(rawResource));
+    const missingRawKeys = enKeys.filter((key) => !rawKeys.has(key));
+    if (missingRawKeys.length > 0) {
+      fail(
+        `Autocomplete locale ${language} is missing raw keys: ${missingRawKeys.join(", ")}`,
+      );
+    }
+
+    for (const command of localizedRawDetailCommands) {
+      const rawDetails = rawResource.suggestionDetails?.[command] ?? {};
+      const enDetailKeys = Object.keys(en.suggestionDetails?.[command] ?? {});
+      const missingDetails = enDetailKeys.filter(
+        (key) =>
+          typeof rawDetails[key] !== "string" ||
+          rawDetails[key].trim().length === 0,
+      );
+
+      if (missingDetails.length > 0) {
+        fail(
+          `Autocomplete locale ${language} is missing raw ${command} details: ${missingDetails.join(", ")}`,
+        );
+      }
+
+      const representativeKey = representativeDetailKeys[command];
+      if (
+        rawDetails[representativeKey] ===
+        en.suggestionDetails[command][representativeKey]
+      ) {
+        fail(
+          `Autocomplete locale ${language} still falls back to English for ${command} ${representativeKey}`,
+        );
+      }
+    }
+
+    for (const command of [
+      "cd",
+      "echo",
+      "pwd",
+      "cat",
+      "less",
+      "head",
+      "tail",
+      "printf",
+      "mkdir",
+      "rm",
+      "ln",
+      "chmod",
+      "chown",
+      "sort",
+      "uniq",
+      "cp",
+      "mv",
+      "file",
+      "stat",
+      "umask",
+      "chgrp",
+      "sum",
+      "sleep",
+      "logger",
+      "host",
+      "hostnamectl",
+      "nslookup",
+      "tracepath",
+      "mtr",
+      "nmap",
+      "netstat",
+      "lsof",
+      "dig",
+      "ping",
+      "traceroute",
+      "gzip",
+      "gunzip",
+      "bzip2",
+      "bunzip2",
+      "xz",
+      "unxz",
+      "sync",
+      "rmdir",
+      "comm",
+      "wc",
+      "tee",
+      "yes",
+      "updatedb",
+      "truncate",
+      "strings",
+      "numfmt",
+      "join",
+      "basename",
+      "dirname",
+      "readlink",
+      "df",
+      "du",
+      "jobs",
+      "fg",
+      "bg",
+      "disown",
+      "tmux",
+      "screen",
+      "alias",
+      "unalias",
+      "export",
+      "unset",
+      "history",
+      "type",
+      "coredumpctl",
+      "systemd-cgls",
+      "systemd-cgtop",
+      "systemd-analyze",
+      "machinectl",
+      "timedatectl",
+      "service",
+      "more",
+      "lsblk",
+      "blkid",
+      "findmnt",
+      "mount",
+      "umount",
+      "dmesg",
+      "sysctl",
+      "update-alternatives",
+      "loginctl",
+      "localectl",
+      "networkctl",
+      "busctl",
+    ]) {
+      if (
+        typeof rawResource.help?.[command] !== "string" ||
+        rawResource.help[command].trim().length === 0
+      ) {
+        fail(`Autocomplete locale ${language} is missing raw ${command} help`);
+      }
+      if (
+        typeof rawResource.valueDescriptions?.[command] !== "string" ||
+        rawResource.valueDescriptions[command].trim().length === 0
+      ) {
+        fail(`Autocomplete locale ${language} is missing raw ${command} value`);
+      }
+      if (rawResource.help[command] === en.help[command]) {
+        fail(
+          `Autocomplete locale ${language} still falls back to English for ${command} help`,
+        );
+      }
+    }
+
+    if (
+      typeof rawResource.help?.touch !== "string" ||
+      rawResource.help.touch.trim().length === 0
+    ) {
+      fail(`Autocomplete locale ${language} is missing raw touch help`);
+    }
+    if (rawResource.help.touch === en.help.touch) {
+      fail(
+        `Autocomplete locale ${language} still falls back to English for touch help`,
+      );
+    }
+    if (rawResource.valueDescriptions?.touch) {
+      fail(
+        `Autocomplete locale ${language} defines touch value without English source-of-truth`,
+      );
+    }
+
+    for (const command of [
+      "find",
+      "grep",
+      "sed",
+      "awk",
+      "cut",
+      "tr",
+      "whoami",
+      "clear",
+      "date",
+      "realpath",
+      "cmp",
+      "diff",
+      "base64",
+      "free",
+      "md5sum",
+      "sha1sum",
+      "sha256sum",
+      "kill",
+      "killall",
+      "command",
+      "column",
+      "hexdump",
+    ]) {
+      if (
+        typeof rawResource.help?.[command] !== "string" ||
+        rawResource.help[command].trim().length === 0
+      ) {
+        fail(`Autocomplete locale ${language} is missing raw ${command} help`);
+      }
+      if (rawResource.help[command] === en.help[command]) {
+        fail(
+          `Autocomplete locale ${language} still falls back to English for ${command} help`,
+        );
+      }
+      if (rawResource.valueDescriptions?.[command]) {
+        fail(
+          `Autocomplete locale ${language} defines ${command} value without English source-of-truth`,
+        );
       }
     }
   }
@@ -780,9 +1276,1676 @@ function assertAutocompleteResourceCoverage() {
       "git status",
       { language: "fr" },
     );
-  if (frenchGitStatus !== "Show working tree status") {
+  if (
+    frenchGitStatus === "Show working tree status" ||
+    frenchGitStatus === germanGitStatus ||
+    frenchGitStatus.trim().length === 0
+  ) {
     fail(
-      `Expected non-DE autocomplete fallback to English, got ${frenchGitStatus}`,
+      `Expected localized non-DE autocomplete text, got ${frenchGitStatus}`,
+    );
+  }
+
+  const coreLocalizedResourceExpectations = {
+    "es-ES": {
+      help: {
+        sudo: "Ejecutar comandos con privilegios elevados",
+        systemctl: "Administrar servicios y unidades systemd",
+        ssh: "Establecer una conexion SSH",
+      },
+      valueDescriptions: {
+        ssh: "Iniciar sesion SSH en este host",
+      },
+    },
+    fr: {
+      help: {
+        sudo: "Executer des commandes avec des privileges eleves",
+        systemctl: "Gerer les services et unites systemd",
+        ssh: "Etablir une connexion SSH",
+      },
+      valueDescriptions: {
+        ssh: "Demarrer une connexion SSH vers cet hote",
+      },
+    },
+    ja: {
+      help: {
+        sudo: "昇格権限でコマンドを実行する",
+        systemctl: "systemd のサービスとユニットを管理する",
+        ssh: "SSH 接続を開始する",
+      },
+      valueDescriptions: {
+        ssh: "このホストへ SSH ログインを開始する",
+      },
+    },
+    ru: {
+      help: {
+        sudo: "Выполнять команды с повышенными правами",
+        systemctl: "Управлять службами и юнитами systemd",
+        ssh: "Устанавливать SSH-соединение",
+      },
+      valueDescriptions: {
+        ssh: "Начать SSH-вход на этот хост",
+      },
+    },
+    ar: {
+      help: {
+        sudo: "تشغيل الأوامر بصلاحيات مرتفعة",
+        systemctl: "إدارة خدمات ووحدات systemd",
+        ssh: "بدء اتصال SSH",
+      },
+      valueDescriptions: {
+        ssh: "بدء تسجيل دخول SSH إلى هذا المضيف",
+      },
+    },
+    it: {
+      help: {
+        sudo: "Eseguire comandi con privilegi elevati",
+        systemctl: "Gestire servizi e unita systemd",
+        ssh: "Stabilire una connessione SSH",
+      },
+      valueDescriptions: {
+        ssh: "Avviare login SSH verso questo host",
+      },
+    },
+    ko: {
+      help: {
+        sudo: "상승 권한으로 명령 실행",
+        systemctl: "systemd 서비스와 유닛 관리",
+        ssh: "SSH 연결 시작",
+      },
+      valueDescriptions: {
+        ssh: "이 호스트로 SSH 로그인 시작",
+      },
+    },
+    pl: {
+      help: {
+        sudo: "Uruchamiac polecenia z podwyzszonymi uprawnieniami",
+        systemctl: "Zarzadzac uslugami i jednostkami systemd",
+        ssh: "Nawiazac polaczenie SSH",
+      },
+      valueDescriptions: {
+        ssh: "Rozpoczac logowanie SSH do tego hosta",
+      },
+    },
+    "pt-BR": {
+      help: {
+        sudo: "Executar comandos com privilegios elevados",
+        systemctl: "Gerenciar servicos e unidades systemd",
+        ssh: "Estabelecer conexao SSH",
+      },
+      valueDescriptions: {
+        ssh: "Iniciar login SSH neste host",
+      },
+    },
+    "zh-CN": {
+      help: {
+        sudo: "以提升的权限执行命令",
+        systemctl: "管理 systemd 服务和单元",
+        ssh: "建立 SSH 连接",
+      },
+      valueDescriptions: {
+        ssh: "开始登录此主机的 SSH 会话",
+      },
+    },
+    "zh-TW": {
+      help: {
+        sudo: "以提升的權限執行指令",
+        systemctl: "管理 systemd 服務和單元",
+        ssh: "建立 SSH 連線",
+      },
+      valueDescriptions: {
+        ssh: "開始登入此主機的 SSH 工作階段",
+      },
+    },
+  };
+
+  for (const [language, sections] of Object.entries(
+    coreLocalizedResourceExpectations,
+  )) {
+    const resource = autocompleteI18n.getTerminalAutocompleteI18nResource(
+      language,
+    );
+    for (const [section, values] of Object.entries(sections)) {
+      for (const [key, expected] of Object.entries(values)) {
+        const actual = resource[section]?.[key];
+        if (actual !== expected) {
+          fail(
+            `Expected ${language} autocomplete ${section}.${key} to be ${expected}, got ${actual}`,
+          );
+        }
+        if (/: [A-Z][A-Za-z]/.test(actual)) {
+          fail(
+            `Expected ${language} autocomplete ${section}.${key} to avoid generated filler text, got ${actual}`,
+          );
+        }
+      }
+    }
+  }
+
+  const coreVisibleHelpKeys = [
+    "sudo",
+    "su",
+    "systemctl",
+    "journalctl",
+    "ip",
+    "ifconfig",
+    "ps",
+    "top",
+    "htop",
+    "pkill",
+    "pgrep",
+    "ss",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "rsync",
+    "uptime",
+    "rg",
+    "tar",
+    "tree",
+    "nano",
+    "vim",
+    "xargs",
+    "env",
+    "printenv",
+    "who",
+    "which",
+    "whereis",
+    "uname",
+    "hostname",
+    "id",
+    "groups",
+    "crontab",
+    "dpkg",
+    "zstd",
+    "zcat",
+    "zgrep",
+    "zip",
+    "unzip",
+  ];
+  const coreVisibleValueKeys = [
+    "sudo",
+    "htop",
+    "top",
+    "pgrep",
+    "pkill",
+    "scp",
+    "ssh",
+    "which",
+    "whereis",
+    "unzip",
+    "zip",
+    "zstd",
+    "ifconfig",
+    "nano",
+  ];
+
+  for (const language of supportedAutocompleteLanguages) {
+    if (language === "en" || language === "de") {
+      continue;
+    }
+    const resource = autocompleteI18n.getTerminalAutocompleteI18nResource(
+      language,
+    );
+    for (const key of coreVisibleHelpKeys) {
+      const actual = resource.help?.[key];
+      if (actual === en.help[key]) {
+        fail(
+          `Expected ${language} autocomplete help.${key} to be localized, got English fallback ${actual}`,
+        );
+      }
+      if (/: [A-Z][A-Za-z]/.test(actual)) {
+        fail(
+          `Expected ${language} autocomplete help.${key} to avoid generated filler text, got ${actual}`,
+        );
+      }
+    }
+    for (const key of coreVisibleValueKeys) {
+      const actual = resource.valueDescriptions?.[key];
+      if (actual === en.valueDescriptions[key]) {
+        fail(
+          `Expected ${language} autocomplete valueDescriptions.${key} to be localized, got English fallback ${actual}`,
+        );
+      }
+      if (/: [A-Z][A-Za-z]/.test(actual)) {
+        fail(
+          `Expected ${language} autocomplete valueDescriptions.${key} to avoid generated filler text, got ${actual}`,
+        );
+      }
+    }
+  }
+
+  const fullyLocalizedDetailCommands = ["ssh", "sudo"];
+  const localizedDetailKeyExpectations = {
+    git: [
+      "status",
+      "add",
+      "commit",
+      "push",
+      "pull",
+      "fetch",
+      "branch",
+      "checkout",
+      "switch",
+      "merge",
+      "rebase",
+      "log",
+      "diff",
+      "stash",
+      "remote",
+      "clone",
+      "init",
+      "reset",
+      "restore",
+      "rm",
+      "tag",
+      "cherry-pick",
+      "config",
+      "clean",
+      "show",
+    ],
+    systemctl: [
+      "status",
+      "start",
+      "stop",
+      "restart",
+      "reload",
+      "try-restart",
+      "reload-or-restart",
+      "enable",
+      "disable",
+      "is-enabled",
+      "is-active",
+      "mask",
+      "unmask",
+      "list-units",
+      "list-unit-files",
+      "list-timers",
+      "list-sockets",
+      "list-jobs",
+      "list-dependencies",
+      "daemon-reload",
+      "status <unit>",
+    ],
+  };
+  for (const language of supportedAutocompleteLanguages) {
+    if (language === "en" || language === "de") {
+      continue;
+    }
+    const resource = autocompleteI18n.getTerminalAutocompleteI18nResource(
+      language,
+    );
+    for (const command of fullyLocalizedDetailCommands) {
+      for (const [key, englishText] of Object.entries(
+        en.suggestionDetails[command] ?? {},
+      )) {
+        const actual = resource.suggestionDetails?.[command]?.[key];
+        if (typeof actual !== "string" || actual.trim().length === 0) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to be present`,
+          );
+        }
+        if (actual === englishText) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to be localized, got English fallback ${actual}`,
+          );
+        }
+        if (/: [A-Z][A-Za-z]/.test(actual)) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to avoid generated filler text, got ${actual}`,
+          );
+        }
+      }
+    }
+    for (const [command, keys] of Object.entries(localizedDetailKeyExpectations)) {
+      for (const key of keys) {
+        const englishText = en.suggestionDetails[command]?.[key];
+        const actual = resource.suggestionDetails?.[command]?.[key];
+        if (typeof actual !== "string" || actual.trim().length === 0) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to be present`,
+          );
+        }
+        if (actual === englishText) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to be localized, got English fallback ${actual}`,
+          );
+        }
+        if (/: [A-Z][A-Za-z]/.test(actual)) {
+          fail(
+            `Expected ${language} autocomplete suggestionDetails.${command}.${key} to avoid generated filler text, got ${actual}`,
+          );
+        }
+      }
+    }
+  }
+
+  const translatedLsDetailExpectations = {
+    ar: "قائمة طويلة تشمل الإدخالات المخفية بأحجام سهلة القراءة",
+    "es-ES": "lista larga con entradas ocultas y tamanos legibles",
+    fr: "liste longue avec entrees cachees et tailles lisibles",
+    ja: "隠し項目と読みやすいサイズを含む詳細一覧",
+    ru: "подробный список со скрытыми элементами и читаемыми размерами",
+    "zh-CN": "包含隐藏条目和易读大小的长列表",
+  };
+
+  for (const [language, expected] of Object.entries(
+    translatedLsDetailExpectations,
+  )) {
+    const actual = autocomplete.getTerminalAutocompleteSuggestionDescription(
+      "ls ",
+      "ls -lah",
+      { language },
+    );
+    if (actual !== expected) {
+      fail(
+        `Expected ${language} autocomplete ls -lah detail to be ${expected}, got ${actual}`,
+      );
+    }
+  }
+
+  const translatedShellBasicsExpectations = {
+    "cat -n": {
+      command: "cat ",
+      suggestion: "cat -n",
+      values: {
+        "es-ES": "numerar todas las lineas de salida",
+        fr: "numeroter toutes les lignes de sortie",
+        ja: "すべての出力行に番号を付ける",
+        ru: "нумеровать все строки вывода",
+        "zh-CN": "为所有输出行编号",
+      },
+    },
+    "echo -n": {
+      command: "echo ",
+      suggestion: "echo -n",
+      values: {
+        "es-ES": "No imprimir la nueva linea final",
+        fr: "Ne pas afficher la nouvelle ligne finale",
+        ja: "末尾の改行を出力しない",
+        ru: "Не печатать завершающий перевод строки",
+        "zh-CN": "不打印末尾换行",
+      },
+    },
+    "cd ~": {
+      command: "cd ",
+      suggestion: "cd ~",
+      values: {
+        "es-ES": "Cambiar al directorio personal",
+        fr: "Aller dans le repertoire personnel",
+        ja: "ホームディレクトリへ移動する",
+        ru: "Перейти в домашний каталог",
+        "zh-CN": "切换到主目录",
+      },
+    },
+    "head -n": {
+      command: "head ",
+      suggestion: "head -n",
+      values: {
+        "es-ES": "Definir numero de lineas a mostrar",
+        fr: "Definir le nombre de lignes a afficher",
+        ja: "出力する行数を設定する",
+        ru: "Задать число выводимых строк",
+        "zh-CN": "设置要输出的行数",
+      },
+    },
+    "less -N": {
+      command: "less ",
+      suggestion: "less -N",
+      values: {
+        "es-ES": "Mostrar numeros de linea",
+        fr: "Afficher les numeros de ligne",
+        ja: "行番号を表示する",
+        ru: "Показать номера строк",
+        "zh-CN": "显示行号",
+      },
+    },
+    "tail -f": {
+      command: "tail ",
+      suggestion: "tail -f",
+      values: {
+        "es-ES": "Seguir el final del archivo en vivo",
+        fr: "Suivre la fin du fichier en direct",
+        ja: "ファイル末尾をリアルタイムに追跡する",
+        ru: "Отслеживать конец файла в реальном времени",
+        "zh-CN": "实时跟踪文件末尾",
+      },
+    },
+    "printf %s": {
+      command: "printf ",
+      suggestion: "printf %s",
+      values: {
+        "es-ES": "Mostrar cadena formateada",
+        fr: "Afficher une chaine formatee",
+        ja: "文字列を書式付きで出力する",
+        ru: "Вывести форматированную строку",
+        "zh-CN": "输出格式化字符串",
+      },
+    },
+    "mkdir -p": {
+      command: "mkdir ",
+      suggestion: "mkdir -p",
+      values: {
+        "es-ES": "crear directorios padre faltantes",
+        fr: "creer les repertoires parents manquants",
+        ja: "不足している親ディレクトリを作成する",
+        ru: "создать отсутствующие родительские каталоги",
+        "zh-CN": "创建缺失的父目录",
+      },
+    },
+    "touch file.txt": {
+      command: "touch ",
+      suggestion: "touch file.txt",
+      values: {
+        "es-ES": "Crear archivo o actualizar marca temporal",
+        fr: "Creer un fichier ou mettre a jour l'horodatage",
+        ja: "ファイルを作成またはタイムスタンプを更新する",
+        ru: "Создать файл или обновить метку времени",
+        "zh-CN": "创建文件或更新时间戳",
+      },
+    },
+    "cp -r": {
+      command: "cp ",
+      suggestion: "cp -r",
+      values: {
+        "es-ES": "Copiar directorios recursivamente",
+        fr: "Copier les repertoires recursivement",
+        ja: "ディレクトリを再帰的にコピーする",
+        ru: "Копировать каталоги рекурсивно",
+        "zh-CN": "递归复制目录",
+      },
+    },
+    "mv -v": {
+      command: "mv ",
+      suggestion: "mv -v",
+      values: {
+        "es-ES": "Mostrar archivos movidos",
+        fr: "Afficher les fichiers deplaces",
+        ja: "移動したファイルを表示する",
+        ru: "Показать перемещенные файлы",
+        "zh-CN": "显示已移动的文件",
+      },
+    },
+    "rm -i": {
+      command: "rm ",
+      suggestion: "rm -i",
+      values: {
+        "es-ES": "preguntar antes de cada eliminacion",
+        fr: "demander avant chaque suppression",
+        ja: "削除ごとに確認する",
+        ru: "спрашивать перед каждым удалением",
+        "zh-CN": "每次删除前询问",
+      },
+    },
+    "ln -s": {
+      command: "ln ",
+      suggestion: "ln -s",
+      values: {
+        "es-ES": "Crear enlaces simbolicos en lugar de enlaces duros",
+        fr: "Creer des liens symboliques au lieu de liens physiques",
+        ja: "ハードリンクの代わりにシンボリックリンクを作成する",
+        ru: "Создавать символические ссылки вместо жестких ссылок",
+        "zh-CN": "创建符号链接而不是硬链接",
+      },
+    },
+    "chmod +x": {
+      command: "chmod ",
+      suggestion: "chmod +x",
+      values: {
+        "es-ES": "Agregar permiso de ejecucion",
+        fr: "Ajouter le droit d execution",
+        ja: "実行権限を追加する",
+        ru: "Добавить право выполнения",
+        "zh-CN": "添加执行权限",
+      },
+    },
+    "chown -R": {
+      command: "chown ",
+      suggestion: "chown -R",
+      values: {
+        "es-ES": "Cambiar propietario recursivamente",
+        fr: "Changer le proprietaire recursivement",
+        ja: "所有者を再帰的に変更する",
+        ru: "Изменять владельца рекурсивно",
+        "zh-CN": "递归更改所有者",
+      },
+    },
+    "find -name": {
+      command: "find ",
+      suggestion: "find -name",
+      values: {
+        "es-ES": "buscar por nombre de archivo",
+        fr: "rechercher par nom de fichier",
+        ja: "ファイル名で検索する",
+        ru: "искать по имени файла",
+        "zh-CN": "按文件名搜索",
+      },
+    },
+    "grep -n": {
+      command: "grep ",
+      suggestion: "grep -n",
+      values: {
+        "es-ES": "Mostrar numeros de linea",
+        fr: "Afficher les numeros de ligne",
+        ja: "行番号を表示する",
+        ru: "Показать номера строк",
+        "zh-CN": "显示行号",
+      },
+    },
+    "sed -i": {
+      command: "sed ",
+      suggestion: "sed -i",
+      values: {
+        "es-ES": "Editar archivos directamente",
+        fr: "Modifier les fichiers directement",
+        ja: "ファイルを直接編集する",
+        ru: "Редактировать файлы напрямую",
+        "zh-CN": "直接编辑文件",
+      },
+    },
+    "awk -F": {
+      command: "awk ",
+      suggestion: "awk -F",
+      values: {
+        "es-ES": "Definir separadores de campo",
+        fr: "Definir les separateurs de champs",
+        ja: "フィールド区切りを設定する",
+        ru: "Задать разделители полей",
+        "zh-CN": "设置字段分隔符",
+      },
+    },
+    "sort -n": {
+      command: "sort ",
+      suggestion: "sort -n",
+      values: {
+        "es-ES": "ordenar numericamente",
+        fr: "trier numeriquement",
+        ja: "数値として並べ替える",
+        ru: "сортировать численно",
+        "zh-CN": "按数字排序",
+      },
+    },
+    "uniq --count": {
+      command: "uniq ",
+      suggestion: "uniq --count",
+      values: {
+        "es-ES": "Contar repeticiones",
+        fr: "Compter les repetitions",
+        ja: "繰り返し回数を数える",
+        ru: "Подсчитать повторения",
+        "zh-CN": "统计重复次数",
+      },
+    },
+    "cut -f": {
+      command: "cut ",
+      suggestion: "cut -f",
+      values: {
+        "es-ES": "Seleccionar campos",
+        fr: "Selectionner les champs",
+        ja: "フィールドを選択する",
+        ru: "Выбрать поля",
+        "zh-CN": "选择字段",
+      },
+    },
+    "tr -d": {
+      command: "tr ",
+      suggestion: "tr -d",
+      values: {
+        "es-ES": "Eliminar caracteres",
+        fr: "Supprimer des caracteres",
+        ja: "文字を削除する",
+        ru: "Удалить символы",
+        "zh-CN": "删除字符",
+      },
+    },
+    "file -i": {
+      command: "file ",
+      suggestion: "file -i",
+      values: {
+        "es-ES": "Mostrar tipo MIME",
+        fr: "Afficher le type MIME",
+        ja: "MIME タイプを出力する",
+        ru: "Вывести MIME-тип",
+        "zh-CN": "输出 MIME 类型",
+      },
+    },
+    "stat -c": {
+      command: "stat ",
+      suggestion: "stat -c",
+      values: {
+        "es-ES": "Establecer formato de salida",
+        fr: "Definir le format de sortie",
+        ja: "出力形式を設定する",
+        ru: "Задать формат вывода",
+        "zh-CN": "设置输出格式",
+      },
+    },
+    "whoami --help": {
+      command: "whoami ",
+      suggestion: "whoami --help",
+      values: {
+        "es-ES": "Mostrar ayuda",
+        fr: "Afficher l'aide",
+        ja: "ヘルプを表示する",
+        ru: "Показать справку",
+        "zh-CN": "显示帮助",
+      },
+    },
+    "clear -x": {
+      command: "clear ",
+      suggestion: "clear -x",
+      values: {
+        "es-ES": "No borrar el bufer de desplazamiento",
+        fr: "Ne pas effacer le tampon de defilement",
+        ja: "スクロールバックバッファを消去しない",
+        ru: "Не очищать буфер прокрутки",
+        "zh-CN": "不清除回滚缓冲区",
+      },
+    },
+    "umask 022": {
+      command: "umask ",
+      suggestion: "umask 022",
+      values: {
+        "es-ES": "Establecer permisos predeterminados en 755 para directorios y 644 para archivos",
+        fr: "Definir les permissions par defaut a 755 pour les repertoires et 644 pour les fichiers",
+        ja: "ディレクトリは 755、ファイルは 644 の既定権限に設定する",
+        ru: "Задать права по умолчанию 755 для каталогов и 644 для файлов",
+        "zh-CN": "将目录默认权限设为 755，文件设为 644",
+      },
+    },
+    "chgrp -R": {
+      command: "chgrp ",
+      suggestion: "chgrp -R",
+      values: {
+        "es-ES": "Cambiar grupo recursivamente",
+        fr: "Changer le groupe recursivement",
+        ja: "グループを再帰的に変更する",
+        ru: "Изменять группу рекурсивно",
+        "zh-CN": "递归更改组",
+      },
+    },
+    "sum -r": {
+      command: "sum ",
+      suggestion: "sum -r",
+      values: {
+        "es-ES": "Usar el algoritmo de suma de comprobacion BSD",
+        fr: "Utiliser l'algorithme de somme de controle BSD",
+        ja: "BSD チェックサムアルゴリズムを使用する",
+        ru: "Использовать алгоритм контрольной суммы BSD",
+        "zh-CN": "使用 BSD 校验和算法",
+      },
+    },
+    "sleep infinity": {
+      command: "sleep ",
+      suggestion: "sleep infinity",
+      values: {
+        "es-ES": "Dormir hasta que se interrumpa",
+        fr: "Dormir jusqu'a interruption",
+        ja: "中断されるまでスリープする",
+        ru: "Спать до прерывания",
+        "zh-CN": "休眠直到被中断",
+      },
+    },
+    "logger --journald": {
+      command: "logger ",
+      suggestion: "logger --journald",
+      values: {
+        "es-ES": "Enviar campos journald estructurados",
+        fr: "Envoyer des champs journald structures",
+        ja: "構造化 journald フィールドを送信する",
+        ru: "Отправить структурированные поля journald",
+        "zh-CN": "提交结构化 journald 字段",
+      },
+    },
+    "host -t": {
+      command: "host ",
+      suggestion: "host -t",
+      values: {
+        "es-ES": "Seleccionar tipo de registro DNS",
+        fr: "Choisir le type d'enregistrement DNS",
+        ja: "DNS レコードタイプを選択する",
+        ru: "Выбрать тип DNS-записи",
+        "zh-CN": "选择 DNS 记录类型",
+      },
+    },
+    "dig +short": {
+      command: "dig ",
+      suggestion: "dig +short",
+      values: {
+        "es-ES": "dar solo una respuesta breve",
+        fr: "ne donner qu'une reponse courte",
+        ja: "短い回答だけを出力する",
+        ru: "вывести только краткий ответ",
+        "zh-CN": "只给出简短答案",
+      },
+    },
+    "ping -c": {
+      command: "ping ",
+      suggestion: "ping -c",
+      values: {
+        "es-ES": "Limitar numero de paquetes",
+        fr: "Limiter le nombre de paquets",
+        ja: "パケット数を制限する",
+        ru: "Ограничить число пакетов",
+        "zh-CN": "限制数据包数量",
+      },
+    },
+    "traceroute -n": {
+      command: "traceroute ",
+      suggestion: "traceroute -n",
+      values: {
+        "es-ES": "No resolver direcciones",
+        fr: "Ne pas resoudre les adresses",
+        ja: "アドレスを解決しない",
+        ru: "Не разрешать адреса",
+        "zh-CN": "不解析地址",
+      },
+    },
+    "gzip -9": {
+      command: "gzip ",
+      suggestion: "gzip -9",
+      values: {
+        "es-ES": "Usar la compresion mas fuerte",
+        fr: "Utiliser la compression la plus forte",
+        ja: "最強の圧縮を使用する",
+        ru: "Использовать самое сильное сжатие",
+        "zh-CN": "使用最强压缩",
+      },
+    },
+    "gunzip -l": {
+      command: "gunzip ",
+      suggestion: "gunzip -l",
+      values: {
+        "es-ES": "Mostrar tamanos de archivos comprimidos",
+        fr: "Afficher les tailles des fichiers compresses",
+        ja: "圧縮ファイルのサイズを表示する",
+        ru: "Показать размеры сжатых файлов",
+        "zh-CN": "显示压缩文件大小",
+      },
+    },
+    "bzip2 -t": {
+      command: "bzip2 ",
+      suggestion: "bzip2 -t",
+      values: {
+        "es-ES": "Comprobar archivo comprimido",
+        fr: "Verifier le fichier compresse",
+        ja: "圧縮ファイルを検査する",
+        ru: "Проверить сжатый файл",
+        "zh-CN": "检查压缩文件",
+      },
+    },
+    "bunzip2 -c": {
+      command: "bunzip2 ",
+      suggestion: "bunzip2 -c",
+      values: {
+        "es-ES": "Escribir contenido descomprimido en stdout",
+        fr: "Ecrire le contenu decompresse sur stdout",
+        ja: "展開した内容を stdout に書き込む",
+        ru: "Записать распакованное содержимое в stdout",
+        "zh-CN": "将解压内容写入 stdout",
+      },
+    },
+    "xz -T": {
+      command: "xz ",
+      suggestion: "xz -T",
+      values: {
+        "es-ES": "Establecer numero de hilos de compresion",
+        fr: "Definir le nombre de threads de compression",
+        ja: "圧縮スレッド数を設定する",
+        ru: "Задать число потоков сжатия",
+        "zh-CN": "设置压缩线程数",
+      },
+    },
+    "unxz -t": {
+      command: "unxz ",
+      suggestion: "unxz -t",
+      values: {
+        "es-ES": "Comprobar archivo comprimido",
+        fr: "Verifier le fichier compresse",
+        ja: "圧縮ファイルを検査する",
+        ru: "Проверить сжатый файл",
+        "zh-CN": "检查压缩文件",
+      },
+    },
+    "sync -d": {
+      command: "sync ",
+      suggestion: "sync -d",
+      values: {
+        "es-ES": "Vaciar solo datos del archivo",
+        fr: "Vider uniquement les donnees du fichier",
+        ja: "ファイルデータだけを書き出す",
+        ru: "Сбросить только данные файла",
+        "zh-CN": "仅刷新文件数据",
+      },
+    },
+    "rmdir --ignore-fail-on-non-empty": {
+      command: "rmdir ",
+      suggestion: "rmdir --ignore-fail-on-non-empty",
+      values: {
+        "es-ES": "Ignorar fallos causados por directorios no vacios",
+        fr: "Ignorer les echecs dus aux repertoires non vides",
+        ja: "空でないディレクトリによる失敗を無視する",
+        ru: "Игнорировать ошибки из-за непустых каталогов",
+        "zh-CN": "忽略由非空目录导致的失败",
+      },
+    },
+    "comm --output-delimiter": {
+      command: "comm ",
+      suggestion: "comm --output-delimiter",
+      values: {
+        "es-ES": "Usar un delimitador de columna personalizado",
+        fr: "Utiliser un delimiteur de colonne personnalise",
+        ja: "カスタム列区切り文字を使用する",
+        ru: "Использовать собственный разделитель столбцов",
+        "zh-CN": "使用自定义列分隔符",
+      },
+    },
+    "wc --max-line-length": {
+      command: "wc ",
+      suggestion: "wc --max-line-length",
+      values: {
+        "es-ES": "Mostrar longitud de la linea mas larga",
+        fr: "Afficher la longueur de la ligne la plus longue",
+        ja: "最長行の長さを表示する",
+        ru: "Показать длину самой длинной строки",
+        "zh-CN": "显示最长行的长度",
+      },
+    },
+    "tee --output-error=warn": {
+      command: "tee ",
+      suggestion: "tee --output-error=warn",
+      values: {
+        "es-ES": "Informar errores de escritura y continuar",
+        fr: "Signaler les erreurs d'ecriture et continuer",
+        ja: "書き込みエラーを報告して続行する",
+        ru: "Сообщать об ошибках записи и продолжать",
+        "zh-CN": "报告写入错误并继续",
+      },
+    },
+    "date +<format>": {
+      command: "date ",
+      suggestion: "date +<format>",
+      values: {
+        "es-ES": "Controlar salida con cadena de formato",
+        fr: "Controler la sortie avec une chaine de format",
+        ja: "書式文字列で出力を制御する",
+        ru: "Управлять выводом с помощью строки формата",
+        "zh-CN": "用格式字符串控制输出",
+      },
+    },
+    "yes ok | head -n 10": {
+      command: "yes ",
+      suggestion: "yes ok | head -n 10",
+      values: {
+        "es-ES": "Imprimir ok repetidamente y mostrar diez lineas",
+        fr: "Imprimer ok de facon repetee et afficher dix lignes",
+        ja: "ok を繰り返し出力し、10 行を表示する",
+        ru: "Печатать ok повторно и показать десять строк",
+        "zh-CN": "重复打印 ok 并显示十行",
+      },
+    },
+    "updatedb --require-visibility": {
+      command: "updatedb ",
+      suggestion: "updatedb --require-visibility",
+      values: {
+        "es-ES": "Controlar comprobaciones de visibilidad de directorios",
+        fr: "Controler les verifications de visibilite des repertoires",
+        ja: "ディレクトリの可視性チェックを制御する",
+        ru: "Управлять проверками видимости каталогов",
+        "zh-CN": "控制目录可见性检查",
+      },
+    },
+    "truncate --reference": {
+      command: "truncate ",
+      suggestion: "truncate --reference",
+      values: {
+        "es-ES": "Usar el tamano de otro archivo como referencia",
+        fr: "Utiliser la taille d'un autre fichier comme reference",
+        ja: "別のファイルサイズを参照として使用する",
+        ru: "Использовать размер другого файла как эталон",
+        "zh-CN": "使用另一个文件大小作为参考",
+      },
+    },
+    "strings --encoding": {
+      command: "strings ",
+      suggestion: "strings --encoding",
+      values: {
+        "es-ES": "Seleccionar codificacion de caracteres",
+        fr: "Choisir l'encodage des caracteres",
+        ja: "文字エンコーディングを選択する",
+        ru: "Выбрать кодировку символов",
+        "zh-CN": "选择字符编码",
+      },
+    },
+    "numfmt --to": {
+      command: "numfmt ",
+      suggestion: "numfmt --to",
+      values: {
+        "es-ES": "Convertir numeros a un sistema de unidades destino",
+        fr: "Convertir les nombres vers un systeme d'unites cible",
+        ja: "\u6570\u5024\u3092\u5909\u63db\u5148\u306e\u5358\u4f4d\u4f53\u7cfb\u3078\u5909\u63db\u3059\u308b",
+        ru: "\u041f\u0440\u0435\u043e\u0431\u0440\u0430\u0437\u043e\u0432\u0430\u0442\u044c \u0447\u0438\u0441\u043b\u0430 \u0432 \u0446\u0435\u043b\u0435\u0432\u0443\u044e \u0441\u0438\u0441\u0442\u0435\u043c\u0443 \u0435\u0434\u0438\u043d\u0438\u0446",
+        "zh-CN": "\u5c06\u6570\u5b57\u8f6c\u6362\u5230\u76ee\u6807\u5355\u4f4d\u4f53\u7cfb",
+      },
+    },
+    "join --ignore-case": {
+      command: "join ",
+      suggestion: "join --ignore-case",
+      values: {
+        "es-ES": "Unir sin distinguir mayusculas y minusculas",
+        fr: "Joindre sans tenir compte de la casse",
+        ja: "\u5927\u6587\u5b57\u5c0f\u6587\u5b57\u3092\u533a\u5225\u305b\u305a\u306b\u7d50\u5408\u3059\u308b",
+        ru: "\u041e\u0431\u044a\u0435\u0434\u0438\u043d\u044f\u0442\u044c \u0431\u0435\u0437 \u0443\u0447\u0435\u0442\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430",
+        "zh-CN": "\u5ffd\u7565\u5927\u5c0f\u5199\u8fdb\u884c\u8fde\u63a5",
+      },
+    },
+    "basename /var/log/syslog": {
+      command: "basename ",
+      suggestion: "basename /var/log/syslog",
+      values: {
+        "es-ES": "Extraer el nombre syslog desde la ruta",
+        fr: "Extraire le nom syslog depuis le chemin",
+        ja: "\u30d1\u30b9\u304b\u3089 syslog \u3068\u3044\u3046\u30d5\u30a1\u30a4\u30eb\u540d\u3092\u53d6\u308a\u51fa\u3059",
+        ru: "\u0418\u0437\u0432\u043b\u0435\u0447\u044c \u0438\u043c\u044f \u0444\u0430\u0439\u043b\u0430 syslog \u0438\u0437 \u043f\u0443\u0442\u0438",
+        "zh-CN": "\u4ece\u8def\u5f84\u63d0\u53d6\u6587\u4ef6\u540d syslog",
+      },
+    },
+    "dirname /var/log/syslog": {
+      command: "dirname ",
+      suggestion: "dirname /var/log/syslog",
+      values: {
+        "es-ES": "Extraer el directorio /var/log desde la ruta",
+        fr: "Extraire le repertoire /var/log depuis le chemin",
+        ja: "\u30d1\u30b9\u304b\u3089 /var/log \u30c7\u30a3\u30ec\u30af\u30c8\u30ea\u3092\u53d6\u308a\u51fa\u3059",
+        ru: "\u0418\u0437\u0432\u043b\u0435\u0447\u044c \u043a\u0430\u0442\u0430\u043b\u043e\u0433 /var/log \u0438\u0437 \u043f\u0443\u0442\u0438",
+        "zh-CN": "\u4ece\u8def\u5f84\u63d0\u53d6\u76ee\u5f55 /var/log",
+      },
+    },
+    "readlink -m missing/path": {
+      command: "readlink ",
+      suggestion: "readlink -m missing/path",
+      values: {
+        "es-ES": "Resolver ruta incluso con componentes faltantes",
+        fr: "Resoudre le chemin meme avec des composants manquants",
+        ja: "\u5b58\u5728\u3057\u306a\u3044\u69cb\u6210\u8981\u7d20\u304c\u3042\u3063\u3066\u3082\u30d1\u30b9\u3092\u89e3\u6c7a\u3059\u308b",
+        ru: "\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u044c \u043f\u0443\u0442\u044c \u0434\u0430\u0436\u0435 \u0441 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u043c\u0438 \u043a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442\u0430\u043c\u0438",
+        "zh-CN": "\u5373\u4f7f\u6709\u7f3a\u5931\u7ec4\u4ef6\u4e5f\u89e3\u6790\u8def\u5f84",
+      },
+    },
+    "realpath --relative-to /var /var/log/syslog": {
+      command: "realpath ",
+      suggestion: "realpath --relative-to /var /var/log/syslog",
+      values: {
+        "es-ES": "Mostrar ruta relativa a /var",
+        fr: "Afficher le chemin relatif a /var",
+        ja: "/var \u304b\u3089\u306e\u76f8\u5bfe\u30d1\u30b9\u3092\u51fa\u529b\u3059\u308b",
+        ru: "\u0412\u044b\u0432\u0435\u0441\u0442\u0438 \u043f\u0443\u0442\u044c \u043e\u0442\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c\u043d\u043e /var",
+        "zh-CN": "\u8f93\u51fa\u76f8\u5bf9\u4e8e /var \u7684\u8def\u5f84",
+      },
+    },
+    "df -hT": {
+      command: "df ",
+      suggestion: "df -hT",
+      values: {
+        "es-ES": "Mostrar tamanos legibles con tipo de sistema de archivos",
+        fr: "Afficher les tailles lisibles avec le type de systeme de fichiers",
+        ja: "\u30d5\u30a1\u30a4\u30eb\u30b7\u30b9\u30c6\u30e0\u7a2e\u5225\u4ed8\u304d\u3067\u30b5\u30a4\u30ba\u3092\u8aad\u307f\u3084\u3059\u304f\u8868\u793a\u3059\u308b",
+        ru: "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0447\u0438\u0442\u0430\u0435\u043c\u044b\u0435 \u0440\u0430\u0437\u043c\u0435\u0440\u044b \u0441 \u0442\u0438\u043f\u043e\u043c \u0444\u0430\u0439\u043b\u043e\u0432\u043e\u0439 \u0441\u0438\u0441\u0442\u0435\u043c\u044b",
+        "zh-CN": "\u4ee5\u4eba\u7c7b\u53ef\u8bfb\u65b9\u5f0f\u663e\u793a\u5927\u5c0f\u548c\u6587\u4ef6\u7cfb\u7edf\u7c7b\u578b",
+      },
+    },
+    "du -sh *": {
+      command: "du ",
+      suggestion: "du -sh *",
+      values: {
+        "es-ES": "Mostrar tamano de todas las entradas del directorio actual",
+        fr: "Afficher la taille de toutes les entrees du repertoire courant",
+        ja: "\u73fe\u5728\u306e\u30c7\u30a3\u30ec\u30af\u30c8\u30ea\u5185\u306e\u5168\u9805\u76ee\u306e\u30b5\u30a4\u30ba\u3092\u8868\u793a\u3059\u308b",
+        ru: "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0440\u0430\u0437\u043c\u0435\u0440 \u0432\u0441\u0435\u0445 \u0437\u0430\u043f\u0438\u0441\u0435\u0439 \u0432 \u0442\u0435\u043a\u0443\u0449\u0435\u043c \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435",
+        "zh-CN": "\u663e\u793a\u5f53\u524d\u76ee\u5f55\u4e2d\u6240\u6709\u6761\u76ee\u7684\u5927\u5c0f",
+      },
+    },
+    "cmp -s file-a file-b": {
+      command: "cmp ",
+      suggestion: "cmp -s file-a file-b",
+      values: {
+        "es-ES": "Usar solo el codigo de salida para comparar",
+        fr: "Utiliser seulement le code de sortie pour comparer",
+        ja: "\u6bd4\u8f03\u306b\u306f\u7d42\u4e86\u30b3\u30fc\u30c9\u3060\u3051\u3092\u4f7f\u3046",
+        ru: "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u0434\u043b\u044f \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u044f \u0442\u043e\u043b\u044c\u043a\u043e \u043a\u043e\u0434 \u0432\u044b\u0445\u043e\u0434\u0430",
+        "zh-CN": "\u53ea\u4f7f\u7528\u9000\u51fa\u7801\u8fdb\u884c\u6bd4\u8f83",
+      },
+    },
+    "diff -u": {
+      command: "diff ",
+      suggestion: "diff -u",
+      values: {
+        "es-ES": "Mostrar diff unificado",
+        fr: "Afficher un diff unifie",
+        ja: "unified diff \u3092\u51fa\u529b\u3059\u308b",
+        ru: "\u0412\u044b\u0432\u0435\u0441\u0442\u0438 unified diff",
+        "zh-CN": "\u8f93\u51fa unified diff",
+      },
+    },
+    "base64 -d encoded.txt": {
+      command: "base64 ",
+      suggestion: "base64 -d encoded.txt",
+      values: {
+        "es-ES": "Decodificar archivo Base64",
+        fr: "Decoder le fichier Base64",
+        ja: "Base64 \u30d5\u30a1\u30a4\u30eb\u3092\u30c7\u30b3\u30fc\u30c9\u3059\u308b",
+        ru: "\u0414\u0435\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0444\u0430\u0439\u043b Base64",
+        "zh-CN": "\u89e3\u7801 Base64 \u6587\u4ef6",
+      },
+    },
+    "free -h": {
+      command: "free ",
+      suggestion: "free -h",
+      values: {
+        "es-ES": "Mostrar tamanos de memoria de forma legible",
+        fr: "Afficher les tailles de memoire de facon lisible",
+        ja: "\u30e1\u30e2\u30ea\u30b5\u30a4\u30ba\u3092\u8aad\u307f\u3084\u3059\u304f\u8868\u793a\u3059\u308b",
+        ru: "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0440\u0430\u0437\u043c\u0435\u0440\u044b \u043f\u0430\u043c\u044f\u0442\u0438 \u0432 \u0447\u0438\u0442\u0430\u0435\u043c\u043e\u043c \u0432\u0438\u0434\u0435",
+        "zh-CN": "\u4ee5\u4eba\u7c7b\u53ef\u8bfb\u65b9\u5f0f\u663e\u793a\u5185\u5b58\u5927\u5c0f",
+      },
+    },
+    "md5sum -c checksums.txt": {
+      command: "md5sum ",
+      suggestion: "md5sum -c checksums.txt",
+      values: {
+        "es-ES": "Comprobar sumas MD5 desde archivo",
+        fr: "Verifier les sommes MD5 depuis un fichier",
+        ja: "\u30d5\u30a1\u30a4\u30eb\u304b\u3089 MD5 \u30c1\u30a7\u30c3\u30af\u30b5\u30e0\u3092\u691c\u67fb\u3059\u308b",
+        ru: "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c\u043d\u044b\u0435 \u0441\u0443\u043c\u043c\u044b MD5 \u0438\u0437 \u0444\u0430\u0439\u043b\u0430",
+        "zh-CN": "\u4ece\u6587\u4ef6\u68c0\u67e5 MD5 \u6821\u9a8c\u548c",
+      },
+    },
+    "sha256sum find": {
+      command: "sha256sum ",
+      suggestion: "sha256sum find . -type f -print0 | xargs -0 sha256sum",
+      values: {
+        "es-ES": "calcular hash de todos los archivos de forma segura con NUL",
+        fr: "calculer le hash de tous les fichiers avec NUL en securite",
+        ja: "\u5168\u30d5\u30a1\u30a4\u30eb\u3092 NUL \u5b89\u5168\u306b\u30cf\u30c3\u30b7\u30e5\u3059\u308b",
+        ru: "\u0445\u0435\u0448\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432\u0441\u0435 \u0444\u0430\u0439\u043b\u044b \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e \u0447\u0435\u0440\u0435\u0437 NUL",
+        "zh-CN": "\u4ee5 NUL \u5b89\u5168\u65b9\u5f0f\u54c8\u5e0c\u6240\u6709\u6587\u4ef6",
+      },
+    },
+    "kill -9": {
+      command: "kill ",
+      suggestion: "kill -9",
+      values: {
+        "es-ES": "Enviar se\u00f1al KILL",
+        fr: "Envoyer le signal KILL",
+        ja: "KILL \u30b7\u30b0\u30ca\u30eb\u3092\u9001\u308b",
+        ru: "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0441\u0438\u0433\u043d\u0430\u043b KILL",
+        "zh-CN": "\u53d1\u9001 KILL \u4fe1\u53f7",
+      },
+    },
+    "killall -i": {
+      command: "killall ",
+      suggestion: "killall -i",
+      values: {
+        "es-ES": "preguntar antes de finalizar",
+        fr: "demander avant de terminer",
+        ja: "\u7d42\u4e86\u524d\u306b\u78ba\u8a8d\u3059\u308b",
+        ru: "\u0441\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u0442\u044c \u043f\u0435\u0440\u0435\u0434 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435\u043c",
+        "zh-CN": "\u7ed3\u675f\u524d\u8be2\u95ee",
+      },
+    },
+    "jobs -l %%": {
+      command: "jobs ",
+      suggestion: "jobs -l %%",
+      values: {
+        "es-ES": "Mostrar trabajo actual con ID de proceso",
+        fr: "Afficher job courant avec l'ID de processus",
+        ja: "現在のジョブをプロセス ID 付きで表示する",
+        ru: "Показать текущее задание с ID процесса",
+        "zh-CN": "显示当前作业及进程 ID",
+      },
+    },
+    "fg %1": {
+      command: "fg ",
+      suggestion: "fg %1",
+      values: {
+        "es-ES": "Llevar trabajo 1 al primer plano",
+        fr: "Ramener job 1 au premier plan",
+        ja: "ジョブ1をフォアグラウンドへ移す",
+        ru: "Перевести задание 1 на передний план",
+        "zh-CN": "将作业1带到前台",
+      },
+    },
+    "bg %1": {
+      command: "bg ",
+      suggestion: "bg %1",
+      values: {
+        "es-ES": "Continuar trabajo 1 en segundo plano",
+        fr: "Continuer job 1 en arrière-plan",
+        ja: "ジョブ1をバックグラウンドで続行する",
+        ru: "Продолжить задание 1 в фоне",
+        "zh-CN": "在后台继续作业1",
+      },
+    },
+    "disown -h %1": {
+      command: "disown ",
+      suggestion: "disown -h %1",
+      values: {
+        "es-ES": "Proteger trabajo 1 contra SIGHUP",
+        fr: "Protéger job 1 contre SIGHUP",
+        ja: "ジョブ1を SIGHUP から保護する",
+        ru: "Защитить задание 1 от SIGHUP",
+        "zh-CN": "保护作业1不受 SIGHUP 影响",
+      },
+    },
+    "tmux attach -t": {
+      command: "tmux ",
+      suggestion: "tmux attach -t <name>",
+      values: {
+        "es-ES": "Adjuntarse a una sesión tmux existente",
+        fr: "S'attacher à une session tmux existante",
+        ja: "既存の tmux セッションへ接続する",
+        ru: "Подключиться к существующему сеансу tmux",
+        "zh-CN": "连接到现有 tmux 会话",
+      },
+    },
+    "screen -ls": {
+      command: "screen ",
+      suggestion: "screen -ls",
+      values: {
+        "es-ES": "Listar sesiones screen",
+        fr: "Lister les sessions screen",
+        ja: "screen セッションを一覧表示する",
+        ru: "Показать сеансы screen",
+        "zh-CN": "列出 screen 会话",
+      },
+    },
+    "alias ll": {
+      command: "alias ",
+      suggestion: "alias ll='ls -lah'",
+      values: {
+        "es-ES": "Alias para listado largo incluyendo archivos ocultos",
+        fr: "Alias pour une liste longue avec fichiers cachés",
+        ja: "隠しファイルを含む詳細一覧の alias",
+        ru: "Псевдоним для подробного списка со скрытыми файлами",
+        "zh-CN": "用于包含隐藏文件的长列表别名",
+      },
+    },
+    "unalias -a": {
+      command: "unalias ",
+      suggestion: "unalias -a",
+      values: {
+        "es-ES": "Eliminar todos los alias",
+        fr: "Supprimer tous les alias",
+        ja: "すべての alias を削除する",
+        ru: "Удалить все псевдонимы",
+        "zh-CN": "删除所有别名",
+      },
+    },
+    "export HISTCONTROL": {
+      command: "export ",
+      suggestion: "export HISTCONTROL=ignoredups",
+      values: {
+        "es-ES": "Evitar entradas duplicadas en el historial",
+        fr: "Éviter les entrées d'historique en double",
+        ja: "重複する history エントリを避ける",
+        ru: "Избегать дублирующихся записей history",
+        "zh-CN": "避免重复的 history 条目",
+      },
+    },
+    "unset HISTFILE": {
+      command: "unset ",
+      suggestion: "unset HISTFILE",
+      values: {
+        "es-ES": "Eliminar variable HISTFILE del entorno de la shell",
+        fr: "Supprimer la variable HISTFILE de l'environnement du shell",
+        ja: "シェル環境から変数 HISTFILE を削除する",
+        ru: "Удалить переменную HISTFILE из окружения оболочки",
+        "zh-CN": "从 shell 环境中移除变量 HISTFILE",
+      },
+    },
+    "history grep ssh": {
+      command: "history ",
+      suggestion: "history | grep ssh",
+      values: {
+        "es-ES": "Buscar ssh en el historial",
+        fr: "Rechercher ssh dans l'historique",
+        ja: "履歴から ssh を検索する",
+        ru: "Искать ssh в истории",
+        "zh-CN": "在历史中搜索 ssh",
+      },
+    },
+    "type systemctl": {
+      command: "type ",
+      suggestion: "type -t systemctl",
+      values: {
+        "es-ES": "Mostrar solo el tipo de systemctl",
+        fr: "Afficher seulement le type de systemctl",
+        ja: "systemctl の種別だけを出力する",
+        ru: "Вывести только тип systemctl",
+        "zh-CN": "只输出 systemctl 的类型",
+      },
+    },
+    "command history": {
+      command: "command ",
+      suggestion: "command -V history",
+      values: {
+        "es-ES": "Explicar resolución de shell para history",
+        fr: "Expliquer la résolution shell pour history",
+        ja: "history のシェル解決を説明する",
+        ru: "Объяснить разрешение оболочки для history",
+        "zh-CN": "解释 history 的 shell 解析",
+      },
+    },
+    "more error": {
+      command: "more ",
+      suggestion: "more +/error /var/log/syslog",
+      values: {
+        "es-ES": "Empezar en la primera coincidencia de error",
+        fr: "Commencer au premier résultat pour error",
+        ja: "error の最初の一致から開始する",
+        ru: "Начать с первого совпадения для error",
+        "zh-CN": "从 error 的第一个匹配开始",
+      },
+    },
+    "column passwd": {
+      command: "column ",
+      suggestion: "column -t -s ':' /etc/passwd",
+      values: {
+        "es-ES": "Alinear columnas separadas por dos puntos",
+        fr: "Aligner les colonnes séparées par deux-points",
+        ja: "コロン区切りの列を整列する",
+        ru: "Выравнять столбцы, разделенные двоеточием",
+        "zh-CN": "对齐冒号分隔的列",
+      },
+    },
+    "hexdump first bytes": {
+      command: "hexdump ",
+      suggestion: "hexdump -C -n 128 file.bin",
+      values: {
+        "es-ES": "Mostrar los primeros 128 bytes en formato canónico",
+        fr: "Afficher les 128 premiers octets au format canonique",
+        ja: "先頭 128 バイトを標準形式で表示する",
+        ru: "Показать первые 128 байт в каноническом формате",
+        "zh-CN": "以标准格式显示前 128 个字节",
+      },
+    },
+    "lsblk filesystems": {
+      command: "lsblk ",
+      suggestion: "lsblk -f",
+      values: {
+        "es-ES": "Ver sistemas de archivos, etiquetas y UUID",
+        fr: "Afficher systèmes de fichiers, étiquettes et UUID",
+        ja: "ファイルシステム、ラベル、UUID を表示する",
+        ru: "Показать файловые системы, метки и UUID",
+        "zh-CN": "显示文件系统、标签和 UUID",
+      },
+    },
+    "blkid export": {
+      command: "blkid ",
+      suggestion: "blkid -o export /dev/sda1",
+      values: {
+        "es-ES": "Mostrar datos del dispositivo de bloque como clave valor",
+        fr: "Afficher les données du périphérique bloc en clé valeur",
+        ja: "ブロックデバイス情報をキー値形式で出力する",
+        ru: "Вывести данные блочного устройства как ключ значение",
+        "zh-CN": "以键值形式输出块设备数据",
+      },
+    },
+    "findmnt columns": {
+      command: "findmnt ",
+      suggestion: "findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS",
+      values: {
+        "es-ES": "Mostrar columnas de montaje seleccionadas",
+        fr: "Afficher les colonnes de montage sélectionnées",
+        ja: "選択したマウント列を表示する",
+        ru: "Показать выбранные столбцы монтирования",
+        "zh-CN": "显示选定的挂载列",
+      },
+    },
+    "mount remount rw": {
+      command: "mount ",
+      suggestion: "mount -o remount,rw /",
+      values: {
+        "es-ES": "Remontar el sistema de archivos raíz con escritura",
+        fr: "Remonter le système de fichiers racine en écriture",
+        ja: "root ファイルシステムを書き込み可能で再マウントする",
+        ru: "Перемонтировать корневую файловую систему с записью",
+        "zh-CN": "以可写方式重新挂载根文件系统",
+      },
+    },
+    "umount recursive": {
+      command: "umount ",
+      suggestion: "umount --recursive /mnt",
+      values: {
+        "es-ES": "Desmontar submontajes bajo /mnt recursivamente",
+        fr: "Démonter récursivement les sous-montages sous /mnt",
+        ja: "/mnt 配下のサブマウントを再帰的にアンマウントする",
+        ru: "Размонтировать подмонтирования под /mnt рекурсивно",
+        "zh-CN": "递归卸载 /mnt 下的子挂载",
+      },
+    },
+    "dmesg errors": {
+      command: "dmesg ",
+      suggestion: "dmesg -T --level=err,warn",
+      values: {
+        "es-ES": "Mostrar errores y advertencias con tiempo legible",
+        fr: "Afficher erreurs et avertissements avec heure lisible",
+        ja: "エラーと警告を読みやすい時刻付きで表示する",
+        ru: "Показать ошибки и предупреждения с читаемым временем",
+        "zh-CN": "显示带易读时间的错误和警告",
+      },
+    },
+    "sysctl load config": {
+      command: "sysctl ",
+      suggestion: "sysctl -p /etc/sysctl.conf",
+      values: {
+        "es-ES": "Cargar parámetros desde /etc/sysctl.conf",
+        fr: "Charger les paramètres depuis /etc/sysctl.conf",
+        ja: "/etc/sysctl.conf からパラメータを読み込む",
+        ru: "Загрузить параметры из /etc/sysctl.conf",
+        "zh-CN": "从 /etc/sysctl.conf 加载参数",
+      },
+    },
+    "update alternatives set editor": {
+      command: "update-alternatives ",
+      suggestion: "update-alternatives --set editor /usr/bin/vim",
+      values: {
+        "es-ES": "Establecer editor como vim",
+        fr: "Définir editor sur vim",
+        ja: "editor を vim に設定する",
+        ru: "Назначить editor на vim",
+        "zh-CN": "将 editor 设置为 vim",
+      },
+    },
+    "loginctl show-user": {
+      command: "loginctl ",
+      suggestion: "loginctl show-user",
+      values: {
+        "es-ES": "Mostrar propiedades de usuario",
+        fr: "Afficher les propriétés d'utilisateur",
+        ja: "ユーザープロパティを表示する",
+        ru: "Показать свойства пользователя",
+        "zh-CN": "显示用户属性",
+      },
+    },
+    "localectl list-locales": {
+      command: "localectl ",
+      suggestion: "localectl list-locales",
+      values: {
+        "es-ES": "Listar locales disponibles",
+        fr: "Lister les locales disponibles",
+        ja: "利用可能な locales を一覧表示する",
+        ru: "Перечислить доступные locales",
+        "zh-CN": "列出可用 locales",
+      },
+    },
+    "networkctl lldp": {
+      command: "networkctl ",
+      suggestion: "networkctl lldp",
+      values: {
+        "es-ES": "Mostrar vecinos LLDP",
+        fr: "Afficher les voisins LLDP",
+        ja: "LLDP 隣接を表示する",
+        ru: "Показать соседей LLDP",
+        "zh-CN": "显示 LLDP 邻居",
+      },
+    },
+    "busctl introspect": {
+      command: "busctl i",
+      suggestion: "busctl introspect <service> <path>",
+      values: {
+        "es-ES": "Mostrar interfaces y métodos de un objeto",
+        fr: "Afficher interfaces et méthodes d'un objet",
+        ja: "オブジェクトの interfaces とメソッドを表示する",
+        ru: "Показать interfaces и методы объекта",
+        "zh-CN": "显示对象的接口和方法",
+      },
+    },
+    "coredumpctl debug": {
+      command: "coredumpctl ",
+      suggestion: "coredumpctl debug <match>",
+      values: {
+        "es-ES": "Abrir coredump en el debugger",
+        fr: "Ouvrir le coredump dans le debugger",
+        ja: "debugger で coredump を開く",
+        ru: "Открыть coredump в debugger",
+        "zh-CN": "在 debugger 中打开 coredump",
+      },
+    },
+    "systemd-cgls unit": {
+      command: "systemd-cgls ",
+      suggestion: "systemd-cgls --unit ssh.service",
+      values: {
+        "es-ES": "Mostrar control group de ssh.service",
+        fr: "Afficher le control group de ssh.service",
+        ja: "ssh.service の control group を表示する",
+        ru: "Показать control group для ssh.service",
+        "zh-CN": "显示 ssh.service 的 control group",
+      },
+    },
+    "systemd-cgtop order memory": {
+      command: "systemd-cgtop ",
+      suggestion: "systemd-cgtop --order=memory",
+      values: {
+        "es-ES": "Ordenar por uso de memoria",
+        fr: "Trier par utilisation mémoire",
+        ja: "メモリ使用量で並べる",
+        ru: "Сортировать по использованию памяти",
+        "zh-CN": "按内存使用量排序",
+      },
+    },
+    "machinectl status": {
+      command: "machinectl ",
+      suggestion: "machinectl status <machine>",
+      values: {
+        "es-ES": "Mostrar estado de una máquina",
+        fr: "Afficher l'état d'une machine",
+        ja: "machine の状態を表示する",
+        ru: "Показать состояние machine",
+        "zh-CN": "显示 machine 状态",
+      },
+    },
+    "hostnamectl status": {
+      command: "hostnamectl ",
+      suggestion: "hostnamectl status",
+      values: {
+        "es-ES": "Mostrar hostnames y host metadata",
+        fr: "Afficher hostnames et host metadata",
+        ja: "表示する hostnames と host metadata",
+        ru: "Показать hostnames и host metadata",
+        "zh-CN": "显示 hostnames 和 host metadata",
+      },
+    },
+    "timedatectl list-timezones": {
+      command: "timedatectl ",
+      suggestion: "timedatectl list-timezones",
+      values: {
+        "es-ES": "Listar time zones disponibles",
+        fr: "Lister les time zones disponibles",
+        ja: "利用可能な time zones を一覧表示する",
+        ru: "Перечислить доступные time zones",
+        "zh-CN": "列出可用 time zones",
+      },
+    },
+    "systemd-analyze blame": {
+      command: "systemd-analyze ",
+      suggestion: "systemd-analyze blame",
+      values: {
+        "es-ES": "Ordenar units por duración de inicio",
+        fr: "Trier les units par durée de démarrage",
+        ja: "units を start duration で並べる",
+        ru: "Сортировать units по start duration",
+        "zh-CN": "按 start duration 对 units 排序",
+      },
+    },
+    "service status all": {
+      command: "service ",
+      suggestion: "service --status-all",
+      values: {
+        "es-ES": "Mostrar estado de todos los SysV services",
+        fr: "Afficher l'état de tous les SysV services",
+        ja: "すべての SysV services の状態を表示する",
+        ru: "Показать состояние всех SysV services",
+        "zh-CN": "查看所有 SysV services 的状态",
+      },
+    },
+    "nslookup mx": {
+      command: "nslookup ",
+      suggestion: "nslookup -type=MX example.com",
+      values: {
+        "es-ES": "Consultar records de mail server",
+        fr: "Interroger les records de mail server",
+        ja: "mail server records を問い合わせる",
+        ru: "Запросить mail server records",
+        "zh-CN": "查询 mail server records",
+      },
+    },
+    "tracepath numeric": {
+      command: "tracepath ",
+      suggestion: "tracepath -n 8.8.8.8",
+      values: {
+        "es-ES": "Seguir route numéricamente hasta 8.8.8.8",
+        fr: "Suivre route numériquement vers 8.8.8.8",
+        ja: "8.8.8.8 までの route を数値で trace する",
+        ru: "Отследить route численно до 8.8.8.8",
+        "zh-CN": "以数字方式跟踪到 8.8.8.8 的 route",
+      },
+    },
+    "mtr tcp port": {
+      command: "mtr ",
+      suggestion: "mtr -T -P 443 example.com",
+      values: {
+        "es-ES": "Ejecutar medición TCP al puerto 443",
+        fr: "Exécuter mesure TCP vers le port 443",
+        ja: "port 443 への TCP 測定を実行する",
+        ru: "Выполнить TCP измерение к port 443",
+        "zh-CN": "执行到 port 443 的 TCP 测量",
+      },
+    },
+    "nmap service version": {
+      command: "nmap ",
+      suggestion: "nmap -sV",
+      values: {
+        "es-ES": "Ejecutar service y version scan",
+        fr: "Exécuter service et version scan",
+        ja: "service と version scan を実行する",
+        ru: "Запустить service и version scan",
+        "zh-CN": "运行 service 和 version scan",
+      },
+    },
+    "netstat listening tcp udp": {
+      command: "netstat ",
+      suggestion: "netstat -tulpn",
+      values: {
+        "es-ES": "Mostrar listening TCP/UDP ports con processes",
+        fr: "Afficher listening TCP/UDP ports avec processes",
+        ja: "processes 付きで listening TCP/UDP ports を表示する",
+        ru: "Показать listening TCP/UDP ports с processes",
+        "zh-CN": "显示带 processes 的 listening TCP/UDP ports",
+      },
+    },
+    "lsof port 443": {
+      command: "lsof ",
+      suggestion: "lsof -i :443",
+      values: {
+        "es-ES": "Mostrar processes en port 443",
+        fr: "Afficher processes sur port 443",
+        ja: "port 443 の processes を表示する",
+        ru: "Показать processes на port 443",
+        "zh-CN": "显示 port 443 上的 processes",
+      },
+    },
+    "pwd | cat": {
+      command: "pwd ",
+      suggestion: "pwd | cat",
+      values: {
+        "es-ES": "Mostrar la ruta actual mediante una tuberia",
+        fr: "Afficher le chemin actuel via un tube",
+        ja: "現在のパスを pipe 経由で出力する",
+        ru: "Вывести текущий путь через pipe",
+        "zh-CN": "通过 pipe 输出当前路径",
+      },
+    },
+  };
+
+  for (const expectation of Object.values(translatedShellBasicsExpectations)) {
+    for (const [language, expected] of Object.entries(expectation.values)) {
+      const actual = autocomplete.getTerminalAutocompleteSuggestionDescription(
+        expectation.command,
+        expectation.suggestion,
+        { language },
+      );
+      if (actual !== expected) {
+        fail(
+          `Expected ${language} autocomplete ${expectation.suggestion} detail to be ${expected}, got ${actual}`,
+        );
+      }
+    }
+  }
+
+  const translatedHelpExpectations = {
+    af: "Lees handleidingbladsye en soek dokumentasie",
+    ar: "قراءة صفحات الدليل والبحث في الوثائق",
+    bg: "Четене на man страници и търсене в документацията",
+    bn: "ম্যানুয়াল পৃষ্ঠা পড়ুন এবং ডকুমেন্টেশন খুঁজুন",
+    ca: "Llegeix pàgines de manual i cerca documentació",
+    cs: "Číst manuálové stránky a hledat dokumentaci",
+    da: "Læs manualsider og søg dokumentation",
+    el: "Ανάγνωση σελίδων manual και αναζήτηση τεκμηρίωσης",
+    "es-ES": "Leer paginas de manual y buscar documentacion",
+    fi: "Lue manuaalisivuja ja etsi dokumentaatiota",
+    fr: "Lire les pages de manuel et rechercher de la documentation",
+    he: "קריאת דפי מדריך וחיפוש בתיעוד",
+    hi: "manual pages पढ़ें और documentation खोजें",
+    hu: "Kézikönyvoldalak olvasása és dokumentáció keresése",
+    id: "Baca halaman manual dan cari dokumentasi",
+    it: "Leggere pagine di manuale e cercare documentazione",
+    ja: "マニュアルページを読み、ドキュメントを検索する",
+    ko: "매뉴얼 페이지를 읽고 문서 검색",
+    nl: "Handleidingpagina's lezen en documentatie zoeken",
+    no: "Les manualsider og søk i dokumentasjon",
+    pl: "Czytaj strony manuala i szukaj dokumentacji",
+    "pt-BR": "Ler paginas de manual e pesquisar documentacao",
+    "pt-PT": "Ler paginas de manual e pesquisar documentacao",
+    ro: "Citește pagini de manual și caută documentație",
+    ru: "Читать man-страницы и искать документацию",
+    sr: "Читај man странице и претражуј документацију",
+    "sv-SE": "Läs manualsidor och sök dokumentation",
+    th: "อ่านหน้า manual และค้นหาเอกสาร",
+    tr: "Kılavuz sayfalarını oku ve dokümantasyon ara",
+    uk: "Читати man-сторінки й шукати документацію",
+    vi: "Đọc trang hướng dẫn và tìm tài liệu",
+    "zh-CN": "阅读手册页并搜索文档",
+    "zh-TW": "閱讀手冊頁並搜尋文件",
+  };
+
+  for (const [language, expected] of Object.entries(
+    translatedHelpExpectations,
+  )) {
+    const actual = autocompleteI18n.getTerminalAutocompleteHelpDescriptionText(
+      "man",
+      language,
+    );
+    if (actual !== expected) {
+      fail(
+        `Expected ${language} autocomplete man help to be ${expected}, got ${actual}`,
+      );
+    }
+  }
+
+  const translatedValueExpectation =
+    autocomplete.getTerminalAutocompleteSuggestionDescription(
+      "man ",
+      "man unknown-topic",
+      { language: "fr" },
+    );
+  if (
+    translatedValueExpectation !==
+    "page de manuel, section, mot-cle ou option de pager"
+  ) {
+    fail(
+      `Expected French autocomplete value fallback to be localized, got ${translatedValueExpectation}`,
     );
   }
 }
@@ -864,6 +3027,9 @@ function assertHelpCatalogQuality() {
     "history",
     "pwd",
     "which",
+    "whereis",
+    "man",
+    "info",
     "type",
     "command",
     "screen",
@@ -889,6 +3055,12 @@ function assertHelpCatalogQuality() {
     "column",
     "jq",
     "watch",
+    "sleep",
+    "logger",
+    "cal",
+    "ncal",
+    "sync",
+    "test",
     "memusage",
     "apt-get",
     "apt-cache",
@@ -896,6 +3068,8 @@ function assertHelpCatalogQuality() {
     "df",
     "du",
     "free",
+    "locate",
+    "updatedb",
     "dmesg",
     "sysctl",
     "findmnt",
@@ -907,6 +3081,7 @@ function assertHelpCatalogQuality() {
     "loginctl",
     "systemd-analyze",
     "chgrp",
+    "truncate",
     "umask",
     "groups",
     "groupadd",
@@ -965,6 +3140,14 @@ function assertHelpCatalogQuality() {
     "certbot",
     "supervisorctl",
     "pm2",
+    "comm",
+    "join",
+    "numfmt",
+    "shuf",
+    "od",
+    "strings",
+    "cksum",
+    "sum",
   ];
 
   if (!Array.isArray(entries) || entries.length < 160) {
@@ -1663,6 +3846,42 @@ assertSuggestionDescription(
   "watch ",
   "watch --differences=cumulative 'ss -tulpn'",
   "Socket-Aenderungen kumulativ hervorheben",
+);
+assertMinCount("sleep ", 8);
+assertIncludes("sleep ", "sleep 1m");
+assertSuggestionDescription(
+  "sleep ",
+  "sleep infinity",
+  "bis zur Unterbrechung schlafen",
+);
+assertMinCount("logger ", 16);
+assertIncludes("logger ", "logger -t deploy 'release started'");
+assertSuggestionDescription(
+  "logger ",
+  "logger --journald",
+  "strukturierte journald-Felder senden",
+);
+assertMinCount("cal ", 10);
+assertIncludes("cal ", "cal --week=iso");
+assertIncludes("ncal ", "ncal --week=iso");
+assertSuggestionDescription(
+  "cal ",
+  "cal --monday",
+  "Wochen am Montag beginnen",
+);
+assertMinCount("sync ", 8);
+assertIncludes("sync ", "sync --file-system /mnt/usb");
+assertSuggestionDescription(
+  "sync ",
+  "sync --data file.txt",
+  "nur Dateidaten schreiben",
+);
+assertMinCount("test ", 12);
+assertIncludes("test ", "test -f /etc/passwd");
+assertSuggestionDescription(
+  "test ",
+  "test -d /var/log",
+  "pruefen, ob ein Pfad ein Verzeichnis ist",
 );
 assertSuggestionDescription("sed ", "sed -i", "Dateien direkt bearbeiten");
 assertSuggestionDescription(
@@ -4035,6 +6254,39 @@ assertSuggestionDescription(
   "whereis -g",
   "Namen als Glob-Muster interpretieren",
 );
+assertMinCount("man ", 14);
+assertIncludes("man ", "man 5 crontab");
+assertSuggestionDescription(
+  "man ",
+  "man -k ssh",
+  "Handbuchseiten nach Namen und Beschreibung suchen",
+);
+assertDefaultSuggestionDescription(
+  "man ",
+  "man ls",
+  "Open the manual page for ls",
+);
+assertMinCount("info ", 12);
+assertIncludes("info ", "info '(coreutils) ls invocation'");
+assertSuggestionDescription(
+  "info ",
+  "info --index-search=chmod coreutils",
+  "zu einem Indexeintrag springen",
+);
+assertMinCount("locate ", 14);
+assertIncludes("locate ", "locate --existing sshd_config");
+assertSuggestionDescription(
+  "locate ",
+  "locate -r '/etc/.*\\.conf$'",
+  "regulaeren Ausdruck verwenden",
+);
+assertMinCount("updatedb ", 10);
+assertIncludes("updatedb ", "updatedb --output=/tmp/locatedb");
+assertSuggestionDescription(
+  "updatedb ",
+  "updatedb --prunepaths='/tmp /var/tmp'",
+  "ausgewaehlte Pfade beim Indizieren auslassen",
+);
 
 assertMinCount("memusage ", 28);
 assertIncludes("memusage ", "memusage --png=memory.png ./app");
@@ -4100,6 +6352,42 @@ assertSuggestionDescription(
   "xxd ",
   "xxd -g 1 file.bin",
   "Bytes einzeln gruppieren",
+);
+assertMinCount("truncate ", 12);
+assertIncludes("truncate ", "truncate --reference=source.bin target.bin");
+assertIncludes("truncate --", "truncate --no-create");
+assertSuggestionDescription(
+  "truncate --",
+  "truncate --no-create",
+  "fehlende Dateien nicht erstellen",
+);
+assertMinCount("od ", 18);
+assertIncludes("od ", "od -Ax -tx1z file.bin");
+assertSuggestionDescription(
+  "od ",
+  "od --endian=little -tx4 file.bin",
+  "Byte-Reihenfolge fuer Mehrbyte-Daten waehlen",
+);
+assertMinCount("strings ", 18);
+assertIncludes("strings ", "strings --bytes=12 binary");
+assertSuggestionDescription(
+  "strings ",
+  "strings -t x binary",
+  "Offsets in gewaehlter Basis ausgeben",
+);
+assertMinCount("cksum ", 20);
+assertIncludes("cksum ", "cksum --algorithm=sha256 file.iso");
+assertSuggestionDescription(
+  "cksum ",
+  "cksum --check checksums.txt",
+  "Pruefsummen aus Datei pruefen",
+);
+assertMinCount("sum ", 8);
+assertIncludes("sum ", "sum --sysv file.txt");
+assertSuggestionDescription(
+  "sum ",
+  "sum --bsd file.txt",
+  "BSD-Pruefsummenalgorithmus verwenden",
 );
 
 assertMinCount("lsblk ", 15);
@@ -4384,6 +6672,35 @@ assertIncludes("yq ", "yq '.metadata.name' file.yml");
 assertIncludes("yq -", "yq -o");
 assertIncludes("yq -", "yq -o json file.yml");
 assertIncludes("yq --", "yq --output-format");
+assertMinCount("comm ", 12);
+assertIncludes("comm ", "comm -12 sorted-a.txt sorted-b.txt");
+assertSuggestionDescription(
+  "comm ",
+  "comm --output-delimiter=',' a.txt b.txt",
+  "eigenes Spaltentrennzeichen verwenden",
+);
+assertMinCount("join ", 14);
+assertIncludes("join ", "join -t ',' users.csv groups.csv");
+assertSuggestionDescription(
+  "join ",
+  "join --header left.tsv right.tsv",
+  "erste Zeile als Kopfzeile behandeln",
+);
+assertMinCount("numfmt ", 14);
+assertIncludes("numfmt ", "numfmt --to=iec 1048576");
+assertIncludes("numfmt --", "numfmt --field");
+assertSuggestionDescription(
+  "numfmt --",
+  "numfmt --field",
+  "nur ausgewaehlte Felder umrechnen",
+);
+assertMinCount("shuf ", 14);
+assertIncludes("shuf ", "shuf -i 1-100 -n 10");
+assertSuggestionDescription(
+  "shuf ",
+  "shuf --random-source=/dev/urandom file.txt",
+  "Zufallsbytes aus Datei lesen",
+);
 assertIncludes("gzip ", "gzip --stdout");
 assertIncludes("gunzip ", "gunzip --list");
 assertIncludes("bzip2 ", "bzip2 -k");
