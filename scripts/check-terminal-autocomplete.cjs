@@ -3916,6 +3916,17 @@ assertDeepEqual(
   "echo suggestions use only Bash builtin options",
 );
 assertDeepEqual(
+  autocomplete
+    .buildTerminalAutocompleteMatchItems(
+      "echo ",
+      ["echo --help", "echo --version"],
+      { mode: "popup" },
+    )
+    .map((item) => item.command),
+  ["echo -n", "echo -e", "echo -E"],
+  "echo history does not reintroduce non-builtin long options",
+);
+assertDeepEqual(
   commandsFor("echo --"),
   [],
   "echo long options are not suggested for the Bash builtin",

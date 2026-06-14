@@ -3552,7 +3552,7 @@ function getBashBuiltinEchoLastArgument(command: string) {
   return argumentTokens[argumentTokens.length - 1] ?? "";
 }
 
-function isBashBuiltinEchoCatalogCandidateAllowed(
+function isBashBuiltinEchoCandidateAllowed(
   candidate: string,
   context: TerminalAutocompleteContext,
 ) {
@@ -7490,8 +7490,7 @@ export function buildTerminalAutocompleteMatchItems(
     const trimmedMatchCandidate = matchCandidate.trim();
     const candidateHasPlaceholder = hasPlaceholder(trimmedCandidate);
     if (
-      (source === "catalog" &&
-        !isBashBuiltinEchoCatalogCandidateAllowed(trimmedCandidate, context)) ||
+      !isBashBuiltinEchoCandidateAllowed(trimmedCandidate, context) ||
       (candidateHasPlaceholder && (source === "history" || mode === "ghost")) ||
       (source === "history" &&
         isOverlongSingleValueCandidate(trimmedCandidate, context)) ||
