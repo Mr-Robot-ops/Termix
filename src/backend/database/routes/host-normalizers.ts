@@ -6,6 +6,26 @@ export function isValidPort(port: unknown): port is number {
   return typeof port === "number" && port > 0 && port <= 65535;
 }
 
+export const FOLDER_PATH_SEPARATOR = " / ";
+
+/**
+ * Re-paths a folder string when its ancestor folder is renamed. Returns the new
+ * path for an exact match or any nested child, or null when the path is unrelated.
+ * Mirrors the SQL CASE expression used in the folder rename route.
+ */
+export function renameFolderPath(
+  folderPath: string,
+  oldName: string,
+  newName: string,
+): string | null {
+  if (folderPath === oldName) return newName;
+  const prefix = `${oldName}${FOLDER_PATH_SEPARATOR}`;
+  if (folderPath.startsWith(prefix)) {
+    return `${newName}${FOLDER_PATH_SEPARATOR}${folderPath.slice(prefix.length)}`;
+  }
+  return null;
+}
+
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -74,11 +94,14 @@ export type NormalizedImportedHost = Record<string, unknown> & {
   keyPassword?: string;
   keyType?: string;
   credentialId?: number;
+  credentialAlias?: string;
   pin?: unknown;
   enableTerminal?: unknown;
   enableTunnel?: unknown;
   enableFileManager?: unknown;
   enableDocker?: unknown;
+  enableProxmox?: unknown;
+  enableTmuxMonitor?: unknown;
   showTerminalInSidebar?: unknown;
   showFileManagerInSidebar?: unknown;
   showTunnelInSidebar?: unknown;
@@ -91,6 +114,7 @@ export type NormalizedImportedHost = Record<string, unknown> & {
   quickActions?: unknown;
   statsConfig?: unknown;
   dockerConfig?: unknown;
+  proxmoxConfig?: unknown;
   terminalConfig?: unknown;
   forceKeyboardInteractive?: unknown;
   notes?: unknown;
@@ -115,6 +139,8 @@ export type NormalizedImportedHost = Record<string, unknown> & {
 export function normalizeImportedHost(
   hostData: Record<string, unknown>,
 ): NormalizedImportedHost {
+  const credentialAlias =
+    asString(hostData.credentialAlias) || asString(hostData.credentialName);
   const connectionType =
     asString(hostData.connectionType) ||
     (asBoolean(hostData.enableRdp)
@@ -149,10 +175,15 @@ export function normalizeImportedHost(
     folder: asString(hostData.folder) || asString(hostData.group),
     tags: normalizeImportTags(hostData.tags),
     credentialId: asInteger(hostData.credentialId),
+    credentialAlias,
     authType:
       asString(hostData.authType) ||
       asString(hostData.authMethod) ||
-      (hostData.credentialId ? "credential" : hostData.key ? "key" : undefined),
+      (hostData.credentialId || credentialAlias
+        ? "credential"
+        : hostData.key
+          ? "key"
+          : undefined),
     enableSsh:
       hostData.enableSsh === undefined
         ? connectionType === "ssh"
@@ -214,8 +245,10 @@ export function transformHostResponse(
     pin: !!host.pin,
     enableTerminal: !!host.enableTerminal,
     enableTunnel: !!host.enableTunnel,
-    enableFileManager: !!host.enableFileManager,
+    enableFileManager: host.enableFileManager !== false,
     enableDocker: !!host.enableDocker,
+    enableProxmox: !!host.enableProxmox,
+    enableTmuxMonitor: !!host.enableTmuxMonitor,
     showTerminalInSidebar: !!host.showTerminalInSidebar,
     showFileManagerInSidebar: !!host.showFileManagerInSidebar,
     showTunnelInSidebar: !!host.showTunnelInSidebar,
@@ -264,7 +297,11 @@ export function transformHostResponse(
     dockerConfig: host.dockerConfig
       ? JSON.parse(host.dockerConfig as string)
       : undefined,
+    proxmoxConfig: host.proxmoxConfig
+      ? JSON.parse(host.proxmoxConfig as string)
+      : undefined,
     forceKeyboardInteractive: host.forceKeyboardInteractive === "true",
+    useWarpgate: !!host.useWarpgate,
     socks5ProxyChain: host.socks5ProxyChain
       ? JSON.parse(host.socks5ProxyChain as string)
       : [],

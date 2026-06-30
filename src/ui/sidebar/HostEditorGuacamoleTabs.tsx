@@ -14,6 +14,7 @@ import {
   Shield,
   Terminal,
   Zap,
+  Cpu,
 } from "lucide-react";
 import type { HostEditorForm } from "./HostEditorData";
 
@@ -24,16 +25,31 @@ type HostEditorSetField = <K extends keyof HostEditorForm>(
 
 type GuacFieldSetter = (key: string, value: unknown) => void;
 
+function DocsLinkAction({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="text-[10px] text-accent-brand hover:underline normal-case tracking-normal font-normal"
+    >
+      {label}
+    </a>
+  );
+}
+
 export function HostEditorRdpTab({
   form,
   setField,
   setGuacField,
   host,
+  credentials,
 }: {
   form: HostEditorForm;
   setField: HostEditorSetField;
   setGuacField: GuacFieldSetter;
   host?: Host | null;
+  credentials?: { id: string; name: string; username: string }[];
 }) {
   const { t } = useTranslation();
 
@@ -42,6 +58,12 @@ export function HostEditorRdpTab({
       <SectionCard
         title={t("hosts.guac.connection")}
         icon={<Globe className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">
@@ -59,40 +81,180 @@ export function HostEditorRdpTab({
         </div>
       </SectionCard>
       <SectionCard
-        title={t("hosts.guac.authentication")}
-        icon={<Shield className="size-3.5" />}
+        title={t("hosts.statusChecksLabel")}
+        icon={<Activity className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-0 py-1">
+          <SettingRow
+            label={t("hosts.enableStatusChecks")}
+            description={t("hosts.enableStatusChecksDesc")}
+          >
+            <FakeSwitch
+              checked={form.statsConfig.statusCheckEnabled}
+              onChange={(v) =>
+                setField("statsConfig", {
+                  ...form.statsConfig,
+                  statusCheckEnabled: v,
+                })
+              }
+            />
+          </SettingRow>
+          {form.statsConfig.statusCheckEnabled && (
+            <SettingRow
+              label={t("hosts.useGlobalInterval")}
+              description={t("hosts.useGlobalIntervalDesc")}
+            >
+              <FakeSwitch
+                checked={form.statsConfig.useGlobalStatusInterval}
+                onChange={(v) =>
+                  setField("statsConfig", {
+                    ...form.statsConfig,
+                    useGlobalStatusInterval: v,
+                  })
+                }
+              />
+            </SettingRow>
+          )}
+          {form.statsConfig.statusCheckEnabled &&
+            !form.statsConfig.useGlobalStatusInterval && (
+              <SettingRow
+                label={t("hosts.checkIntervalS")}
+                description={t("hosts.checkIntervalDesc")}
+              >
+                <Input
+                  type="number"
+                  value={form.statsConfig.statusCheckInterval}
+                  onChange={(e) =>
+                    setField("statsConfig", {
+                      ...form.statsConfig,
+                      statusCheckInterval: Number(e.target.value),
+                    })
+                  }
+                  className="w-20 h-7 text-xs text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </SettingRow>
+            )}
+        </div>
+      </SectionCard>
+      <SectionCard
+        title={t("hosts.guac.guacdProxy")}
+        icon={<Cpu className="size-3.5" />}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.username")}
+              {t("hosts.guac.guacdHostname")}
             </label>
             <Input
-              placeholder="Administrator"
-              value={form.rdpUser}
-              onChange={(e) => setField("rdpUser", e.target.value)}
+              placeholder={t("hosts.guac.guacdHostnamePlaceholder")}
+              value={(form.guacamoleConfig["guacd-hostname"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-hostname", e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.password")}
-            </label>
-            <PasswordInput
-              className="h-8 text-xs pr-8"
-              placeholder="••••••••"
-              value={form.rdpPassword}
-              onChange={(e) => setField("rdpPassword", e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.domain")}
+              {t("hosts.guac.guacdPort")}
             </label>
             <Input
-              placeholder="WORKGROUP"
-              value={form.domain}
-              onChange={(e) => setField("domain", e.target.value)}
+              type="number"
+              placeholder="4822"
+              value={(form.guacamoleConfig["guacd-port"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-port", e.target.value)}
+              className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
+          </div>
+          <p className="col-span-full text-[10px] text-muted-foreground -mt-2">
+            {t("hosts.guac.guacdProxyDesc")}
+          </p>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title={t("hosts.guac.authentication")}
+        icon={<Shield className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-4 py-3">
+          {credentials && credentials.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.authMethod")}
+              </label>
+              <div className="flex gap-2">
+                {(["direct", "credential"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setField("rdpAuthType", m)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-colors ${
+                      form.rdpAuthType === m
+                        ? "border-accent-brand/40 bg-accent-brand/10 text-accent-brand"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(
+                      `hosts.guac.authType${m.charAt(0).toUpperCase() + m.slice(1)}`,
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {form.rdpAuthType === "credential" &&
+            credentials &&
+            credentials.length > 0 ? (
+              <div className="flex flex-col gap-1.5 col-span-full">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("hosts.guac.storedCredential")}
+                </label>
+                <select
+                  value={form.rdpCredentialId}
+                  onChange={(e) => setField("rdpCredentialId", e.target.value)}
+                  className="flex h-9 w-full border border-border bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">{t("hosts.guac.selectCredential")}</option>
+                  {credentials.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.username ? `${c.name} (${c.username})` : c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {t("hosts.guac.username")}
+                  </label>
+                  <Input
+                    placeholder="Administrator"
+                    value={form.rdpUser}
+                    onChange={(e) => setField("rdpUser", e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {t("hosts.guac.password")}
+                  </label>
+                  <PasswordInput
+                    className="h-8 text-xs pr-8"
+                    placeholder="••••••••"
+                    value={form.rdpPassword}
+                    onChange={(e) => setField("rdpPassword", e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.domain")}
+              </label>
+              <Input
+                placeholder="WORKGROUP"
+                value={form.domain}
+                onChange={(e) => setField("domain", e.target.value)}
+              />
+            </div>
           </div>
         </div>
       </SectionCard>
@@ -128,6 +290,23 @@ export function HostEditorRdpTab({
               onChange={(v) => setField("ignoreCert", v)}
             />
           </SettingRow>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              {t("hosts.guac.loadBalanceInfo")}
+            </label>
+            <Input
+              placeholder="tsv://MS Terminal Services Plugin.1.CollectionName"
+              value={
+                (form.guacamoleConfig["load-balance-info"] as string) ?? ""
+              }
+              onChange={(e) =>
+                setGuacField("load-balance-info", e.target.value)
+              }
+            />
+            <p className="text-[10px] text-muted-foreground">
+              {t("hosts.guac.loadBalanceInfoDesc")}
+            </p>
+          </div>
         </div>
       </SectionCard>
 
@@ -645,6 +824,12 @@ export function HostEditorRdpTab({
       <SectionCard
         title={t("hosts.guac.sessionRecording")}
         icon={<Activity className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop#session-recording"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">
@@ -709,6 +894,12 @@ export function HostEditorRdpTab({
       <SectionCard
         title={t("hosts.guac.wakeOnLan")}
         icon={<Zap className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/features/networking/wake-on-lan"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <SettingRow
@@ -779,11 +970,13 @@ export function HostEditorVncTab({
   setField,
   setGuacField,
   host,
+  credentials,
 }: {
   form: HostEditorForm;
   setField: HostEditorSetField;
   setGuacField: GuacFieldSetter;
   host?: Host | null;
+  credentials?: { id: string; name: string; username: string }[];
 }) {
   const { t } = useTranslation();
 
@@ -792,6 +985,12 @@ export function HostEditorVncTab({
       <SectionCard
         title={t("hosts.guac.connection")}
         icon={<Globe className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">
@@ -809,31 +1008,169 @@ export function HostEditorVncTab({
         </div>
       </SectionCard>
       <SectionCard
-        title={t("hosts.guac.authentication")}
-        icon={<Shield className="size-3.5" />}
+        title={t("hosts.statusChecksLabel")}
+        icon={<Activity className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-0 py-1">
+          <SettingRow
+            label={t("hosts.enableStatusChecks")}
+            description={t("hosts.enableStatusChecksDesc")}
+          >
+            <FakeSwitch
+              checked={form.statsConfig.statusCheckEnabled}
+              onChange={(v) =>
+                setField("statsConfig", {
+                  ...form.statsConfig,
+                  statusCheckEnabled: v,
+                })
+              }
+            />
+          </SettingRow>
+          {form.statsConfig.statusCheckEnabled && (
+            <SettingRow
+              label={t("hosts.useGlobalInterval")}
+              description={t("hosts.useGlobalIntervalDesc")}
+            >
+              <FakeSwitch
+                checked={form.statsConfig.useGlobalStatusInterval}
+                onChange={(v) =>
+                  setField("statsConfig", {
+                    ...form.statsConfig,
+                    useGlobalStatusInterval: v,
+                  })
+                }
+              />
+            </SettingRow>
+          )}
+          {form.statsConfig.statusCheckEnabled &&
+            !form.statsConfig.useGlobalStatusInterval && (
+              <SettingRow
+                label={t("hosts.checkIntervalS")}
+                description={t("hosts.checkIntervalDesc")}
+              >
+                <Input
+                  type="number"
+                  value={form.statsConfig.statusCheckInterval}
+                  onChange={(e) =>
+                    setField("statsConfig", {
+                      ...form.statsConfig,
+                      statusCheckInterval: Number(e.target.value),
+                    })
+                  }
+                  className="w-20 h-7 text-xs text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </SettingRow>
+            )}
+        </div>
+      </SectionCard>
+      <SectionCard
+        title={t("hosts.guac.guacdProxy")}
+        icon={<Cpu className="size-3.5" />}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.vncPassword")}
+              {t("hosts.guac.guacdHostname")}
             </label>
-            <PasswordInput
-              className="h-8 text-xs pr-8"
-              placeholder="••••••••"
-              value={form.vncPassword}
-              onChange={(e) => setField("vncPassword", e.target.value)}
+            <Input
+              placeholder={t("hosts.guac.guacdHostnamePlaceholder")}
+              value={(form.guacamoleConfig["guacd-hostname"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-hostname", e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.vncUsernameOptional")}
+              {t("hosts.guac.guacdPort")}
             </label>
             <Input
-              placeholder={t("hosts.guac.vncLeaveBlank")}
-              value={form.vncUser}
-              onChange={(e) => setField("vncUser", e.target.value)}
+              type="number"
+              placeholder="4822"
+              value={(form.guacamoleConfig["guacd-port"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-port", e.target.value)}
+              className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
+          <p className="col-span-full text-[10px] text-muted-foreground -mt-2">
+            {t("hosts.guac.guacdProxyDesc")}
+          </p>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title={t("hosts.guac.authentication")}
+        icon={<Shield className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-4 py-3">
+          {credentials && credentials.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.authMethod")}
+              </label>
+              <div className="flex gap-2">
+                {(["direct", "credential"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setField("vncAuthType", m)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-colors ${
+                      form.vncAuthType === m
+                        ? "border-accent-brand/40 bg-accent-brand/10 text-accent-brand"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(
+                      `hosts.guac.authType${m.charAt(0).toUpperCase() + m.slice(1)}`,
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {form.vncAuthType === "credential" &&
+          credentials &&
+          credentials.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.storedCredential")}
+              </label>
+              <select
+                value={form.vncCredentialId}
+                onChange={(e) => setField("vncCredentialId", e.target.value)}
+                className="flex h-9 w-full border border-border bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{t("hosts.guac.selectCredential")}</option>
+                {credentials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("hosts.guac.vncPassword")}
+                </label>
+                <PasswordInput
+                  className="h-8 text-xs pr-8"
+                  placeholder="••••••••"
+                  value={form.vncPassword}
+                  onChange={(e) => setField("vncPassword", e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("hosts.guac.vncUsernameOptional")}
+                </label>
+                <Input
+                  placeholder={t("hosts.guac.vncLeaveBlank")}
+                  value={form.vncUser}
+                  onChange={(e) => setField("vncUser", e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 
@@ -944,6 +1281,28 @@ export function HostEditorVncTab({
               <option value="remote">Remote</option>
             </select>
           </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              {t("hosts.guac.serverLayout")}
+            </label>
+            <select
+              className="flex h-9 w-full border border-border bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+              value={form.guacamoleConfig["server-layout"] ?? "auto"}
+              onChange={(e) => setGuacField("server-layout", e.target.value)}
+            >
+              <option value="auto">Auto</option>
+              <option>en-us-qwerty</option>
+              <option>en-gb-qwerty</option>
+              <option>de-de-qwertz</option>
+              <option>fr-fr-azerty</option>
+              <option>it-it-qwerty</option>
+              <option>sv-se-qwerty</option>
+              <option>ja-jp-qwerty</option>
+              <option>pt-br-qwerty</option>
+              <option>es-es-qwerty</option>
+              <option>failsafe</option>
+            </select>
+          </div>
           <SettingRow
             label={t("hosts.guac.swapRedBlue")}
             description={t("hosts.guac.swapRedBlueDesc")}
@@ -1011,6 +1370,12 @@ export function HostEditorVncTab({
       <SectionCard
         title={t("hosts.guac.sessionRecording")}
         icon={<Activity className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop#session-recording"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">
@@ -1075,6 +1440,12 @@ export function HostEditorVncTab({
       <SectionCard
         title={t("hosts.guac.wakeOnLan")}
         icon={<Zap className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/features/networking/wake-on-lan"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <SettingRow
@@ -1144,11 +1515,13 @@ export function HostEditorTelnetTab({
   form,
   setField,
   setGuacField,
+  credentials,
 }: {
   form: HostEditorForm;
   setField: HostEditorSetField;
   setGuacField: GuacFieldSetter;
   host?: Host | null;
+  credentials?: { id: string; name: string; username: string }[];
 }) {
   const { t } = useTranslation();
 
@@ -1157,6 +1530,12 @@ export function HostEditorTelnetTab({
       <SectionCard
         title={t("hosts.guac.connection")}
         icon={<Globe className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">
@@ -1174,31 +1553,168 @@ export function HostEditorTelnetTab({
         </div>
       </SectionCard>
       <SectionCard
-        title={t("hosts.guac.authentication")}
-        icon={<Shield className="size-3.5" />}
+        title={t("hosts.statusChecksLabel")}
+        icon={<Activity className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-0 py-1">
+          <SettingRow
+            label={t("hosts.enableStatusChecks")}
+            description={t("hosts.enableStatusChecksDesc")}
+          >
+            <FakeSwitch
+              checked={form.statsConfig.statusCheckEnabled}
+              onChange={(v) =>
+                setField("statsConfig", {
+                  ...form.statsConfig,
+                  statusCheckEnabled: v,
+                })
+              }
+            />
+          </SettingRow>
+          {form.statsConfig.statusCheckEnabled && (
+            <SettingRow
+              label={t("hosts.useGlobalInterval")}
+              description={t("hosts.useGlobalIntervalDesc")}
+            >
+              <FakeSwitch
+                checked={form.statsConfig.useGlobalStatusInterval}
+                onChange={(v) =>
+                  setField("statsConfig", {
+                    ...form.statsConfig,
+                    useGlobalStatusInterval: v,
+                  })
+                }
+              />
+            </SettingRow>
+          )}
+          {form.statsConfig.statusCheckEnabled &&
+            !form.statsConfig.useGlobalStatusInterval && (
+              <SettingRow
+                label={t("hosts.checkIntervalS")}
+                description={t("hosts.checkIntervalDesc")}
+              >
+                <Input
+                  type="number"
+                  value={form.statsConfig.statusCheckInterval}
+                  onChange={(e) =>
+                    setField("statsConfig", {
+                      ...form.statsConfig,
+                      statusCheckInterval: Number(e.target.value),
+                    })
+                  }
+                  className="w-20 h-7 text-xs text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </SettingRow>
+            )}
+        </div>
+      </SectionCard>
+      <SectionCard
+        title={t("hosts.guac.guacdProxy")}
+        icon={<Cpu className="size-3.5" />}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.username")}
+              {t("hosts.guac.guacdHostname")}
             </label>
             <Input
-              placeholder="admin"
-              value={form.telnetUser}
-              onChange={(e) => setField("telnetUser", e.target.value)}
+              placeholder={t("hosts.guac.guacdHostnamePlaceholder")}
+              value={(form.guacamoleConfig["guacd-hostname"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-hostname", e.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {t("hosts.guac.password")}
+              {t("hosts.guac.guacdPort")}
             </label>
-            <PasswordInput
-              className="h-8 text-xs pr-8"
-              placeholder="••••••••"
-              value={form.telnetPassword}
-              onChange={(e) => setField("telnetPassword", e.target.value)}
+            <Input
+              type="number"
+              placeholder="4822"
+              value={(form.guacamoleConfig["guacd-port"] as string) ?? ""}
+              onChange={(e) => setGuacField("guacd-port", e.target.value)}
+              className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
+          <p className="col-span-full text-[10px] text-muted-foreground -mt-2">
+            {t("hosts.guac.guacdProxyDesc")}
+          </p>
+        </div>
+      </SectionCard>
+      <SectionCard
+        title={t("hosts.guac.authentication")}
+        icon={<Shield className="size-3.5" />}
+      >
+        <div className="flex flex-col gap-4 py-3">
+          {credentials && credentials.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.authMethod")}
+              </label>
+              <div className="flex gap-2">
+                {(["direct", "credential"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setField("telnetAuthType", m)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-colors ${
+                      form.telnetAuthType === m
+                        ? "border-accent-brand/40 bg-accent-brand/10 text-accent-brand"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t(
+                      `hosts.guac.authType${m.charAt(0).toUpperCase() + m.slice(1)}`,
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {form.telnetAuthType === "credential" &&
+          credentials &&
+          credentials.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {t("hosts.guac.storedCredential")}
+              </label>
+              <select
+                value={form.telnetCredentialId}
+                onChange={(e) => setField("telnetCredentialId", e.target.value)}
+                className="flex h-9 w-full border border-border bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{t("hosts.guac.selectCredential")}</option>
+                {credentials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.username ? `${c.name} (${c.username})` : c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("hosts.guac.username")}
+                </label>
+                <Input
+                  placeholder="admin"
+                  value={form.telnetUser}
+                  onChange={(e) => setField("telnetUser", e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("hosts.guac.password")}
+                </label>
+                <PasswordInput
+                  className="h-8 text-xs pr-8"
+                  placeholder="••••••••"
+                  value={form.telnetPassword}
+                  onChange={(e) => setField("telnetPassword", e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 
@@ -1313,6 +1829,12 @@ export function HostEditorTelnetTab({
       <SectionCard
         title={t("hosts.guac.sessionRecording")}
         icon={<Activity className="size-3.5" />}
+        action={
+          <DocsLinkAction
+            href="https://docs.termix.site/setup/remote-desktop#session-recording"
+            label={t("hosts.docsLink")}
+          />
+        }
       >
         <div className="flex flex-col gap-4 py-3">
           <div className="flex flex-col gap-1.5">

@@ -196,6 +196,30 @@ export async function updateOidcAutoProvision(
   }
 }
 
+export async function getOidcSilentLoginDefault(): Promise<{
+  enabled: boolean;
+}> {
+  try {
+    const response = await authApi.get("/users/oidc-silent-login-default");
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "get OIDC silent login default");
+  }
+}
+
+export async function updateOidcSilentLoginDefault(
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  try {
+    const response = await authApi.patch("/users/oidc-silent-login-default", {
+      enabled,
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "update OIDC silent login default");
+  }
+}
+
 export async function updatePasswordLoginAllowed(
   allowed: boolean,
 ): Promise<{ allowed: boolean }> {
@@ -228,6 +252,30 @@ export async function updatePasswordResetAllowed(
     return response.data;
   } catch (error) {
     handleApiError(error, "update password reset allowed");
+  }
+}
+
+export async function getCommandHistoryEnabled(): Promise<{
+  enabled: boolean;
+}> {
+  try {
+    const response = await authApi.get("/users/command-history-enabled");
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "get command history enabled");
+  }
+}
+
+export async function updateCommandHistoryEnabled(
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  try {
+    const response = await authApi.patch("/users/command-history-enabled", {
+      enabled,
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "update command history enabled");
   }
 }
 

@@ -1,10 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useImperativeHandle,
+} from "react";
 import {
   GuacamoleDisplay,
   type GuacamoleDisplayHandle,
 } from "@/features/guacamole/GuacamoleDisplay.tsx";
-import { FullScreenAppWrapper } from "@/features/FullScreenAppWrapper.tsx";
-import { getGuacamoleTokenFromHost, getGuacdStatus } from "@/main-axios.ts";
+import {
+  getGuacamoleTokenFromHost,
+  getGuacdStatus,
+  getSSHHosts,
+  logActivity,
+} from "@/main-axios.ts";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { GuacamoleToolbar } from "@/features/guacamole/GuacamoleToolbar.tsx";
@@ -18,96 +28,98 @@ interface GuacamoleAppProps {
   protocol?: "rdp" | "vnc" | "telnet";
 }
 
-const GuacamoleApp: React.FC<GuacamoleAppProps> = ({
-  hostId,
-  tabId,
-  protocol,
-}) => {
-  const { t } = useTranslation();
+export interface GuacamoleAppHandle {
+  disconnect: () => void;
+  isConnected: () => boolean;
+}
 
-  return (
-    <FullScreenAppWrapper hostId={hostId}>
-      {(hostConfig, loading) => {
-        if (loading) {
-          return (
-            <div className="relative w-full h-full">
-              <SimpleLoader visible={true} message={t("common.loading")} />
-            </div>
-          );
-        }
+const GuacamoleApp = React.forwardRef<GuacamoleAppHandle, GuacamoleAppProps>(
+  function GuacamoleApp({ hostId, tabId, protocol }, ref) {
+    const { t } = useTranslation();
+    const [hostConfig, setHostConfig] = useState<SSHHost | null>(null);
+    const [loading, setLoading] = useState(true);
 
-        if (!hostConfig) {
-          return (
-            <div
-              className="flex flex-col items-center justify-center h-full gap-4"
-              style={{ backgroundColor: "var(--bg-base)" }}
-            >
-              <AlertCircle
-                className="size-10"
-                style={{ color: "var(--foreground)" }}
-              />
-              <span
-                className="text-sm font-semibold"
-                style={{ color: "var(--foreground)" }}
-              >
-                {t("guacamole.hostNotFound")}
-              </span>
-            </div>
-          );
-        }
+    useEffect(() => {
+      if (!hostId) {
+        setLoading(false);
+        return;
+      }
+      getSSHHosts()
+        .then((hosts) => {
+          const host = hosts.find((h) => h.id === parseInt(hostId, 10));
+          setHostConfig(host ?? null);
+        })
+        .catch(() => setHostConfig(null))
+        .finally(() => setLoading(false));
+    }, [hostId]);
 
-        if (!hostId) {
-          return (
-            <div
-              className="flex flex-col items-center justify-center h-full gap-4"
-              style={{ backgroundColor: "var(--bg-base)" }}
-            >
-              <AlertCircle
-                className="size-10"
-                style={{ color: "var(--foreground)" }}
-              />
-              <span
-                className="text-sm font-semibold"
-                style={{ color: "var(--foreground)" }}
-              >
-                {t("guacamole.hostNotFound")}
-              </span>
-            </div>
-          );
-        }
+    if (loading) {
+      return (
+        <div className="relative w-full h-full">
+          <SimpleLoader visible={true} message={t("common.loading")} />
+        </div>
+      );
+    }
 
-        return (
-          <GuacamoleAppInner
-            hostId={parseInt(hostId, 10)}
-            hostConfig={hostConfig}
-            tabId={tabId}
-            protocol={protocol}
+    if (!hostConfig || !hostId) {
+      return (
+        <div
+          className="flex flex-col items-center justify-center h-full gap-4"
+          style={{ backgroundColor: "var(--bg-base)" }}
+        >
+          <AlertCircle
+            className="size-10"
+            style={{ color: "var(--foreground)" }}
           />
-        );
-      }}
-    </FullScreenAppWrapper>
-  );
-};
+          <span
+            className="text-sm font-semibold"
+            style={{ color: "var(--foreground)" }}
+          >
+            {t("guacamole.hostNotFound")}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <GuacamoleAppInner
+        hostId={parseInt(hostId, 10)}
+        hostConfig={hostConfig}
+        hostName={hostConfig.name || hostConfig.ip || String(hostId)}
+        tabId={tabId}
+        protocol={protocol}
+        ref={ref}
+      />
+    );
+  },
+);
 
 interface GuacamoleAppInnerProps {
   hostId: number;
   hostConfig: Pick<SSHHost, "connectionType">;
+  hostName: string;
   tabId?: string;
   protocol?: "rdp" | "vnc" | "telnet";
 }
 
-const GuacamoleAppInner: React.FC<GuacamoleAppInnerProps> = ({
-  hostId,
-  hostConfig,
-  tabId,
-  protocol,
-}) => {
+const GuacamoleAppInner = React.forwardRef<
+  GuacamoleAppHandle,
+  GuacamoleAppInnerProps
+>(function GuacamoleAppInner(
+  { hostId, hostConfig, hostName, tabId, protocol },
+  ref,
+) {
   const { t } = useTranslation();
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const displayRef = useRef<GuacamoleDisplayHandle>(null);
+
+  useImperativeHandle(ref, () => ({
+    disconnect: () => displayRef.current?.disconnect(),
+    isConnected: () => displayRef.current?.isConnected() === true,
+  }));
 
   useEffect(() => {
     setToken(null);
@@ -121,10 +133,16 @@ const GuacamoleAppInner: React.FC<GuacamoleAppInnerProps> = ({
         return getGuacamoleTokenFromHost(hostId, protocol);
       })
       .then((result) => {
-        if (result) setToken(result.token);
+        if (result) {
+          setToken(result.token);
+          const resolvedProtocol = (protocol ??
+            hostConfig.connectionType ??
+            "rdp") as "rdp" | "vnc" | "telnet";
+          logActivity(resolvedProtocol, hostId, hostName).catch(() => {});
+        }
       })
       .catch((err) => setError(err?.message || t("guacamole.failedToConnect")));
-  }, [hostId, protocol, retryCount, t]);
+  }, [hostConfig.connectionType, hostId, hostName, protocol, retryCount, t]);
 
   const handleReconnect = useCallback(() => {
     setConnectionError(null);
@@ -239,6 +257,6 @@ const GuacamoleAppInner: React.FC<GuacamoleAppInnerProps> = ({
       <GuacamoleToolbar displayRef={displayRef} protocol={resolvedProtocol} />
     </div>
   );
-};
+});
 
 export default GuacamoleApp;

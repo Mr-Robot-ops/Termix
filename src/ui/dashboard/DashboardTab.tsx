@@ -5,11 +5,14 @@ import { Card } from "@/components/card";
 import { Separator } from "@/components/separator";
 import {
   Activity,
+  Check,
   Database,
+  ExternalLink,
   GripHorizontal,
   GripVertical,
   KeyRound,
   LayoutDashboard,
+  Link,
   MessagesSquare,
   Network,
   Plus,
@@ -37,69 +40,41 @@ import {
   registerMetricsViewer,
   sendMetricsHeartbeat,
   getUserInfo,
+  getServiceLinks,
+  createServiceLink,
+  deleteServiceLink,
 } from "@/main-axios";
-import type { RecentActivityItem, SSHHostWithStatus } from "@/main-axios";
+import type { RecentActivityItem, ServiceLink } from "@/main-axios";
 import { useTranslation } from "react-i18next";
 import { NetworkGraphCard } from "@/dashboard/cards/NetworkGraphCard";
+import { HomepagePreviewCard } from "@/dashboard/cards/HomepagePreviewCard";
+import { HomepageCanvas } from "@/features/homepage/HomepageCanvas";
 
-function sshHostToHost(h: SSHHostWithStatus): Host {
-  return {
-    id: String(h.id),
-    name: h.name,
-    username: h.username,
-    ip: h.ip,
-    port: h.port,
-    folder: h.folder ?? "",
-    online: h.status === "online",
-    cpu: 0,
-    ram: 0,
-    lastAccess: "",
-    tags: h.tags ?? [],
-    authType: h.authType,
-    password: h.password,
-    key: typeof h.key === "string" ? h.key : undefined,
-    keyPassword: h.keyPassword,
-    keyType: h.keyType,
-    credentialId: h.credentialId != null ? String(h.credentialId) : undefined,
-    notes: h.notes,
-    pin: h.pin ?? false,
-    macAddress: h.macAddress,
-    enableTerminal: h.enableTerminal ?? true,
-    enableTunnel: h.enableTunnel ?? false,
-    enableFileManager: h.enableFileManager ?? false,
-    enableDocker: h.enableDocker ?? false,
-    enableSsh: h.connectionType === "ssh" || !h.connectionType,
-    enableRdp: h.connectionType === "rdp",
-    enableVnc: h.connectionType === "vnc",
-    enableTelnet: h.connectionType === "telnet",
-    sshPort: h.port,
-    rdpPort: 3389,
-    vncPort: 5900,
-    telnetPort: 23,
-    quickActions: (h.quickActions ?? []).map((a) => ({
-      name: a.name,
-      snippetId: String(a.snippetId),
-    })),
-    jumpHosts: (h.jumpHosts ?? []).map((j) => ({
-      hostId: String(j.hostId),
-    })),
-    serverTunnels: [],
-    defaultPath: h.defaultPath,
-    terminalConfig: h.terminalConfig as Host["terminalConfig"],
-    useSocks5: h.useSocks5,
-    socks5Host: h.socks5Host,
-    socks5Port: h.socks5Port,
-    socks5Username: h.socks5Username,
-    socks5Password: h.socks5Password,
-    socks5ProxyChain: h.socks5ProxyChain ?? [],
-  };
-}
+// Side-effect imports so homepage widgets register themselves
+import "@/features/homepage/widgets/ServiceLinkWidget";
+import "@/features/homepage/widgets/ClockWidget";
+import "@/features/homepage/widgets/NotesWidget";
+import "@/features/homepage/widgets/BookmarkListWidget";
+import "@/features/homepage/widgets/HostStatusWidget";
+import "@/features/homepage/widgets/FolderWidget";
+import {
+  useStatusColorScheme,
+  getStatusClasses,
+} from "@/hooks/use-status-color-scheme";
+import { useServerStatus } from "@/lib/ServerStatusContext";
+import { sshHostToHost } from "@/sidebar/HostManagerData";
+import { getDefaultConnectionTab } from "@/lib/host-connection-tabs";
+import {
+  isValidServiceLinkUrl,
+  normalizeServiceLinkUrl,
+} from "@/lib/service-link-url";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PanelId = "main" | "side";
 
 type CardSlot = {
+  key: string;
   id: DashboardCardId;
   panel: PanelId;
   order: number;
@@ -107,6 +82,7 @@ type CardSlot = {
 };
 
 type DragState = {
+  key: string;
   id: DashboardCardId;
   sourcePanel: PanelId;
   sourceOrder: number;
@@ -115,11 +91,35 @@ type DragState = {
 // ─── Default layout ───────────────────────────────────────────────────────────
 
 const DEFAULT_SLOTS: CardSlot[] = [
-  { id: "stats_bar", panel: "main", order: 0, height: 96 },
-  { id: "counters_bar", panel: "main", order: 1, height: 48 },
-  { id: "quick_actions", panel: "main", order: 2, height: 160 },
-  { id: "host_status", panel: "main", order: 3, height: null },
-  { id: "recent_activity", panel: "side", order: 0, height: null },
+  { key: "stats_bar_0", id: "stats_bar", panel: "main", order: 0, height: 96 },
+  {
+    key: "counters_bar_0",
+    id: "counters_bar",
+    panel: "main",
+    order: 1,
+    height: 48,
+  },
+  {
+    key: "quick_actions_0",
+    id: "quick_actions",
+    panel: "main",
+    order: 2,
+    height: 160,
+  },
+  {
+    key: "host_status_0",
+    id: "host_status",
+    panel: "main",
+    order: 3,
+    height: null,
+  },
+  {
+    key: "recent_activity_0",
+    id: "recent_activity",
+    panel: "side",
+    order: 0,
+    height: null,
+  },
 ];
 
 // ─── Card components ──────────────────────────────────────────────────────────
@@ -205,35 +205,48 @@ function CountersBarCard({
   hosts,
   credentialCount,
   activeTunnelCount,
+  onOpenSingletonTab,
 }: {
   hosts: Host[];
   credentialCount: number;
   activeTunnelCount: number;
+  onOpenSingletonTab: (type: TabType, pendingEvent?: string) => void;
 }) {
   const { t } = useTranslation();
   return (
     <Card className="grid grid-cols-3 divide-x divide-border overflow-hidden w-full h-full py-0 gap-0">
-      <div className="flex items-center gap-2.5 px-4 py-2.5">
+      <button
+        onClick={() => onOpenSingletonTab("host-manager")}
+        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted transition-colors cursor-pointer text-left"
+      >
         <Server className="size-3.5 text-muted-foreground shrink-0" />
         <span className="text-base font-bold">{hosts.length}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
           {t("dashboard.totalHosts")}
         </span>
-      </div>
-      <div className="flex items-center gap-2.5 px-4 py-2.5">
+      </button>
+      <button
+        onClick={() =>
+          onOpenSingletonTab("host-manager", "host-manager:show-credentials")
+        }
+        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted transition-colors cursor-pointer text-left"
+      >
         <KeyRound className="size-3.5 text-muted-foreground shrink-0" />
         <span className="text-base font-bold">{credentialCount}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
           {t("dashboard.totalCredentials")}
         </span>
-      </div>
-      <div className="flex items-center gap-2.5 px-4 py-2.5">
+      </button>
+      <button
+        onClick={() => onOpenSingletonTab("tunnel")}
+        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted transition-colors cursor-pointer text-left"
+      >
         <Network className="size-3.5 text-muted-foreground shrink-0" />
         <span className="text-base font-bold">{activeTunnelCount}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
           {t("dashboardTab.activeTunnels")}
         </span>
-      </div>
+      </button>
     </Card>
   );
 }
@@ -251,6 +264,25 @@ function QuickActionsCard({
 }) {
   const { t } = useTranslation();
   const pinnedHosts = hosts.filter((h) => h.pin);
+  const getConnectionEndpoint = (host: Host) => {
+    const type = getDefaultConnectionTab(host);
+    const port =
+      type === "rdp"
+        ? host.rdpPort
+        : type === "vnc"
+          ? host.vncPort
+          : type === "telnet"
+            ? host.telnetPort
+            : host.sshPort;
+    return `${host.ip}:${port}`;
+  };
+  const renderConnectionIcon = (host: Host) => {
+    const type = getDefaultConnectionTab(host);
+    if (type === "terminal" || type === "telnet") {
+      return <Terminal className="size-3 text-accent-brand" />;
+    }
+    return <Server className="size-3 text-accent-brand" />;
+  };
   return (
     <Card className="flex flex-col overflow-hidden w-full h-full py-0 gap-0">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0">
@@ -304,18 +336,18 @@ function QuickActionsCard({
               {pinnedHosts.slice(0, 4).map((host) => (
                 <button
                   key={host.id}
-                  onClick={() => onOpenTab(host, "terminal")}
+                  onClick={() => onOpenTab(host, getDefaultConnectionTab(host))}
                   className="group/btn flex items-center gap-2.5 px-4 py-2 hover:bg-muted transition-colors cursor-pointer border-b border-border last:border-b-0"
                 >
                   <div className="size-7 border border-border bg-muted flex items-center justify-center shrink-0 group-hover/btn:bg-accent-brand/20 group-hover/btn:border-accent-brand/40 transition-colors">
-                    <Terminal className="size-3 text-accent-brand" />
+                    {renderConnectionIcon(host)}
                   </div>
                   <div className="flex flex-col items-start text-left min-w-0">
                     <span className="text-xs font-semibold truncate w-full">
                       {host.name || host.ip}
                     </span>
                     <span className="text-[10px] text-muted-foreground truncate w-full">
-                      {host.ip}:{host.sshPort}
+                      {getConnectionEndpoint(host)}
                     </span>
                   </div>
                 </button>
@@ -365,16 +397,50 @@ function QuickActionsCard({
   );
 }
 
+function MetricBar({ label, value }: { label: string; value: number }) {
+  const color =
+    value >= 90
+      ? "bg-red-500"
+      : value >= 70
+        ? "bg-yellow-500"
+        : "bg-accent-brand";
+  const textColor =
+    value >= 90
+      ? "text-red-400"
+      : value >= 70
+        ? "text-yellow-400"
+        : "text-accent-brand";
+  return (
+    <div className="flex flex-col gap-0.5 w-16">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">{label}</span>
+        <span className={`text-[10px] font-bold ${textColor}`}>
+          {value.toFixed(0)}%
+        </span>
+      </div>
+      <div className="h-0.5 bg-muted w-full">
+        <div className={`h-full ${color}`} style={{ width: `${value}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function HostStatusCard({
   hosts,
   hostMetrics,
   onOpenTab,
+  statusLoading,
 }: {
   hosts: Host[];
-  hostMetrics: Map<string, { cpu: number | null; ram: number | null }>;
+  hostMetrics: Map<
+    string,
+    { cpu: number | null; ram: number | null; disk: number | null }
+  >;
   onOpenTab: (host: Host, type: TabType) => void;
+  statusLoading?: boolean;
 }) {
   const { t } = useTranslation();
+  const statusScheme = useStatusColorScheme();
   const online = hosts.filter((h) => h.online).length;
   return (
     <Card className="flex flex-col overflow-hidden w-full h-full py-0 gap-0">
@@ -399,19 +465,23 @@ function HostStatusCard({
           const metrics = hostMetrics.get(host.id);
           const cpu = metrics?.cpu ?? null;
           const ram = metrics?.ram ?? null;
-          const hasMetrics = cpu !== null || ram !== null;
+          const disk = metrics?.disk ?? null;
+          const hasMetrics = cpu !== null || ram !== null || disk !== null;
           return (
             <div
               key={i}
-              onClick={() => onOpenTab(host, "stats")}
-              className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer"
+              onClick={() => onOpenTab(host, "host-metrics")}
+              className="flex items-center justify-between px-4 py-2.5 border-b border-border last:border-0 hover:bg-muted/50 cursor-pointer group/row"
             >
               <div className="flex items-center gap-2.5">
                 <span
-                  className={`size-1.5 rounded-full shrink-0 ${host.online ? "bg-accent-brand" : "bg-muted-foreground/40"}`}
+                  className={`size-1.5 rounded-full shrink-0 ${getStatusClasses(host.online, statusScheme, "dot", statusLoading)}`}
                 />
                 <div className="flex flex-col">
-                  <span className="text-xs font-semibold">{host.name}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold">{host.name}</span>
+                    <ExternalLink className="size-2.5 text-muted-foreground/0 group-hover/row:text-muted-foreground/60 transition-colors shrink-0" />
+                  </div>
                   <span className="text-[10px] text-muted-foreground font-mono">
                     {host.ip}
                   </span>
@@ -421,40 +491,13 @@ function HostStatusCard({
                 {host.online && hasMetrics ? (
                   <div className="flex items-center gap-3">
                     {cpu !== null && (
-                      <div className="flex flex-col gap-0.5 w-16">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("dashboard.cpu")}
-                          </span>
-                          <span className="text-[10px] font-bold text-accent-brand">
-                            {cpu.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="h-0.5 bg-muted w-full">
-                          <div
-                            className="h-full bg-accent-brand"
-                            style={{ width: `${cpu}%` }}
-                          />
-                        </div>
-                      </div>
+                      <MetricBar label={t("dashboard.cpu")} value={cpu} />
                     )}
                     {ram !== null && (
-                      <div className="flex flex-col gap-0.5 w-16">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("dashboard.ram")}
-                          </span>
-                          <span className="text-[10px] font-bold text-accent-brand">
-                            {ram.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="h-0.5 bg-muted w-full">
-                          <div
-                            className="h-full bg-accent-brand"
-                            style={{ width: `${ram}%` }}
-                          />
-                        </div>
-                      </div>
+                      <MetricBar label={t("dashboard.ram")} value={ram} />
+                    )}
+                    {disk !== null && (
+                      <MetricBar label={t("dashboardTab.disk")} value={disk} />
                     )}
                   </div>
                 ) : (
@@ -465,14 +508,19 @@ function HostStatusCard({
                     <span className="text-[10px] text-muted-foreground w-16 text-center">
                       —
                     </span>
+                    <span className="text-[10px] text-muted-foreground w-16 text-center">
+                      —
+                    </span>
                   </div>
                 )}
                 <span
-                  className={`text-[10px] px-2 py-0.5 font-semibold border ${host.online ? "border-accent-brand/40 text-accent-brand bg-accent-brand/10" : "border-border text-muted-foreground"}`}
+                  className={`text-[10px] px-2 py-0.5 font-semibold border ${getStatusClasses(host.online, statusScheme, "badge", statusLoading)}`}
                 >
-                  {host.online
-                    ? t("dashboardTab.online")
-                    : t("dashboardTab.offline")}
+                  {statusLoading
+                    ? t("dashboardTab.checking")
+                    : host.online
+                      ? t("dashboardTab.online")
+                      : t("dashboardTab.offline")}
                 </span>
               </div>
             </div>
@@ -488,13 +536,16 @@ function RecentActivityCard({
   hosts,
   onOpenTab,
   onClear,
+  statusLoading,
 }: {
   activity: RecentActivityItem[];
   hosts: Host[];
   onOpenTab: (host: Host, type: TabType) => void;
   onClear: () => void;
+  statusLoading?: boolean;
 }) {
   const { t } = useTranslation();
+  const statusScheme = useStatusColorScheme();
   const typeIcon: Record<RecentActivityItem["type"], React.ReactNode> = {
     terminal: <Terminal className="size-2.5" />,
     file_manager: <Server className="size-2.5" />,
@@ -508,7 +559,7 @@ function RecentActivityCard({
   const typeToTab: Record<RecentActivityItem["type"], TabType> = {
     terminal: "terminal",
     file_manager: "files",
-    server_stats: "stats",
+    server_stats: "host-metrics",
     tunnel: "tunnel",
     docker: "docker",
     rdp: "rdp",
@@ -570,7 +621,7 @@ function RecentActivityCard({
             >
               <div className="flex items-center gap-2">
                 <span
-                  className={`size-1.5 rounded-full shrink-0 ${host?.online ? "bg-accent-brand" : "bg-muted-foreground/40"}`}
+                  className={`size-1.5 rounded-full shrink-0 ${getStatusClasses(host?.online ?? false, statusScheme, "dot", statusLoading)}`}
                 />
                 <div className="flex flex-col">
                   <span className="text-xs font-semibold truncate max-w-24">
@@ -589,6 +640,131 @@ function RecentActivityCard({
           );
         })}
       </div>
+    </Card>
+  );
+}
+
+function ServiceLinksCard({
+  links,
+  onAdd,
+  onDelete,
+}: {
+  links: ServiceLink[];
+  onAdd: (label: string, url: string) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [urlError, setUrlError] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    const normalizedUrl = normalizeServiceLinkUrl(url);
+    if (!isValidServiceLinkUrl(normalizedUrl)) {
+      setUrlError(true);
+      setAddError("");
+      return;
+    }
+    setUrlError(false);
+    setAddError("");
+    setAdding(true);
+    try {
+      await onAdd(label.trim(), normalizedUrl);
+      setLabel("");
+      setUrl("");
+    } catch (error) {
+      setAddError(
+        error instanceof Error
+          ? error.message
+          : t("dashboardTab.serviceLinksAddFailed"),
+      );
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col overflow-hidden w-full h-full py-0 gap-0">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0">
+        <Link className="size-3.5 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">
+          {t("dashboardTab.serviceLinksTitle")}
+        </span>
+      </div>
+      <div className="flex flex-col overflow-auto flex-1">
+        {links.length === 0 && (
+          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground/40 py-4">
+            {t("dashboardTab.serviceLinksEmpty")}
+          </div>
+        )}
+        {links.map((link) => (
+          <div
+            key={link.id}
+            className="flex items-center justify-between px-4 py-2 border-b border-border last:border-0 group/link"
+          >
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="flex items-center gap-2 min-w-0 flex-1 hover:text-accent-brand transition-colors"
+            >
+              <ExternalLink className="size-3 text-muted-foreground shrink-0" />
+              <span className="text-xs font-semibold truncate">
+                {link.label}
+              </span>
+              <span className="text-[10px] text-muted-foreground truncate">
+                {link.url}
+              </span>
+            </a>
+            <button
+              onClick={() => onDelete(link.id)}
+              className="ml-2 opacity-0 group-hover/link:opacity-100 transition-opacity size-5 flex items-center justify-center hover:text-destructive"
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 px-4 py-2 border-t border-border shrink-0">
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder={t("dashboardTab.serviceLinksLabelPlaceholder")}
+          className="flex-1 min-w-0 text-xs bg-transparent border border-border px-2 py-1 focus:outline-none focus:border-accent-brand/60"
+        />
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setUrlError(false);
+            setAddError("");
+          }}
+          placeholder={t("dashboardTab.serviceLinksUrlPlaceholder")}
+          className={`flex-[2] min-w-0 text-xs bg-transparent border px-2 py-1 focus:outline-none ${urlError ? "border-destructive" : "border-border focus:border-accent-brand/60"}`}
+        />
+        <Button
+          size="sm"
+          className="text-xs bg-accent-brand hover:bg-accent-brand/90 text-white h-6 px-2 shrink-0"
+          onClick={handleAdd}
+          disabled={!label.trim() || !url.trim() || adding}
+        >
+          {t("dashboardTab.serviceLinksAdd")}
+        </Button>
+      </div>
+      {urlError && (
+        <div className="px-4 pb-2 text-[10px] text-destructive shrink-0">
+          {t("dashboardTab.serviceLinksInvalidUrl")}
+        </div>
+      )}
+      {addError && (
+        <div className="px-4 pb-2 text-[10px] text-destructive shrink-0">
+          {addError}
+        </div>
+      )}
     </Card>
   );
 }
@@ -617,6 +793,10 @@ function CardItem({
   activity,
   onClearActivity,
   isAdmin,
+  serviceLinks,
+  onAddServiceLink,
+  onDeleteServiceLink,
+  statusLoading,
 }: {
   slot: CardSlot;
   editMode: boolean;
@@ -625,11 +805,14 @@ function CardItem({
   onDrop: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onRemove: () => void;
-  onHeightChange: (id: DashboardCardId, h: number) => void;
+  onHeightChange: (key: string, h: number) => void;
   onOpenSingletonTab: (type: TabType, pendingEvent?: string) => void;
   onOpenTab: (host: Host, type: TabType) => void;
   hosts: Host[];
-  hostMetrics: Map<string, { cpu: number | null; ram: number | null }>;
+  hostMetrics: Map<
+    string,
+    { cpu: number | null; ram: number | null; disk: number | null }
+  >;
   uptimeFormatted: string;
   versionText: string;
   versionStatus: "up_to_date" | "requires_update" | "beta";
@@ -639,6 +822,10 @@ function CardItem({
   activity: RecentActivityItem[];
   onClearActivity: () => void;
   isAdmin: boolean;
+  serviceLinks: ServiceLink[];
+  onAddServiceLink: (label: string, url: string) => Promise<void>;
+  onDeleteServiceLink: (id: number) => Promise<void>;
+  statusLoading?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -649,7 +836,7 @@ function CardItem({
       const startY = e.clientY;
       const startH = cardRef.current?.getBoundingClientRect().height ?? 100;
       const onMove = (ev: MouseEvent) => {
-        onHeightChange(slot.id, Math.max(50, startH + (ev.clientY - startY)));
+        onHeightChange(slot.key, Math.max(50, startH + (ev.clientY - startY)));
       };
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
@@ -658,7 +845,7 @@ function CardItem({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [slot.id, onHeightChange],
+    [slot.key, onHeightChange],
   );
 
   const isFlex = slot.height === null;
@@ -704,6 +891,7 @@ function CardItem({
             hosts={hosts}
             credentialCount={credentialCount}
             activeTunnelCount={activeTunnelCount}
+            onOpenSingletonTab={onOpenSingletonTab}
           />
         )}
         {slot.id === "quick_actions" && (
@@ -719,6 +907,7 @@ function CardItem({
             hostMetrics={hostMetrics}
             onOpenTab={onOpenTab}
             isAdmin={isAdmin}
+            statusLoading={statusLoading}
           />
         )}
         {slot.id === "recent_activity" && (
@@ -727,12 +916,25 @@ function CardItem({
             hosts={hosts}
             onOpenTab={onOpenTab}
             onClear={onClearActivity}
+            statusLoading={statusLoading}
           />
         )}
         {slot.id === "network_graph" && (
           <NetworkGraphCard
             embedded={true}
             onOpenInNewTab={() => onOpenSingletonTab("network_graph")}
+          />
+        )}
+        {slot.id === "service_links" && (
+          <ServiceLinksCard
+            links={serviceLinks}
+            onAdd={onAddServiceLink}
+            onDelete={onDeleteServiceLink}
+          />
+        )}
+        {slot.id === "homepage_preview" && (
+          <HomepagePreviewCard
+            onOpenFullscreen={() => onOpenSingletonTab("homepage")}
           />
         )}
       </div>
@@ -825,13 +1027,16 @@ type PanelColumnProps = {
   onDragStart: (slot: CardSlot) => void;
   onDrop: (targetPanel: PanelId, targetOrder: number) => void;
   onDragOver: (e: React.DragEvent) => void;
-  onRemove: (id: DashboardCardId) => void;
+  onRemove: (key: string) => void;
   onAdd: (id: DashboardCardId, panel: PanelId) => void;
-  onHeightChange: (id: DashboardCardId, h: number) => void;
+  onHeightChange: (key: string, h: number) => void;
   onOpenSingletonTab: (type: TabType, pendingEvent?: string) => void;
   onOpenTab: (host: Host, type: TabType) => void;
   hosts: Host[];
-  hostMetrics: Map<string, { cpu: number | null; ram: number | null }>;
+  hostMetrics: Map<
+    string,
+    { cpu: number | null; ram: number | null; disk: number | null }
+  >;
   uptimeFormatted: string;
   versionText: string;
   versionStatus: "up_to_date" | "requires_update" | "beta";
@@ -842,6 +1047,10 @@ type PanelColumnProps = {
   onClearActivity: () => void;
   cardLabels: Record<DashboardCardId, string>;
   isAdmin: boolean;
+  serviceLinks: ServiceLink[];
+  onAddServiceLink: (label: string, url: string) => Promise<void>;
+  onDeleteServiceLink: (id: number) => Promise<void>;
+  statusLoading: boolean;
 };
 
 function PanelColumn({
@@ -869,6 +1078,10 @@ function PanelColumn({
   onClearActivity,
   cardLabels,
   isAdmin,
+  serviceLinks,
+  onAddServiceLink,
+  onDeleteServiceLink,
+  statusLoading,
 }: PanelColumnProps) {
   const { t } = useTranslation();
   const sorted = [...slots].sort((a, b) => a.order - b.order);
@@ -885,7 +1098,7 @@ function PanelColumn({
       />
       {sorted.map((slot, idx) => (
         <div
-          key={slot.id}
+          key={slot.key}
           className={`flex flex-col min-h-0 ${slot.height === null ? "flex-1" : "shrink-0"}`}
         >
           {idx > 0 && (
@@ -902,11 +1115,11 @@ function PanelColumn({
           <CardItem
             slot={slot}
             editMode={editMode}
-            isDragging={dragState?.id === slot.id}
+            isDragging={dragState?.key === slot.key}
             onDragStart={() => onDragStart(slot)}
             onDrop={() => onDrop(slot.panel, slot.order)}
             onDragOver={onDragOver}
-            onRemove={() => onRemove(slot.id)}
+            onRemove={() => onRemove(slot.key)}
             onHeightChange={onHeightChange}
             onOpenSingletonTab={onOpenSingletonTab}
             onOpenTab={onOpenTab}
@@ -921,6 +1134,10 @@ function PanelColumn({
             activity={activity}
             onClearActivity={onClearActivity}
             isAdmin={isAdmin}
+            serviceLinks={serviceLinks}
+            onAddServiceLink={onAddServiceLink}
+            onDeleteServiceLink={onDeleteServiceLink}
+            statusLoading={statusLoading}
           />
         </div>
       ))}
@@ -976,16 +1193,51 @@ export function DashboardTab({
   onOpenTab: (host: Host, type: TabType) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const { initialLoadComplete } = useServerStatus();
+  const statusLoading = !initialLoadComplete;
 
   const [slots, setSlots] = useState<CardSlot[]>(() => {
     try {
       const saved = localStorage.getItem("dashboardTab.slots");
-      if (saved) return JSON.parse(saved) as CardSlot[];
+      if (saved) {
+        const parsed = JSON.parse(saved) as CardSlot[];
+        return parsed.map((s, i) => ({ key: s.key ?? `${s.id}_${i}`, ...s }));
+      }
     } catch {
       /* ignore */
     }
     return DEFAULT_SLOTS;
   });
+
+  const [homepageLinkCopied, setHomepageLinkCopied] = useState(false);
+
+  const handleCopyHomepageLink = () => {
+    navigator.clipboard
+      .writeText(`${window.location.origin}?view=homepage`)
+      .catch(() => {});
+    setHomepageLinkCopied(true);
+    setTimeout(() => setHomepageLinkCopied(false), 1500);
+  };
+
+  const [dashboardView, setDashboardView] = useState<"dashboard" | "homepage">(
+    () => {
+      try {
+        return (localStorage.getItem("dashboardView") ?? "dashboard") as
+          | "dashboard"
+          | "homepage";
+      } catch {
+        return "dashboard";
+      }
+    },
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dashboardView", dashboardView);
+    } catch {
+      /* ignore */
+    }
+  }, [dashboardView]);
 
   const [editMode, setEditMode] = useState(false);
   const [dragState, setDragState] = useState<DragState>(null);
@@ -1028,7 +1280,7 @@ export function DashboardTab({
   const [activeTunnelCount, setActiveTunnelCount] = useState(0);
   const [activity, setActivity] = useState<RecentActivityItem[]>([]);
   const [hostMetrics, setHostMetrics] = useState<
-    Map<string, { cpu: number | null; ram: number | null }>
+    Map<string, { cpu: number | null; ram: number | null; disk: number | null }>
   >(new Map());
   const viewerSessionsRef = useRef<Map<number, string>>(new Map());
 
@@ -1066,6 +1318,7 @@ export function DashboardTab({
             id: host.id,
             cpu: metrics.cpu?.percent ?? null,
             ram: metrics.memory?.percent ?? null,
+            disk: metrics.disk?.percent ?? null,
           };
         } catch {
           return null;
@@ -1074,9 +1327,12 @@ export function DashboardTab({
     );
 
     viewerSessionsRef.current = newSessions;
-    const map = new Map<string, { cpu: number | null; ram: number | null }>();
+    const map = new Map<
+      string,
+      { cpu: number | null; ram: number | null; disk: number | null }
+    >();
     for (const r of results) {
-      if (r) map.set(r.id, { cpu: r.cpu, ram: r.ram });
+      if (r) map.set(r.id, { cpu: r.cpu, ram: r.ram, disk: r.disk });
     }
     setHostMetrics(map);
   }, []);
@@ -1120,7 +1376,11 @@ export function DashboardTab({
     getCredentials()
       .then((res) =>
         setCredentialCount(
-          Array.isArray(res?.credentials) ? res.credentials.length : 0,
+          Array.isArray(res)
+            ? res.length
+            : Array.isArray(res?.credentials)
+              ? res.credentials.length
+              : 0,
         ),
       )
       .catch(() => {});
@@ -1165,6 +1425,24 @@ export function DashboardTab({
     }
   };
 
+  const [serviceLinks, setServiceLinks] = useState<ServiceLink[]>([]);
+
+  useEffect(() => {
+    getServiceLinks()
+      .then(setServiceLinks)
+      .catch(() => {});
+  }, []);
+
+  const handleAddServiceLink = async (label: string, url: string) => {
+    const created = await createServiceLink(label, url);
+    setServiceLinks((prev) => [...prev, created]);
+  };
+
+  const handleDeleteServiceLink = async (id: number) => {
+    await deleteServiceLink(id);
+    setServiceLinks((prev) => prev.filter((l) => l.id !== id));
+  };
+
   const todayLabel = new Date().toLocaleDateString(i18n.language, {
     weekday: "long",
     month: "long",
@@ -1188,6 +1466,8 @@ export function DashboardTab({
     host_status: t("dashboardTab.hostStatus"),
     recent_activity: t("dashboard.recentActivity"),
     network_graph: t("dashboard.networkGraph"),
+    service_links: t("dashboard.serviceLinks"),
+    homepage_preview: t("dashboard.homepagePreview"),
   };
 
   const onColumnDividerMouseDown = useCallback(
@@ -1217,6 +1497,7 @@ export function DashboardTab({
 
   const handleDragStart = (slot: CardSlot) =>
     setDragState({
+      key: slot.key,
       id: slot.id,
       sourcePanel: slot.panel,
       sourceOrder: slot.order,
@@ -1225,7 +1506,7 @@ export function DashboardTab({
   const handleDrop = (targetPanel: PanelId, targetOrder: number) => {
     if (!dragState) return;
     setSlots((prev) => {
-      const without = prev.filter((s) => s.id !== dragState.id);
+      const without = prev.filter((s) => s.key !== dragState.key);
       const panelSlots = without
         .filter((s) => s.panel === targetPanel)
         .sort((a, b) => a.order - b.order);
@@ -1235,10 +1516,11 @@ export function DashboardTab({
       const newPanelSlots = [
         ...panelSlots.slice(0, insertAt),
         {
+          key: dragState.key,
           id: dragState.id,
           panel: targetPanel,
           order: 0,
-          height: prev.find((s) => s.id === dragState.id)?.height ?? null,
+          height: prev.find((s) => s.key === dragState.key)?.height ?? null,
         },
         ...panelSlots.slice(insertAt),
       ].map((s, i) => ({ ...s, order: i }));
@@ -1246,8 +1528,8 @@ export function DashboardTab({
     });
     setDragState(null);
   };
-  const handleRemove = (id: DashboardCardId) =>
-    setSlots((prev) => prev.filter((s) => s.id !== id));
+  const handleRemove = (key: string) =>
+    setSlots((prev) => prev.filter((s) => s.key !== key));
   const handleAdd = (id: DashboardCardId, panel: PanelId) => {
     setSlots((prev) => {
       const panelSlots = prev.filter((s) => s.panel === panel);
@@ -1260,13 +1542,19 @@ export function DashboardTab({
           ? 350
           : id === "host_status" || id === "recent_activity"
             ? null
-            : 150;
-      return [...prev, { id, panel, order: maxOrder, height: defaultHeight }];
+            : id === "service_links"
+              ? 200
+              : 150;
+      const key = `${id}_${Date.now()}`;
+      return [
+        ...prev,
+        { key, id, panel, order: maxOrder, height: defaultHeight },
+      ];
     });
   };
-  const handleHeightChange = (id: DashboardCardId, h: number) =>
+  const handleHeightChange = (key: string, h: number) =>
     setSlots((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, height: h } : s)),
+      prev.map((s) => (s.key === key ? { ...s, height: h } : s)),
     );
   const handleReset = () => {
     setSlots(DEFAULT_SLOTS);
@@ -1295,6 +1583,10 @@ export function DashboardTab({
     onOpenTab,
     cardLabels,
     isAdmin,
+    serviceLinks,
+    onAddServiceLink: handleAddServiceLink,
+    onDeleteServiceLink: handleDeleteServiceLink,
+    statusLoading,
   };
 
   const isMobile = useIsMobile();
@@ -1354,6 +1646,34 @@ export function DashboardTab({
                   {t("dashboard.discord")}
                 </a>
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                asChild
+              >
+                <a
+                  href="https://docs.termix.site/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("dashboard.docs")}
+                </a>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                asChild
+              >
+                <a
+                  href="https://donate.termix.site/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("dashboard.donate")}
+                </a>
+              </Button>
             </div>
           </Card>
           {allSlots.map((slot) => (
@@ -1375,6 +1695,7 @@ export function DashboardTab({
                   hosts={hosts}
                   credentialCount={credentialCount}
                   activeTunnelCount={activeTunnelCount}
+                  onOpenSingletonTab={onOpenSingletonTab}
                 />
               )}
               {slot.id === "quick_actions" && (
@@ -1390,6 +1711,7 @@ export function DashboardTab({
                   hostMetrics={hostMetrics}
                   onOpenTab={onOpenTab}
                   isAdmin={isAdmin}
+                  statusLoading={statusLoading}
                 />
               )}
               {slot.id === "recent_activity" && (
@@ -1398,12 +1720,20 @@ export function DashboardTab({
                   hosts={hosts}
                   onOpenTab={onOpenTab}
                   onClear={handleClearActivity}
+                  statusLoading={statusLoading}
                 />
               )}
               {slot.id === "network_graph" && (
                 <NetworkGraphCard
                   embedded={true}
                   onOpenInNewTab={() => onOpenSingletonTab("network_graph")}
+                />
+              )}
+              {slot.id === "service_links" && (
+                <ServiceLinksCard
+                  links={serviceLinks}
+                  onAdd={handleAddServiceLink}
+                  onDelete={handleDeleteServiceLink}
                 />
               )}
             </div>
@@ -1416,14 +1746,29 @@ export function DashboardTab({
   return (
     <div className="flex flex-col w-full h-full min-h-0 overflow-hidden">
       <Card className="flex-row items-center justify-between px-5 py-3 shrink-0 mx-5 mt-5 gap-0">
-        <div>
-          <h1 className="text-lg font-bold leading-tight">
-            {t("dashboard.title")}
-          </h1>
-          <p className="text-xs text-muted-foreground">{todayLabel}</p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-0 bg-muted/40 border border-border p-0.5">
+            <button
+              onClick={() => setDashboardView("dashboard")}
+              className={`px-3 py-1 text-sm font-medium transition-colors ${dashboardView === "dashboard" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t("dashboard.title")}
+            </button>
+            <button
+              onClick={() => setDashboardView("homepage")}
+              className={`px-3 py-1 text-sm font-medium transition-colors ${dashboardView === "homepage" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t("nav.homepage")}
+            </button>
+          </div>
+          {dashboardView === "dashboard" && (
+            <p className="text-xs text-muted-foreground hidden sm:block">
+              {todayLabel}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          <div className="hidden sm:flex items-center gap-2 mr-2 bg-muted/50 px-2.5 py-1 rounded-sm border border-border">
+          <div className="hidden sm:flex items-center gap-2 mr-2 bg-muted/50 px-2.5 py-1 rounded-none border border-border">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               {t("dashboardTab.commandPalette")}
             </span>
@@ -1475,95 +1820,171 @@ export function DashboardTab({
               {t("dashboard.discord")}
             </a>
           </Button>
-          <Separator orientation="vertical" className="mx-1 h-5" />
-          {editMode ? (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-muted-foreground"
-                onClick={handleReset}
-              >
-                {t("dashboard.reset")}
-              </Button>
-              <Button
-                size="sm"
-                className="text-xs bg-accent-brand hover:bg-accent-brand/90 text-white"
-                onClick={() => setEditMode(false)}
-              >
-                {t("dashboardTab.done")}
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setEditMode(true)}
-              title={t("dashboard.customizeLayout")}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            asChild
+          >
+            <a
+              href="https://docs.termix.site/"
+              target="_blank"
+              rel="noreferrer"
             >
-              <LayoutDashboard className="size-4 text-accent-brand" />
-            </Button>
+              {t("dashboard.docs")}
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            asChild
+          >
+            <a
+              href="https://donate.termix.site/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t("dashboard.donate")}
+            </a>
+          </Button>
+          {dashboardView === "dashboard" && (
+            <>
+              <Separator orientation="vertical" className="mx-1 h-5" />
+              {editMode ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground"
+                    onClick={handleReset}
+                  >
+                    {t("dashboard.reset")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="text-xs bg-accent-brand hover:bg-accent-brand/90 text-white"
+                    onClick={() => setEditMode(false)}
+                  >
+                    {t("dashboardTab.done")}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setEditMode(true)}
+                  title={t("dashboard.customizeLayout")}
+                >
+                  <LayoutDashboard className="size-4 text-accent-brand" />
+                </Button>
+              )}
+            </>
           )}
         </div>
       </Card>
 
-      {editMode && (
-        <div className="mx-5 mt-4 px-4 py-2 border border-dashed border-accent-brand/40 bg-accent-brand/5 shrink-0 flex items-center gap-2">
-          <LayoutDashboard className="size-3.5 text-accent-brand shrink-0" />
-          <span className="text-xs text-accent-brand font-semibold">
-            {t("dashboardTab.editModeInstructions")}
-          </span>
-        </div>
-      )}
-
-      <div
-        ref={bodyRef}
-        className="flex flex-row flex-1 min-h-0 px-5 pb-5 pt-4 overflow-hidden"
-      >
-        <div
-          className="flex flex-col min-h-0"
-          style={{ width: hasSide || editMode ? `${mainWidthPct}%` : "100%" }}
-        >
-          <PanelColumn
-            panel="main"
-            slots={mainSlots}
-            editMode={editMode}
-            dragState={dragState}
-            onDragStart={handleDragStart}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onRemove={handleRemove}
-            onAdd={handleAdd}
-            onHeightChange={handleHeightChange}
-            {...columnProps}
-          />
-        </div>
-
-        {(hasSide || editMode) &&
-          (editMode ? (
-            <ColumnDivider onMouseDown={onColumnDividerMouseDown} />
-          ) : (
-            <div className="w-4 shrink-0" />
-          ))}
-
-        {(hasSide || editMode) && (
-          <div className="flex flex-col min-h-0 flex-1">
-            <PanelColumn
-              panel="side"
-              slots={sideSlots}
-              editMode={editMode}
-              dragState={dragState}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onRemove={handleRemove}
-              onAdd={handleAdd}
-              onHeightChange={handleHeightChange}
-              {...columnProps}
-            />
+      {dashboardView === "homepage" ? (
+        <div className="flex-1 min-h-0 overflow-hidden mx-5 mb-5 mt-4 border border-border flex flex-col">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0 bg-muted/20">
+            <span className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-semibold">
+              {t("nav.homepage")}
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                onClick={handleCopyHomepageLink}
+              >
+                {homepageLinkCopied ? (
+                  <>
+                    <Check size={10} className="text-accent-brand" />
+                    <span className="text-accent-brand">
+                      {t("homepage.linkCopied")}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Link size={10} />
+                    {t("homepage.copyLink")}
+                  </>
+                )}
+              </button>
+              <button
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                onClick={() => onOpenSingletonTab("homepage")}
+              >
+                <ExternalLink size={10} />
+                {t("homepage.openFullView")}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <HomepageCanvas />
+          </div>
+        </div>
+      ) : (
+        <>
+          {editMode && (
+            <div className="mx-5 mt-4 px-4 py-2 border border-dashed border-accent-brand/40 bg-accent-brand/5 shrink-0 flex items-center gap-2">
+              <LayoutDashboard className="size-3.5 text-accent-brand shrink-0" />
+              <span className="text-xs text-accent-brand font-semibold">
+                {t("dashboardTab.editModeInstructions")}
+              </span>
+            </div>
+          )}
+
+          <div
+            ref={bodyRef}
+            className="flex flex-row flex-1 min-h-0 px-5 pb-5 pt-4 overflow-hidden"
+          >
+            <div
+              className="flex flex-col min-h-0"
+              style={{
+                width: hasSide || editMode ? `${mainWidthPct}%` : "100%",
+              }}
+            >
+              <PanelColumn
+                panel="main"
+                slots={mainSlots}
+                editMode={editMode}
+                dragState={dragState}
+                onDragStart={handleDragStart}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onRemove={handleRemove}
+                onAdd={handleAdd}
+                onHeightChange={handleHeightChange}
+                {...columnProps}
+              />
+            </div>
+
+            {(hasSide || editMode) &&
+              (editMode ? (
+                <ColumnDivider onMouseDown={onColumnDividerMouseDown} />
+              ) : (
+                <div className="w-4 shrink-0" />
+              ))}
+
+            {(hasSide || editMode) && (
+              <div className="flex flex-col min-h-0 flex-1">
+                <PanelColumn
+                  panel="side"
+                  slots={sideSlots}
+                  editMode={editMode}
+                  dragState={dragState}
+                  onDragStart={handleDragStart}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onRemove={handleRemove}
+                  onAdd={handleAdd}
+                  onHeightChange={handleHeightChange}
+                  {...columnProps}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

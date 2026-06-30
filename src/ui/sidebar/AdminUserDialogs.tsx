@@ -4,6 +4,7 @@ import {
   assignRoleToUser,
   linkOIDCToPasswordAccount,
   removeRoleFromUser,
+  unlinkOIDCFromPasswordAccount,
 } from "@/main-axios";
 import type { Role, UserRole } from "@/main-axios";
 import { Button } from "@/components/button";
@@ -391,11 +392,86 @@ export function AdminEditUserDialog({
   );
 }
 
+type UnlinkAccountDialogProps = {
+  open: boolean;
+  onOpenChange: Dispatch<SetStateAction<boolean>>;
+  unlinkAccountTarget: { id: string; username: string } | null;
+  onSuccess: (userId: string) => void;
+};
+
+export function AdminUnlinkAccountDialog({
+  open,
+  onOpenChange,
+  unlinkAccountTarget,
+  onSuccess,
+}: UnlinkAccountDialogProps) {
+  const { t } = useTranslation();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!unlinkAccountTarget) return;
+    setSubmitting(true);
+    try {
+      await unlinkOIDCFromPasswordAccount(unlinkAccountTarget.id);
+      toast.success(t("admin.unlinkAccountSuccess"));
+      onSuccess(unlinkAccountTarget.id);
+      onOpenChange(false);
+    } catch (error: unknown) {
+      toast.error(apiErrorMessage(error, t("admin.unlinkAccountFailed")));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold">
+            {t("admin.unlinkAccountTitle")}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {t("admin.unlinkAccountDesc", {
+              username: unlinkAccountTarget?.username,
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-start gap-2.5 border border-destructive/30 bg-destructive/5 px-3 py-2.5">
+          <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" />
+          <span className="text-xs text-destructive">
+            {t("admin.unlinkAccountWarning")}
+          </span>
+        </div>
+        <div className="flex justify-end gap-2 mt-2">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={submitting || !unlinkAccountTarget}
+            onClick={handleSubmit}
+          >
+            {submitting
+              ? t("admin.unlinkAccountInProgress")
+              : t("admin.unlinkAccount")}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type LinkAccountDialogProps = {
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
-  linkAccountTarget: { id: string; username: string } | null;
+  linkAccountTarget: { id: string; username: string; isOidc: boolean } | null;
   setUsers: Dispatch<SetStateAction<AdminUser[]>>;
+  users: AdminUser[];
 };
 
 export function AdminLinkAccountDialog({
@@ -403,27 +479,43 @@ export function AdminLinkAccountDialog({
   onOpenChange,
   linkAccountTarget,
   setUsers,
+  users,
 }: LinkAccountDialogProps) {
   const { t } = useTranslation();
-  const [targetUsername, setTargetUsername] = useState("");
+  const [otherUsername, setOtherUsername] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (open) setTargetUsername("");
+    if (open) setOtherUsername("");
   }, [open, linkAccountTarget]);
 
+  const isOidcInitiator = linkAccountTarget?.isOidc ?? true;
+
   const handleSubmit = async () => {
-    const trimmedUsername = targetUsername.trim();
-    if (!linkAccountTarget || !trimmedUsername) return;
+    const trimmed = otherUsername.trim();
+    if (!linkAccountTarget || !trimmed) return;
 
     setSubmitting(true);
     try {
-      await linkOIDCToPasswordAccount(linkAccountTarget.id, trimmedUsername);
-      toast.success(
-        t("admin.linkAccountSuccess", { username: trimmedUsername }),
-      );
-      setUsers((prev) => prev.filter((u) => u.id !== linkAccountTarget.id));
-      setTargetUsername("");
+      if (isOidcInitiator) {
+        await linkOIDCToPasswordAccount(linkAccountTarget.id, trimmed);
+        setUsers((prev) => prev.filter((u) => u.id !== linkAccountTarget.id));
+      } else {
+        const oidcUser = users.find(
+          (u) => u.username === trimmed && u.isOidc && !u.passwordHash,
+        );
+        if (!oidcUser) {
+          toast.error(t("admin.linkAccountOidcNotFound"));
+          return;
+        }
+        await linkOIDCToPasswordAccount(
+          oidcUser.id,
+          linkAccountTarget.username,
+        );
+        setUsers((prev) => prev.filter((u) => u.id !== oidcUser.id));
+      }
+      toast.success(t("admin.linkAccountSuccess", { username: trimmed }));
+      setOtherUsername("");
       onOpenChange(false);
     } catch (error: unknown) {
       toast.error(apiErrorMessage(error, t("admin.linkAccountFailed")));
@@ -440,9 +532,13 @@ export function AdminLinkAccountDialog({
             {t("admin.linkAccountTitle")}
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            {t("admin.linkAccountDesc", {
-              username: linkAccountTarget?.username,
-            })}
+            {isOidcInitiator
+              ? t("admin.linkAccountDesc", {
+                  username: linkAccountTarget?.username,
+                })
+              : t("admin.linkAccountDescLocal", {
+                  username: linkAccountTarget?.username,
+                })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 mt-1">
@@ -459,13 +555,19 @@ export function AdminLinkAccountDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              {t("admin.linkAccountTargetUsername")}{" "}
+              {isOidcInitiator
+                ? t("admin.linkAccountTargetUsername")
+                : t("admin.linkAccountOidcUsername")}{" "}
               <span className="text-accent-brand">*</span>
             </label>
             <Input
-              value={targetUsername}
-              onChange={(e) => setTargetUsername(e.target.value)}
-              placeholder={t("admin.linkAccountTargetPlaceholder")}
+              value={otherUsername}
+              onChange={(e) => setOtherUsername(e.target.value)}
+              placeholder={
+                isOidcInitiator
+                  ? t("admin.linkAccountTargetPlaceholder")
+                  : t("admin.linkAccountOidcPlaceholder")
+              }
               autoFocus
               disabled={submitting}
             />
@@ -482,9 +584,7 @@ export function AdminLinkAccountDialog({
           <Button
             variant="outline"
             className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            disabled={
-              submitting || !linkAccountTarget || !targetUsername.trim()
-            }
+            disabled={submitting || !linkAccountTarget || !otherUsername.trim()}
             onClick={handleSubmit}
           >
             {submitting

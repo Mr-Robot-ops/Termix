@@ -63,22 +63,101 @@ export function ElectronLoginForm({
       try {
         if (event.source !== iframeRef.current?.contentWindow) return;
         if (!event.data || typeof event.data !== "object") return;
-        const { type, platform, source, token } = event.data;
+        const {
+          type,
+          platform,
+          source,
+          token,
+          authUrl,
+          callbackPort,
+          providerId,
+        } = event.data;
+
         if (
           type === "AUTH_SUCCESS" &&
           platform === "desktop" &&
           AUTH_MESSAGE_SOURCES.has(source)
         ) {
           await handleAuthSuccess(token ?? null);
+          return;
         }
-      } catch {
-        // ignore
+
+        // OIDC login requested from inside the iframe — open the system browser
+        // so captcha stages (e.g. Cloudflare Turnstile) render correctly.
+        if (type === "OIDC_SYSTEM_BROWSER_AUTH" && authUrl && callbackPort) {
+          const sendResultToIframe = (result: {
+            success: boolean;
+            error?: string;
+          }) => {
+            iframeRef.current?.contentWindow?.postMessage(
+              {
+                type: "OIDC_SYSTEM_BROWSER_AUTH_RESULT",
+                source: "oidc_system_browser_auth",
+                providerId,
+                ...result,
+              },
+              "*",
+            );
+          };
+          const electronAPI = (
+            window as unknown as {
+              electronAPI?: {
+                oidcSystemBrowserAuth?: (
+                  url: string,
+                  port: number,
+                ) => Promise<{
+                  success: boolean;
+                  token?: string;
+                  error?: string;
+                }>;
+              };
+            }
+          ).electronAPI;
+          if (!electronAPI?.oidcSystemBrowserAuth) {
+            sendResultToIframe({
+              success: false,
+              error: t("errors.failedOidcLogin"),
+            });
+            return;
+          }
+          const result = await electronAPI.oidcSystemBrowserAuth(
+            authUrl,
+            callbackPort,
+          );
+          if (result.success && result.token) {
+            await handleAuthSuccess(result.token);
+            return;
+          }
+          sendResultToIframe({
+            success: false,
+            error: result.error || t("errors.failedOidcLogin"),
+          });
+        }
+      } catch (err) {
+        const providerId =
+          event.data &&
+          typeof event.data === "object" &&
+          typeof event.data.providerId === "number"
+            ? event.data.providerId
+            : undefined;
+        const error =
+          err instanceof Error ? err.message : t("errors.failedOidcLogin");
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "OIDC_SYSTEM_BROWSER_AUTH_RESULT",
+            source: "oidc_system_browser_auth",
+            providerId,
+            success: false,
+            error,
+          },
+          "*",
+        );
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [handleAuthSuccess]);
+  }, [handleAuthSuccess, t]);
 
   useEffect(() => {
     const iframe = iframeRef.current;

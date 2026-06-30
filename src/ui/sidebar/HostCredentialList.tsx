@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/button";
 import { getCredentialDetails } from "@/main-axios";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { Host, Credential } from "@/types/ui-types";
 
 type CredentialWithCertificate = Credential & { certPublicKey?: string };
@@ -28,6 +29,7 @@ function CredentialItem({
   cred,
   usedByCount,
   stripeIndex,
+  termixIdLinked,
   onDeploy,
   onEdit,
   onDelete,
@@ -35,6 +37,7 @@ function CredentialItem({
   cred: Credential;
   usedByCount: number;
   stripeIndex: number;
+  termixIdLinked?: boolean;
   onDeploy: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -59,6 +62,11 @@ function CredentialItem({
           >
             {isKey ? "KEY" : "PWD"}
           </span>
+          {termixIdLinked && (
+            <span className="text-[9px] px-1 py-px font-bold border leading-none shrink-0 border-accent-brand/30 text-accent-brand/70">
+              ID
+            </span>
+          )}
         </div>
 
         {/* Username row */}
@@ -107,17 +115,16 @@ function CredentialItem({
                 </button>
                 <button
                   title="Copy deploy command"
-                  onClick={() => {
+                  onClick={async () => {
                     const pubKey = cred.publicKey;
                     if (!pubKey) {
-                      toast.error(
-                        "No public key available — open the credential editor first",
-                      );
+                      toast.error(t("credentials.noPublicKeyAvailable"));
                       return;
                     }
                     const cmd = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo "${pubKey}" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
-                    navigator.clipboard.writeText(cmd);
-                    toast.success("Deploy command copied");
+                    const ok = await copyToClipboard(cmd);
+                    if (ok) toast.success(t("credentials.deployCommandCopied"));
+                    else toast.error(t("common.copyFailed"));
                   }}
                   className="flex items-center justify-center size-7 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted-foreground/10 transition-colors"
                 >
@@ -153,6 +160,7 @@ function CredentialFolderItem({
   stripeOffset,
   editingFolderName,
   editingFolderValue,
+  termixIdLinkedIds,
   onEditingFolderNameChange,
   onEditingFolderValueChange,
   onRenameFolder,
@@ -166,6 +174,7 @@ function CredentialFolderItem({
   stripeOffset: number;
   editingFolderName: string | null;
   editingFolderValue: string;
+  termixIdLinkedIds?: Set<number>;
   onEditingFolderNameChange: (name: string | null) => void;
   onEditingFolderValueChange: (value: string) => void;
   onRenameFolder: (folder: string, newName: string) => Promise<void>;
@@ -173,7 +182,7 @@ function CredentialFolderItem({
   onEdit: (cred: Credential) => void;
   onDelete: (cred: Credential) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div>
@@ -252,6 +261,7 @@ function CredentialFolderItem({
                 cred={cred}
                 usedByCount={usedByCount}
                 stripeIndex={stripeOffset + 1 + i}
+                termixIdLinked={termixIdLinkedIds?.has(Number(cred.id))}
                 onDeploy={() => onDeploy(cred)}
                 onEdit={() => onEdit(cred)}
                 onDelete={() => onDelete(cred)}
@@ -271,6 +281,7 @@ export function HostCredentialList({
   allHosts,
   editingFolderName,
   editingFolderValue,
+  termixIdLinkedIds,
   onEditingFolderNameChange,
   onEditingFolderValueChange,
   onRenameFolder,
@@ -286,6 +297,7 @@ export function HostCredentialList({
   allHosts: Host[];
   editingFolderName: string | null;
   editingFolderValue: string;
+  termixIdLinkedIds?: Set<number>;
   onEditingFolderNameChange: (name: string | null) => void;
   onEditingFolderValueChange: (value: string) => void;
   onRenameFolder: (folder: string, newName: string) => Promise<void>;
@@ -328,6 +340,9 @@ export function HostCredentialList({
                 password?: string;
               }
             ).password ?? ""),
+        password:
+          (full as CredentialWithCertificate & { password?: string })
+            .password ?? "",
         passphrase: (
           full as CredentialWithCertificate & {
             hasKeyPassword?: boolean;
@@ -364,6 +379,7 @@ export function HostCredentialList({
               stripeOffset={offset}
               editingFolderName={editingFolderName}
               editingFolderValue={editingFolderValue}
+              termixIdLinkedIds={termixIdLinkedIds}
               onEditingFolderNameChange={onEditingFolderNameChange}
               onEditingFolderValueChange={onEditingFolderValueChange}
               onRenameFolder={onRenameFolder}

@@ -1,8 +1,12 @@
 import { getDb } from "../database/db/index.js";
-import { hosts, sshCredentials } from "../database/db/schema.js";
+import { hosts, sshCredentials, vaultProfiles } from "../database/db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { SimpleDBOps } from "../utils/simple-db-ops.js";
 import { logger } from "../utils/logger.js";
+import {
+  pickResolvedUsername,
+  expandOidcUsername,
+} from "./credential-username.js";
 import type { SSHHost } from "../../types/index.js";
 
 const sshLogger = logger;
@@ -109,14 +113,20 @@ export async function resolveHostById(
               host.key = cred.key;
               host.keyPassword = cred.keyPassword;
               host.keyType = cred.keyType;
-              if (!host.overrideCredentialUsername) {
-                host.username = cred.username;
-              }
+              host.username = pickResolvedUsername(
+                host.username,
+                cred.username,
+                host.overrideCredentialUsername,
+              );
               host.authType = cred.key
                 ? "key"
                 : cred.password
                   ? "password"
                   : "none";
+              host.username = await expandOidcUsername(
+                host.username as string | undefined,
+                userId,
+              );
               return host as unknown as SSHHost;
             }
           }
@@ -137,14 +147,20 @@ export async function resolveHostById(
             host.key = sharedCred.key;
             host.keyPassword = sharedCred.keyPassword;
             host.keyType = sharedCred.keyType;
-            if (!host.overrideCredentialUsername) {
-              host.username = sharedCred.username;
-            }
+            host.username = pickResolvedUsername(
+              host.username,
+              sharedCred.username,
+              host.overrideCredentialUsername,
+            );
             host.authType = sharedCred.key
               ? "key"
               : sharedCred.password
                 ? "password"
                 : "none";
+            host.username = await expandOidcUsername(
+              host.username as string | undefined,
+              userId,
+            );
             return host as unknown as SSHHost;
           }
         } catch (e) {
@@ -182,14 +198,43 @@ export async function resolveHostById(
         // CA-signed certificate for cert-based auth
         (host as Record<string, unknown>).certPublicKey =
           cred.certPublicKey || null;
-        if (!host.overrideCredentialUsername) {
-          host.username = cred.username;
-        }
+        host.username = pickResolvedUsername(
+          host.username,
+          cred.username,
+          host.overrideCredentialUsername,
+        );
         host.authType = host.key ? "key" : host.password ? "password" : "none";
       }
     } catch (e) {
       sshLogger.warn("Failed to resolve credential for host", {
         operation: "host_resolver_credential",
+        hostId,
+        error: e instanceof Error ? e.message : "Unknown",
+      });
+    }
+  }
+
+  host.username = await expandOidcUsername(
+    host.username as string | undefined,
+    userId,
+  );
+
+  // Resolve a Vault SSH signer profile (shared settings, no secrets). The
+  // certificate itself is obtained per-user at connect time via Vault OIDC.
+  if (host.vaultProfileId) {
+    try {
+      const profiles = await db
+        .select()
+        .from(vaultProfiles)
+        .where(eq(vaultProfiles.id, host.vaultProfileId as number))
+        .limit(1);
+      if (profiles.length > 0) {
+        (host as Record<string, unknown>).vaultProfile = profiles[0];
+        host.authType = "vault";
+      }
+    } catch (e) {
+      sshLogger.warn("Failed to resolve vault profile for host", {
+        operation: "host_resolver_vault_profile",
         hostId,
         error: e instanceof Error ? e.message : "Unknown",
       });

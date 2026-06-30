@@ -15,6 +15,7 @@ import { AuthManager } from "../../utils/auth-manager.js";
 import { parseSSHKey } from "../../utils/ssh-key-utils.js";
 import { registerCredentialKeyRoutes } from "./credential-key-routes.js";
 import { registerCredentialDeployRoutes } from "./credential-deploy-routes.js";
+import { logAudit, getRequestMeta } from "../../utils/audit-logger.js";
 
 const router = express.Router();
 
@@ -136,8 +137,7 @@ router.post(
           .status(400)
           .json({ error: "SSH key is required for key authentication" });
       }
-      const plainPassword =
-        authType === "password" && password ? password : null;
+      const plainPassword = password ? password : null;
       const plainKey = authType === "key" && key ? key : null;
       const plainKeyPassword =
         authType === "key" && keyPassword ? keyPassword : null;
@@ -153,7 +153,9 @@ router.post(
             error: keyInfo.error,
           });
           return res.status(400).json({
-            error: `Invalid SSH key: ${keyInfo.error}`,
+            error: keyInfo.error
+              ? `Invalid SSH key: ${keyInfo.error}`
+              : "Unrecognized SSH key format. Use an OpenSSH, PEM, or PuTTY PPK v2 RSA/DSA private key.",
           });
         }
       }
@@ -185,6 +187,25 @@ router.post(
         credentialData,
         userId,
       )) as typeof credentialData & { id: number };
+
+      const { ipAddress: ccIp, userAgent: ccUa } = getRequestMeta(req);
+      const { users: usersTableCc } = await import("../db/schema.js");
+      const ccActor = await db
+        .select({ username: usersTableCc.username })
+        .from(usersTableCc)
+        .where(eq(usersTableCc.id, userId))
+        .limit(1);
+      await logAudit({
+        userId,
+        username: ccActor[0]?.username ?? userId,
+        action: "create_credential",
+        resourceType: "credential",
+        resourceId: String(created.id),
+        resourceName: name,
+        ipAddress: ccIp,
+        userAgent: ccUa,
+        success: true,
+      });
 
       authLogger.success(
         `SSH credential created: ${name} (${authType}) by user ${userId}`,
@@ -492,10 +513,11 @@ router.put(
       if (updateData.password !== undefined) {
         updateFields.password = updateData.password || null;
       }
+      const nextAuthType = updateData.authType ?? existing[0].authType;
       if (updateData.key !== undefined) {
         updateFields.key = updateData.key || null;
 
-        if (updateData.key && existing[0].authType === "key") {
+        if (updateData.key && nextAuthType === "key") {
           const keyInfo = parseSSHKey(updateData.key, updateData.keyPassword);
           if (!keyInfo.success) {
             authLogger.warn("SSH key parsing failed during update", {
@@ -505,7 +527,9 @@ router.put(
               error: keyInfo.error,
             });
             return res.status(400).json({
-              error: `Invalid SSH key: ${keyInfo.error}`,
+              error: keyInfo.error
+                ? `Invalid SSH key: ${keyInfo.error}`
+                : "Unrecognized SSH key format. Use an OpenSSH, PEM, or PuTTY PPK v2 RSA/DSA private key.",
             });
           }
           updateFields.privateKey = keyInfo.privateKey;
@@ -565,6 +589,25 @@ router.put(
         operation: "credential_update_success",
         userId,
         credentialId: parseInt(id),
+      });
+
+      const { ipAddress: cuIp, userAgent: cuUa } = getRequestMeta(req);
+      const { users: usersTableCu } = await import("../db/schema.js");
+      const cuActor = await db
+        .select({ username: usersTableCu.username })
+        .from(usersTableCu)
+        .where(eq(usersTableCu.id, userId))
+        .limit(1);
+      await logAudit({
+        userId,
+        username: cuActor[0]?.username ?? userId,
+        action: "update_credential",
+        resourceType: "credential",
+        resourceId: id,
+        resourceName: existing[0].name,
+        ipAddress: cuIp,
+        userAgent: cuUa,
+        success: true,
       });
 
       res.json(formatCredentialOutput(updated[0]));
@@ -695,6 +738,25 @@ router.delete(
         operation: "credential_delete_success",
         userId,
         credentialId: parseInt(id),
+      });
+
+      const { ipAddress: cdIp, userAgent: cdUa } = getRequestMeta(req);
+      const { users: usersTableCd } = await import("../db/schema.js");
+      const cdActor = await db
+        .select({ username: usersTableCd.username })
+        .from(usersTableCd)
+        .where(eq(usersTableCd.id, userId))
+        .limit(1);
+      await logAudit({
+        userId,
+        username: cdActor[0]?.username ?? userId,
+        action: "delete_credential",
+        resourceType: "credential",
+        resourceId: id,
+        resourceName: credentialToDelete[0].name,
+        ipAddress: cdIp,
+        userAgent: cdUa,
+        success: true,
       });
 
       res.json({ message: "Credential deleted successfully" });
@@ -928,7 +990,7 @@ function formatSSHHostOutput(
     tunnelConnections: host.tunnelConnections
       ? JSON.parse(host.tunnelConnections as string)
       : [],
-    enableFileManager: !!host.enableFileManager,
+    enableFileManager: host.enableFileManager !== false,
     defaultPath: host.defaultPath,
     createdAt: host.createdAt,
     updatedAt: host.updatedAt,

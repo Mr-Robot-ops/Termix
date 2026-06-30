@@ -16,7 +16,11 @@ import {
   Save,
   RotateCcw,
   Keyboard,
+  ExternalLink,
+  Settings,
   Search,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   SiJavascript,
@@ -85,10 +89,13 @@ interface FileViewerProps {
   savedContent?: string;
   isLoading?: boolean;
   isEditable?: boolean;
+  resetKey?: number;
   onContentChange?: (content: string) => void;
   onSave?: (content: string) => void;
   onRevert?: () => void;
   onDownload?: () => void;
+  onOpenExternal?: () => void;
+  onChooseExternalEditor?: () => void;
   onMediaDimensionsChange?: (dimensions: {
     width: number;
     height: number;
@@ -265,10 +272,13 @@ export function FileViewer({
   savedContent = "",
   isLoading = false,
   isEditable = false,
+  resetKey,
   onContentChange,
   onSave,
   onRevert,
   onDownload,
+  onOpenExternal,
+  onChooseExternalEditor,
   onMediaDimensionsChange,
 }: FileViewerProps) {
   const { t } = useTranslation();
@@ -280,7 +290,30 @@ export function FileViewer({
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [editorFocused, setEditorFocused] = useState(false);
   const [markdownEditMode, setMarkdownEditMode] = useState(false);
+  const [editorFontSize, setEditorFontSize] = useState<number>(() => {
+    const stored = localStorage.getItem("fileManagerEditorFontSize");
+    return stored ? parseInt(stored, 10) : 14;
+  });
   const editorRef = useRef<CodeEditorHandle | null>(null);
+
+  const MIN_FONT_SIZE = 8;
+  const MAX_FONT_SIZE = 32;
+
+  const decreaseFontSize = () => {
+    setEditorFontSize((prev) => {
+      const next = Math.max(MIN_FONT_SIZE, prev - 1);
+      localStorage.setItem("fileManagerEditorFontSize", String(next));
+      return next;
+    });
+  };
+
+  const increaseFontSize = () => {
+    setEditorFontSize((prev) => {
+      const next = Math.min(MAX_FONT_SIZE, prev + 1);
+      localStorage.setItem("fileManagerEditorFontSize", String(next));
+      return next;
+    });
+  };
 
   const fileTypeInfo = getFileType(file.name);
 
@@ -301,6 +334,9 @@ export function FileViewer({
     if (savedContent) {
       setOriginalContent(savedContent);
     }
+  }, [file.name, file.path, resetKey]);
+
+  useEffect(() => {
     setHasChanges(content !== savedContent);
 
     if (fileTypeInfo.type === "unknown" && isLargeFile && !forceShowAsText) {
@@ -308,14 +344,7 @@ export function FileViewer({
     } else {
       setShowLargeFileWarning(false);
     }
-  }, [
-    content,
-    savedContent,
-    fileTypeInfo.type,
-    isLargeFile,
-    forceShowAsText,
-    file.name,
-  ]);
+  }, [content, savedContent, fileTypeInfo.type, isLargeFile, forceShowAsText]);
 
   const handleContentChange = (newContent: string) => {
     setEditedContent(newContent);
@@ -418,6 +447,33 @@ export function FileViewer({
               </Button>
             )}
             {isEditable && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={decreaseFontSize}
+                  disabled={editorFontSize <= MIN_FONT_SIZE}
+                  title={t("fileManager.decreaseFontSize")}
+                  className="w-7 h-7 p-0"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground w-8 text-center select-none">
+                  {editorFontSize}px
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={increaseFontSize}
+                  disabled={editorFontSize >= MAX_FONT_SIZE}
+                  title={t("fileManager.increaseFontSize")}
+                  className="w-7 h-7 p-0"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+            {isEditable && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -460,6 +516,30 @@ export function FileViewer({
                 <Download className="w-4 h-4" />
                 {t("fileManager.download")}
               </Button>
+            )}
+            {isEditable && onOpenExternal && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenExternal}
+                  className="flex items-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  {t("fileManager.openExternalEditor")}
+                </Button>
+                {onChooseExternalEditor && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onChooseExternalEditor}
+                    className="h-8 w-8 p-0"
+                    title={t("fileManager.chooseExternalEditor")}
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -684,6 +764,7 @@ export function FileViewer({
                   onFocus={() => setEditorFocused(true)}
                   onBlur={() => setEditorFocused(false)}
                   placeholder={t("fileManager.startTyping")}
+                  fontSize={editorFontSize}
                 />
               </Suspense>
             ) : (

@@ -1,18 +1,19 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { createCorsMiddleware } from "./utils/cors-config.js";
-import { getDb, DatabaseSaveTrigger } from "./database/db/index.js";
+import { getDb } from "./database/db/index.js";
 import {
   recentActivity,
   hosts,
   hostAccess,
-  dashboardPreferences,
+  userRoles,
 } from "./database/db/schema.js";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, or, isNull, gte, sql } from "drizzle-orm";
 import { dashboardLogger } from "./utils/logger.js";
 import { SimpleDBOps } from "./utils/simple-db-ops.js";
 import { AuthManager } from "./utils/auth-manager.js";
 import type { AuthenticatedRequest } from "../types/index.js";
+import { dashboardServiceLinksRouter } from "./database/routes/dashboard-service-links-routes.js";
 
 const app = express();
 const authManager = AuthManager.getInstance();
@@ -232,11 +233,30 @@ app.post("/activity/log", async (req, res) => {
     );
 
     if (ownedHosts.length === 0) {
+      const userRoleIds = await getDb()
+        .select({ roleId: userRoles.roleId })
+        .from(userRoles)
+        .where(eq(userRoles.userId, userId));
+      const roleIds = userRoleIds.map((r) => r.roleId);
+
+      const now = new Date().toISOString();
       const sharedHosts = await getDb()
         .select()
         .from(hostAccess)
         .where(
-          and(eq(hostAccess.hostId, hostId), eq(hostAccess.userId, userId)),
+          and(
+            eq(hostAccess.hostId, hostId),
+            or(
+              eq(hostAccess.userId, userId),
+              roleIds.length > 0
+                ? sql`${hostAccess.roleId} IN (${sql.join(
+                    roleIds.map((id) => sql`${id}`),
+                    sql`, `,
+                  )})`
+                : sql`false`,
+            ),
+            or(isNull(hostAccess.expiresAt), gte(hostAccess.expiresAt, now)),
+          ),
         );
 
       if (sharedHosts.length === 0) {
@@ -354,163 +374,7 @@ app.delete("/activity/reset", async (req, res) => {
   }
 });
 
-/**
- * @openapi
- * /dashboard/preferences:
- *   get:
- *     summary: Get dashboard layout preferences
- *     description: Returns the user's customized dashboard layout settings. If no preferences exist, returns default layout.
- *     tags:
- *       - Dashboard
- *     responses:
- *       200:
- *         description: Dashboard preferences retrieved
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 cards:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       enabled:
- *                         type: boolean
- *                       order:
- *                         type: integer
- *       401:
- *         description: Session expired
- *       500:
- *         description: Failed to get preferences
- */
-app.get("/dashboard/preferences", async (req, res) => {
-  try {
-    const userId = (req as AuthenticatedRequest).userId;
-
-    if (!SimpleDBOps.isUserDataUnlocked(userId)) {
-      return res.status(401).json({
-        error: "Session expired - please log in again",
-        code: "SESSION_EXPIRED",
-      });
-    }
-
-    const preferences = await getDb()
-      .select()
-      .from(dashboardPreferences)
-      .where(eq(dashboardPreferences.userId, userId));
-
-    if (preferences.length === 0) {
-      const defaultLayout = {
-        cards: [
-          { id: "server_overview", enabled: true, order: 1 },
-          { id: "recent_activity", enabled: true, order: 2 },
-          { id: "network_graph", enabled: false, order: 3 },
-          { id: "quick_actions", enabled: true, order: 4 },
-          { id: "server_stats", enabled: true, order: 5 },
-        ],
-      };
-      return res.json(defaultLayout);
-    }
-
-    const layout = JSON.parse(preferences[0].layout as string);
-    res.json(layout);
-  } catch (err) {
-    dashboardLogger.error("Failed to get dashboard preferences", err);
-    res.status(500).json({ error: "Failed to get dashboard preferences" });
-  }
-});
-
-/**
- * @openapi
- * /dashboard/preferences:
- *   post:
- *     summary: Save dashboard layout preferences
- *     description: Saves or updates the user's customized dashboard layout settings.
- *     tags:
- *       - Dashboard
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               cards:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                     enabled:
- *                       type: boolean
- *                     order:
- *                       type: integer
- *     responses:
- *       200:
- *         description: Preferences saved successfully
- *       400:
- *         description: Invalid request body
- *       401:
- *         description: Session expired
- *       500:
- *         description: Failed to save preferences
- */
-app.post("/dashboard/preferences", async (req, res) => {
-  try {
-    const userId = (req as AuthenticatedRequest).userId;
-
-    if (!SimpleDBOps.isUserDataUnlocked(userId)) {
-      return res.status(401).json({
-        error: "Session expired - please log in again",
-        code: "SESSION_EXPIRED",
-      });
-    }
-
-    const { cards, mainWidthPct } = req.body;
-
-    if (!cards || !Array.isArray(cards)) {
-      return res.status(400).json({
-        error: "Invalid request body. Expected { cards: Array }",
-      });
-    }
-
-    const layoutObj: Record<string, unknown> = { cards };
-    if (typeof mainWidthPct === "number") {
-      layoutObj.mainWidthPct = mainWidthPct;
-    }
-    const layout = JSON.stringify(layoutObj);
-
-    const existing = await getDb()
-      .select()
-      .from(dashboardPreferences)
-      .where(eq(dashboardPreferences.userId, userId));
-
-    if (existing.length > 0) {
-      await getDb()
-        .update(dashboardPreferences)
-        .set({ layout, updatedAt: sql`CURRENT_TIMESTAMP` })
-        .where(eq(dashboardPreferences.userId, userId));
-    } else {
-      await getDb().insert(dashboardPreferences).values({ userId, layout });
-    }
-
-    await DatabaseSaveTrigger.triggerSave("dashboard_preferences_updated");
-
-    dashboardLogger.success("Dashboard preferences saved", {
-      operation: "save_dashboard_preferences",
-      userId,
-    });
-
-    res.json({ success: true, message: "Dashboard preferences saved" });
-  } catch (err) {
-    dashboardLogger.error("Failed to save dashboard preferences", err);
-    res.status(500).json({ error: "Failed to save dashboard preferences" });
-  }
-});
+app.use("/service-links", dashboardServiceLinksRouter);
 
 const PORT = 30006;
 app.listen(PORT, async () => {

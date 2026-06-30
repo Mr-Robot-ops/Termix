@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   getUserInfo,
   getApiKeys,
@@ -14,7 +15,15 @@ import {
   getVersionInfo,
   getUserRoles,
   saveUserPreferences,
+  getUserPreferences,
 } from "@/main-axios";
+import {
+  deleteWebAuthnCredential,
+  listWebAuthnCredentials,
+  registerWebAuthnCredential,
+  type WebAuthnCredentialSummary,
+  type WebAuthnUserVerification,
+} from "@/api/webauthn-api";
 import type { UserRole } from "@/main-axios";
 import type React from "react";
 import { isElectron } from "@/lib/electron";
@@ -38,19 +47,29 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
+  Clock,
   Copy,
   Eye,
   EyeOff,
+  Hammer,
   KeyRound,
+  LayoutPanelLeft,
   Network,
   Palette,
+  Play,
+  Plug,
   Plus,
+  RotateCcw,
+  ScrollText,
+  Server,
   Shield,
   ShieldCheck,
   Trash2,
   Type,
+  Usb,
   User,
   X,
+  Zap,
 } from "lucide-react";
 import { SettingRow, FakeSwitch } from "@/components/section-card";
 import {
@@ -406,12 +425,30 @@ function PasswordChangeSection({
 export function UserProfilePanel({
   username,
   onLogout,
+  onChangeServer,
   userPrefs,
   onPrefsChange,
 }: {
   username?: string;
   onLogout?: () => void;
-  userPrefs?: { reopenTabsOnLogin: boolean };
+  onChangeServer?: () => void;
+  userPrefs?: {
+    reopenTabsOnLogin: boolean;
+    storageMode?: string | null;
+    commandAutocomplete?: boolean | null;
+    commandPaletteEnabled?: boolean | null;
+    showHostTags?: boolean | null;
+    hostTrayOnClick?: boolean | null;
+    compactHostView?: boolean | null;
+    pinAppRail?: boolean | null;
+    expandAppRailOnHover?: boolean | null;
+    foldersCollapsed?: boolean | null;
+    confirmSnippetExecution?: boolean | null;
+    disableUpdateCheck?: boolean | null;
+    confirmTabClose?: boolean | null;
+    hiddenRailTabs?: string | null;
+    statusColorScheme?: string | null;
+  };
   onPrefsChange?: (prefs: { reopenTabsOnLogin: boolean }) => void;
 }) {
   const { t } = useTranslation();
@@ -454,6 +491,11 @@ export function UserProfilePanel({
   const [totpLoading, setTotpLoading] = useState(false);
   const [showDisableTotp, setShowDisableTotp] = useState(false);
   const [disableTotpInput, setDisableTotpInput] = useState("");
+  const [passkeys, setPasskeys] = useState<WebAuthnCredentialSummary[]>([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyName, setPasskeyName] = useState("");
+  const [passkeyUserVerification, setPasskeyUserVerification] =
+    useState<WebAuthnUserVerification>("preferred");
 
   // Delete account
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -465,6 +507,7 @@ export function UserProfilePanel({
   const [newKeyOpen, setNewKeyOpen] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useTheme();
+  const localSnapshot = useRef<Record<string, string | null>>({});
 
   // Appearance state — initialized from localStorage
   const [accentColor, setAccentColor] = useState(
@@ -478,6 +521,9 @@ export function UserProfilePanel({
   );
   const [language, setLanguage] = useState(
     () => localStorage.getItem("i18nextLng") ?? "en",
+  );
+  const [storageMode, setStorageMode] = useState<"local" | "cloud">(() =>
+    userPrefs?.storageMode === "cloud" ? "cloud" : "local",
   );
 
   // Settings toggles — all backed by localStorage
@@ -495,11 +541,8 @@ export function UserProfilePanel({
   const [fileColorCoding, setFileColorCoding] = useState(
     () => localStorage.getItem("fileColorCoding") !== "false",
   );
-  const [commandHistoryTracking, setCommandHistoryTracking] = useState(
-    () => localStorage.getItem("commandHistoryTracking") === "true",
-  );
-  const [terminalSyntaxHighlighting, setTerminalSyntaxHighlighting] = useState(
-    () => localStorage.getItem("terminalSyntaxHighlighting") === "true",
+  const [terminalLinkClickBehavior, setTerminalLinkClickBehavior] = useState(
+    () => localStorage.getItem("terminalLinkClickBehavior") ?? "confirm",
   );
   const [commandPaletteEnabled, setCommandPaletteEnabled] = useState(() => {
     const v = localStorage.getItem("commandPaletteShortcutEnabled");
@@ -512,8 +555,17 @@ export function UserProfilePanel({
   const [hostTrayOnClick, setHostTrayOnClick] = useState(
     () => localStorage.getItem("hostTrayOnClick") === "true",
   );
+  const [compactHostView, setCompactHostView] = useState(
+    () => localStorage.getItem("compactHostView") === "true",
+  );
+  const [statusColorScheme, setStatusColorScheme] = useState(
+    () => localStorage.getItem("statusColorScheme") ?? "accent",
+  );
   const [pinAppRail, setPinAppRail] = useState(
     () => localStorage.getItem("pinAppRail") === "true",
+  );
+  const [expandAppRailOnHover, setExpandAppRailOnHover] = useState(
+    () => localStorage.getItem("expandAppRailOnHover") !== "false",
   );
   const [foldersCollapsed, setFoldersCollapsed] = useState(
     () => localStorage.getItem("defaultSnippetFoldersCollapsed") !== "false",
@@ -527,6 +579,14 @@ export function UserProfilePanel({
   const [confirmTabClose, setConfirmTabClose] = useState(
     () => localStorage.getItem("confirmTabClose") === "true",
   );
+  const [hiddenRailTabs, setHiddenRailTabs] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("hiddenRailTabs");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
   // API keys
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -561,6 +621,9 @@ export function UserProfilePanel({
     getApiKeys()
       .then(({ apiKeys: keys }) => setApiKeys(keys))
       .catch(() => {});
+    listWebAuthnCredentials()
+      .then(({ credentials }) => setPasskeys(credentials ?? []))
+      .catch(() => {});
     getVersionInfo()
       .then((info) => {
         setVersion(info.localVersion);
@@ -569,18 +632,391 @@ export function UserProfilePanel({
       .catch(() => {});
   }, [t]);
 
-  function saveAppearancePreference(prefs: {
-    theme?: ThemeId;
-    fontSize?: FontSizeId;
-    accentColor?: string;
-    language?: string;
-  }) {
+  function saveToCloud(prefs: Parameters<typeof saveUserPreferences>[0]) {
     void saveUserPreferences(prefs).catch(() => {});
+  }
+
+  function applyTerminalAutocompleteSettings(settings: {
+    ghost: boolean;
+    popup: boolean;
+    popupAuto: boolean;
+    help: boolean;
+  }) {
+    setTerminalAutocompleteGhost(settings.ghost);
+    setTerminalAutocompletePopup(settings.popup);
+    setTerminalAutocompletePopupAuto(settings.popupAuto);
+    setTerminalAutocompleteHelp(settings.help);
+    setTerminalAutocompleteSetting("ghost", settings.ghost);
+    setTerminalAutocompleteSetting("popup", settings.popup);
+    setTerminalAutocompleteSetting("popupAuto", settings.popupAuto);
+    setTerminalAutocompleteSetting("help", settings.help);
+  }
+
+  function setTerminalAutocompleteEnabled(enabled: boolean) {
+    const current = getTerminalAutocompleteSettings();
+    applyTerminalAutocompleteSettings({
+      ghost: enabled,
+      popup: enabled,
+      popupAuto: enabled ? current.popupAuto : false,
+      help: enabled ? current.help : false,
+    });
+  }
+
+  async function handleStorageModeChange(mode: "local" | "cloud") {
+    setStorageMode(mode);
+    if (mode === "cloud") {
+      // Snapshot current browser localStorage values so any tab can restore them later
+      const SNAPSHOT_KEYS = [
+        "termix-accent",
+        "termix-font-size",
+        "i18nextLng",
+        "commandAutocomplete",
+        "terminalInlineAutocomplete",
+        "terminalAutocompleteGhost",
+        "terminalAutocompletePopup",
+        "terminalAutocompletePopupAuto",
+        "terminalAutocompleteHelp",
+        "commandPaletteShortcutEnabled",
+        "showHostTags",
+        "hostTrayOnClick",
+        "compactHostView",
+        "pinAppRail",
+        "expandAppRailOnHover",
+        "defaultSnippetFoldersCollapsed",
+        "confirmSnippetExecution",
+        "disableUpdateCheck",
+        "confirmTabClose",
+        "hiddenRailTabs",
+        "statusColorScheme",
+      ];
+      const snap: Record<string, string | null> = { __theme: theme };
+      for (const key of SNAPSHOT_KEYS) snap[key] = localStorage.getItem(key);
+      localSnapshot.current = snap;
+      localStorage.setItem("termix-local-snapshot", JSON.stringify(snap));
+
+      try {
+        const prefs = await getUserPreferences();
+        if (prefs.theme) setTheme(prefs.theme as ThemeId);
+        if (prefs.fontSize) {
+          setFontSize(prefs.fontSize as FontSizeId);
+          applyFontSize(prefs.fontSize as FontSizeId);
+        }
+        if (prefs.accentColor) {
+          setAccentColor(prefs.accentColor);
+          setCustomColorInput(prefs.accentColor);
+          localStorage.setItem("termix-accent", prefs.accentColor);
+          applyAccentColor(prefs.accentColor);
+        }
+        if (prefs.language) {
+          setLanguage(prefs.language);
+          localStorage.setItem("i18nextLng", prefs.language);
+          void i18n.changeLanguage(prefs.language);
+        }
+        if (prefs.commandAutocomplete != null) {
+          setTerminalAutocompleteEnabled(prefs.commandAutocomplete);
+        }
+        if (prefs.commandPaletteEnabled != null) {
+          setCommandPaletteEnabled(prefs.commandPaletteEnabled);
+          localStorage.setItem(
+            "commandPaletteShortcutEnabled",
+            String(prefs.commandPaletteEnabled),
+          );
+        }
+        if (prefs.showHostTags != null) {
+          setShowHostTags(prefs.showHostTags);
+          localStorage.setItem("showHostTags", String(prefs.showHostTags));
+          window.dispatchEvent(new CustomEvent("showHostTagsChanged"));
+        }
+        if (prefs.hostTrayOnClick != null) {
+          setHostTrayOnClick(prefs.hostTrayOnClick);
+          localStorage.setItem(
+            "hostTrayOnClick",
+            String(prefs.hostTrayOnClick),
+          );
+        }
+        if (prefs.compactHostView != null) {
+          setCompactHostView(prefs.compactHostView);
+          localStorage.setItem(
+            "compactHostView",
+            String(prefs.compactHostView),
+          );
+          window.dispatchEvent(new CustomEvent("compactHostViewChanged"));
+        }
+        if (prefs.pinAppRail != null) {
+          setPinAppRail(prefs.pinAppRail);
+          localStorage.setItem("pinAppRail", String(prefs.pinAppRail));
+          window.dispatchEvent(new Event("pinAppRailChanged"));
+        }
+        if (prefs.expandAppRailOnHover != null) {
+          setExpandAppRailOnHover(prefs.expandAppRailOnHover);
+          localStorage.setItem(
+            "expandAppRailOnHover",
+            String(prefs.expandAppRailOnHover),
+          );
+          window.dispatchEvent(new Event("expandAppRailOnHoverChanged"));
+        }
+        if (prefs.foldersCollapsed != null) {
+          setFoldersCollapsed(prefs.foldersCollapsed);
+          localStorage.setItem(
+            "defaultSnippetFoldersCollapsed",
+            String(prefs.foldersCollapsed),
+          );
+        }
+        if (prefs.confirmSnippetExecution != null) {
+          setConfirmSnippetExecution(prefs.confirmSnippetExecution);
+          localStorage.setItem(
+            "confirmSnippetExecution",
+            String(prefs.confirmSnippetExecution),
+          );
+        }
+        if (prefs.disableUpdateCheck != null) {
+          setDisableUpdateCheck(prefs.disableUpdateCheck);
+          localStorage.setItem(
+            "disableUpdateCheck",
+            String(prefs.disableUpdateCheck),
+          );
+        }
+        if (prefs.confirmTabClose != null) {
+          setConfirmTabClose(prefs.confirmTabClose);
+          localStorage.setItem(
+            "confirmTabClose",
+            String(prefs.confirmTabClose),
+          );
+        }
+        if (prefs.hiddenRailTabs != null) {
+          const s = new Set<string>(JSON.parse(prefs.hiddenRailTabs));
+          setHiddenRailTabs(s);
+          localStorage.setItem("hiddenRailTabs", prefs.hiddenRailTabs);
+          window.dispatchEvent(new CustomEvent("hiddenRailTabsChanged"));
+        }
+        if (prefs.statusColorScheme != null) {
+          setStatusColorScheme(prefs.statusColorScheme);
+          localStorage.setItem("statusColorScheme", prefs.statusColorScheme);
+          window.dispatchEvent(new CustomEvent("statusColorSchemeChanged"));
+        }
+      } catch {
+        // leave UI as-is on error
+      }
+      saveToCloud({ storageMode: "cloud" });
+    } else {
+      restoreLocalSnapshot();
+      saveToCloud({ storageMode: "local" });
+    }
+  }
+
+  function resetToDefaults() {
+    const DEFAULT_ACCENT = "#f59145";
+    setTheme("system");
+    setFontSize("md");
+    applyFontSize("md");
+    setAccentColor(DEFAULT_ACCENT);
+    setCustomColorInput(DEFAULT_ACCENT);
+    localStorage.setItem("termix-accent", DEFAULT_ACCENT);
+    applyAccentColor(DEFAULT_ACCENT);
+    setLanguage("en");
+    localStorage.setItem("i18nextLng", "en");
+    void i18n.changeLanguage("en");
+    setTerminalAutocompleteEnabled(false);
+    setCommandPaletteEnabled(true);
+    localStorage.setItem("commandPaletteShortcutEnabled", "true");
+    setShowHostTags(true);
+    localStorage.setItem("showHostTags", "true");
+    window.dispatchEvent(new CustomEvent("showHostTagsChanged"));
+    setHostTrayOnClick(false);
+    localStorage.setItem("hostTrayOnClick", "false");
+    setCompactHostView(false);
+    localStorage.setItem("compactHostView", "false");
+    window.dispatchEvent(new CustomEvent("compactHostViewChanged"));
+    setPinAppRail(false);
+    localStorage.setItem("pinAppRail", "false");
+    window.dispatchEvent(new Event("pinAppRailChanged"));
+    setExpandAppRailOnHover(true);
+    localStorage.setItem("expandAppRailOnHover", "true");
+    window.dispatchEvent(new Event("expandAppRailOnHoverChanged"));
+    setFoldersCollapsed(true);
+    localStorage.removeItem("defaultSnippetFoldersCollapsed");
+    setConfirmSnippetExecution(false);
+    localStorage.setItem("confirmSnippetExecution", "false");
+    setDisableUpdateCheck(false);
+    localStorage.setItem("disableUpdateCheck", "false");
+    setConfirmTabClose(false);
+    localStorage.setItem("confirmTabClose", "false");
+    setHiddenRailTabs(new Set());
+    localStorage.removeItem("hiddenRailTabs");
+    window.dispatchEvent(new CustomEvent("hiddenRailTabsChanged"));
+    setStatusColorScheme("accent");
+    localStorage.setItem("statusColorScheme", "accent");
+    window.dispatchEvent(new CustomEvent("statusColorSchemeChanged"));
+    if (storageMode === "cloud") {
+      saveToCloud({
+        theme: "system",
+        fontSize: "md",
+        accentColor: DEFAULT_ACCENT,
+        language: "en",
+        commandAutocomplete: false,
+        commandPaletteEnabled: true,
+        showHostTags: true,
+        hostTrayOnClick: false,
+        compactHostView: false,
+        pinAppRail: false,
+        expandAppRailOnHover: true,
+        foldersCollapsed: true,
+        confirmSnippetExecution: false,
+        disableUpdateCheck: false,
+        confirmTabClose: false,
+        hiddenRailTabs: "[]",
+        statusColorScheme: "accent",
+      });
+    }
+    localSnapshot.current = {};
+    localStorage.removeItem("termix-local-snapshot");
+    toast.success(t("newUi.sidebar.userProfile.resetToDefaultsSuccess"));
+  }
+
+  function restoreLocalSnapshot() {
+    // Prefer the persisted snapshot (survives new tabs/reloads), fall back to in-memory ref.
+    // If neither exists there were never any browser values to restore, so use current localStorage.
+    const persisted = localStorage.getItem("termix-local-snapshot");
+    const snap: Record<string, string | null> = persisted
+      ? (JSON.parse(persisted) as Record<string, string | null>)
+      : localSnapshot.current;
+    const hasSnap = Object.keys(snap).length > 0;
+    const restore = (key: string, fallback: string | null = null) =>
+      hasSnap
+        ? snap[key] !== undefined
+          ? snap[key]
+          : fallback
+        : (localStorage.getItem(key) ?? fallback);
+
+    const restoredTheme =
+      ((hasSnap ? snap["__theme"] : theme) as ThemeId) ?? "system";
+    setTheme(restoredTheme);
+
+    const restoredFontSize =
+      (restore("termix-font-size", "md") as FontSizeId) ?? "md";
+    setFontSize(restoredFontSize);
+    applyFontSize(restoredFontSize);
+
+    const restoredAccent = restore("termix-accent", "#f59145") ?? "#f59145";
+    setAccentColor(restoredAccent);
+    setCustomColorInput(restoredAccent);
+    localStorage.setItem("termix-accent", restoredAccent);
+    applyAccentColor(restoredAccent);
+
+    const restoredLang = restore("i18nextLng", "en") ?? "en";
+    setLanguage(restoredLang);
+    localStorage.setItem("i18nextLng", restoredLang);
+    void i18n.changeLanguage(restoredLang);
+
+    const restoredLegacyAutocomplete = restore("commandAutocomplete", "false");
+    const restoredGhost =
+      restore("terminalAutocompleteGhost", restoredLegacyAutocomplete) ===
+      "true";
+    const restoredPopup =
+      restore("terminalAutocompletePopup", restoredLegacyAutocomplete) ===
+      "true";
+    applyTerminalAutocompleteSettings({
+      ghost: restoredGhost,
+      popup: restoredPopup,
+      popupAuto: restore("terminalAutocompletePopupAuto", "false") === "true",
+      help: restore("terminalAutocompleteHelp", "false") === "true",
+    });
+
+    const restoredPalette =
+      restore("commandPaletteShortcutEnabled", "true") !== "false";
+    setCommandPaletteEnabled(restoredPalette);
+    localStorage.setItem(
+      "commandPaletteShortcutEnabled",
+      String(restoredPalette),
+    );
+
+    const restoredHostTags = restore("showHostTags", "true") !== "false";
+    setShowHostTags(restoredHostTags);
+    localStorage.setItem("showHostTags", String(restoredHostTags));
+    window.dispatchEvent(new CustomEvent("showHostTagsChanged"));
+
+    const restoredTrayOnClick = restore("hostTrayOnClick", "false") === "true";
+    setHostTrayOnClick(restoredTrayOnClick);
+    localStorage.setItem("hostTrayOnClick", String(restoredTrayOnClick));
+
+    const restoredCompactHostView =
+      restore("compactHostView", "false") === "true";
+    setCompactHostView(restoredCompactHostView);
+    localStorage.setItem("compactHostView", String(restoredCompactHostView));
+    window.dispatchEvent(new CustomEvent("compactHostViewChanged"));
+
+    const restoredPinRail = restore("pinAppRail", "false") === "true";
+    setPinAppRail(restoredPinRail);
+    localStorage.setItem("pinAppRail", String(restoredPinRail));
+    window.dispatchEvent(new Event("pinAppRailChanged"));
+
+    const restoredExpandRailOnHover =
+      restore("expandAppRailOnHover", "true") !== "false";
+    setExpandAppRailOnHover(restoredExpandRailOnHover);
+    localStorage.setItem(
+      "expandAppRailOnHover",
+      String(restoredExpandRailOnHover),
+    );
+    window.dispatchEvent(new Event("expandAppRailOnHoverChanged"));
+
+    const restoredFolders =
+      restore("defaultSnippetFoldersCollapsed", null) !== "false";
+    setFoldersCollapsed(restoredFolders);
+    const snapFolders = hasSnap
+      ? snap["defaultSnippetFoldersCollapsed"]
+      : localStorage.getItem("defaultSnippetFoldersCollapsed");
+    if (snapFolders == null) {
+      localStorage.removeItem("defaultSnippetFoldersCollapsed");
+    } else {
+      localStorage.setItem("defaultSnippetFoldersCollapsed", snapFolders);
+    }
+
+    const restoredConfirmSnippet =
+      restore("confirmSnippetExecution", "false") === "true";
+    setConfirmSnippetExecution(restoredConfirmSnippet);
+    localStorage.setItem(
+      "confirmSnippetExecution",
+      String(restoredConfirmSnippet),
+    );
+
+    const restoredUpdateCheck =
+      restore("disableUpdateCheck", "false") === "true";
+    setDisableUpdateCheck(restoredUpdateCheck);
+    localStorage.setItem("disableUpdateCheck", String(restoredUpdateCheck));
+
+    const restoredConfirmTab = restore("confirmTabClose", "false") === "true";
+    setConfirmTabClose(restoredConfirmTab);
+    localStorage.setItem("confirmTabClose", String(restoredConfirmTab));
+
+    const restoredHiddenRaw = hasSnap
+      ? snap["hiddenRailTabs"]
+      : localStorage.getItem("hiddenRailTabs");
+    if (restoredHiddenRaw == null) {
+      setHiddenRailTabs(new Set());
+      localStorage.removeItem("hiddenRailTabs");
+    } else {
+      try {
+        setHiddenRailTabs(new Set(JSON.parse(restoredHiddenRaw)));
+      } catch {
+        setHiddenRailTabs(new Set());
+      }
+      localStorage.setItem("hiddenRailTabs", restoredHiddenRaw);
+    }
+    window.dispatchEvent(new CustomEvent("hiddenRailTabsChanged"));
+
+    const restoredStatusScheme =
+      restore("statusColorScheme", "accent") ?? "accent";
+    setStatusColorScheme(restoredStatusScheme);
+    localStorage.setItem("statusColorScheme", restoredStatusScheme);
+    window.dispatchEvent(new CustomEvent("statusColorSchemeChanged"));
+
+    localStorage.removeItem("termix-local-snapshot");
+    localSnapshot.current = {};
   }
 
   function handleThemeChange(id: ThemeId) {
     setTheme(id);
-    saveAppearancePreference({ theme: id });
+    if (storageMode === "cloud") saveToCloud({ theme: id });
   }
 
   function handleAccentChange(value: string) {
@@ -588,20 +1024,20 @@ export function UserProfilePanel({
     setCustomColorInput(value);
     localStorage.setItem("termix-accent", value);
     applyAccentColor(value);
-    saveAppearancePreference({ accentColor: value });
+    if (storageMode === "cloud") saveToCloud({ accentColor: value });
   }
 
   function handleFontSizeChange(id: FontSizeId) {
     setFontSize(id);
     applyFontSize(id);
-    saveAppearancePreference({ fontSize: id });
+    if (storageMode === "cloud") saveToCloud({ fontSize: id });
   }
 
   function handleLanguageChange(code: string) {
     setLanguage(code);
     localStorage.setItem("i18nextLng", code);
     i18n.changeLanguage(code);
-    saveAppearancePreference({ language: code });
+    if (storageMode === "cloud") saveToCloud({ language: code });
   }
 
   function toggle(id: UserProfileSection) {
@@ -665,6 +1101,41 @@ export function UserProfilePanel({
     }
   }
 
+  async function handleRegisterPasskey() {
+    setPasskeyLoading(true);
+    try {
+      await registerWebAuthnCredential(
+        passkeyName || "Passkey",
+        passkeyUserVerification,
+      );
+      const { credentials } = await listWebAuthnCredentials();
+      setPasskeys(credentials ?? []);
+      setPasskeyName("");
+      toast.success(t("newUi.sidebar.userProfile.passkeyAdded"));
+    } catch (e: unknown) {
+      toast.error(
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.passkeyAddFailed")),
+      );
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  async function handleDeletePasskey(credentialId: string) {
+    setPasskeyLoading(true);
+    try {
+      await deleteWebAuthnCredential(credentialId);
+      setPasskeys((prev) => prev.filter((item) => item.id !== credentialId));
+      toast.success(t("newUi.sidebar.userProfile.passkeyDeleted"));
+    } catch (e: unknown) {
+      toast.error(
+        apiErrorMessage(e, t("newUi.sidebar.userProfile.passkeyDeleteFailed")),
+      );
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
   function downloadBackupCodes() {
     const blob = new Blob([totpBackupCodes.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -703,6 +1174,45 @@ export function UserProfilePanel({
         onAdd={(key) => setApiKeys((prev) => [key, ...prev])}
         userId={userId}
       />
+
+      {/* Storage mode toggle */}
+      <div className="border border-border bg-card px-3 py-2.5 flex flex-col gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          {t("newUi.sidebar.userProfile.storageModeSwitch")}
+        </span>
+        <div className="flex border border-border overflow-hidden w-full">
+          <button
+            onClick={() => handleStorageModeChange("local")}
+            className={`flex-1 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+              storageMode === "local"
+                ? "bg-accent-brand text-white"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            {t("newUi.sidebar.userProfile.storageModeLocal")}
+          </button>
+          <button
+            onClick={() => handleStorageModeChange("cloud")}
+            className={`flex-1 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+              storageMode === "cloud"
+                ? "bg-accent-brand text-white"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            {t("newUi.sidebar.userProfile.storageModeCloud")}
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          {t("newUi.sidebar.userProfile.storageModeDescription")}
+        </p>
+        <button
+          onClick={resetToDefaults}
+          className="self-start flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <RotateCcw className="size-3" />
+          {t("newUi.sidebar.userProfile.resetToDefaults")}
+        </button>
+      </div>
 
       {/* Account */}
       <AccordionSection
@@ -794,6 +1304,30 @@ export function UserProfilePanel({
               </span>
             </div>
           </div>
+
+          {isElectron() && onChangeServer && (
+            <div className="border-t border-border pt-3 mt-3">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium">
+                    {t("serverConfig.changeServer")}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {t("newUi.sidebar.userProfile.changeServerDescription")}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 ml-3 text-[10px] h-7"
+                  onClick={onChangeServer}
+                >
+                  <Server className="size-3" />
+                  {t("serverConfig.changeServer")}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-border pt-3 mt-3">
             <div className="flex items-center justify-between">
@@ -1049,42 +1583,34 @@ export function UserProfilePanel({
                 }}
               />
             </SettingRow>
-            <SettingRow
-              label={t("newUi.sidebar.userProfile.historyTracking")}
-              description={t("newUi.sidebar.userProfile.historyTrackingDesc")}
-            >
-              <FakeSwitch
-                checked={commandHistoryTracking}
-                onChange={(v) => {
-                  setCommandHistoryTracking(v);
-                  localStorage.setItem("commandHistoryTracking", v.toString());
-                  window.dispatchEvent(
-                    new Event("commandHistoryTrackingChanged"),
-                  );
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              label={t("newUi.sidebar.userProfile.syntaxHighlighting")}
-              description={t(
-                "newUi.sidebar.userProfile.syntaxHighlightingDesc",
-              )}
-              badge="BETA"
-            >
-              <FakeSwitch
-                checked={terminalSyntaxHighlighting}
-                onChange={(v) => {
-                  setTerminalSyntaxHighlighting(v);
+            <div className="flex flex-col gap-1.5 py-3 border-b border-border">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium leading-snug">
+                  {t("newUi.sidebar.userProfile.terminalLinkBehavior")}
+                </span>
+                <span className="text-xs text-muted-foreground leading-snug">
+                  {t("newUi.sidebar.userProfile.terminalLinkBehaviorDesc")}
+                </span>
+              </div>
+              <select
+                value={terminalLinkClickBehavior}
+                onChange={(e) => {
+                  setTerminalLinkClickBehavior(e.target.value);
                   localStorage.setItem(
-                    "terminalSyntaxHighlighting",
-                    v.toString(),
-                  );
-                  window.dispatchEvent(
-                    new Event("terminalSyntaxHighlightingChanged"),
+                    "terminalLinkClickBehavior",
+                    e.target.value,
                   );
                 }}
-              />
-            </SettingRow>
+                className="h-7 border border-border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="confirm">
+                  {t("hosts.linkClickBehaviorConfirm")}
+                </option>
+                <option value="direct">
+                  {t("hosts.linkClickBehaviorDirect")}
+                </option>
+              </select>
+            </div>
             <SettingRow
               label={t("newUi.sidebar.userProfile.commandPalette")}
               description={t("newUi.sidebar.userProfile.commandPaletteDesc")}
@@ -1100,6 +1626,8 @@ export function UserProfilePanel({
                   window.dispatchEvent(
                     new Event("commandPaletteShortcutEnabledChanged"),
                   );
+                  if (storageMode === "cloud")
+                    saveToCloud({ commandPaletteEnabled: v });
                 }}
               />
             </SettingRow>
@@ -1128,6 +1656,8 @@ export function UserProfilePanel({
                 onChange={(v) => {
                   setConfirmTabClose(v);
                   localStorage.setItem("confirmTabClose", v.toString());
+                  if (storageMode === "cloud")
+                    saveToCloud({ confirmTabClose: v });
                 }}
               />
             </SettingRow>
@@ -1147,6 +1677,7 @@ export function UserProfilePanel({
                   setShowHostTags(v);
                   localStorage.setItem("showHostTags", v.toString());
                   window.dispatchEvent(new Event("showHostTagsChanged"));
+                  if (storageMode === "cloud") saveToCloud({ showHostTags: v });
                 }}
               />
             </SettingRow>
@@ -1160,6 +1691,39 @@ export function UserProfilePanel({
                   setHostTrayOnClick(v);
                   localStorage.setItem("hostTrayOnClick", v.toString());
                   window.dispatchEvent(new Event("hostTrayOnClickChanged"));
+                  if (storageMode === "cloud")
+                    saveToCloud({ hostTrayOnClick: v });
+                }}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.compactHostView")}
+              description={t("newUi.sidebar.userProfile.compactHostViewDesc")}
+            >
+              <FakeSwitch
+                checked={compactHostView}
+                onChange={(v) => {
+                  setCompactHostView(v);
+                  localStorage.setItem("compactHostView", v.toString());
+                  window.dispatchEvent(new Event("compactHostViewChanged"));
+                  if (storageMode === "cloud")
+                    saveToCloud({ compactHostView: v });
+                }}
+              />
+            </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.statusColors")}
+              description={t("newUi.sidebar.userProfile.statusColorsDesc")}
+            >
+              <FakeSwitch
+                checked={statusColorScheme === "status"}
+                onChange={(v) => {
+                  const scheme = v ? "status" : "accent";
+                  setStatusColorScheme(scheme);
+                  localStorage.setItem("statusColorScheme", scheme);
+                  window.dispatchEvent(new Event("statusColorSchemeChanged"));
+                  if (storageMode === "cloud")
+                    saveToCloud({ statusColorScheme: scheme });
                 }}
               />
             </SettingRow>
@@ -1173,9 +1737,121 @@ export function UserProfilePanel({
                   setPinAppRail(v);
                   localStorage.setItem("pinAppRail", v.toString());
                   window.dispatchEvent(new Event("pinAppRailChanged"));
+                  if (storageMode === "cloud") saveToCloud({ pinAppRail: v });
                 }}
               />
             </SettingRow>
+            <SettingRow
+              label={t("newUi.sidebar.userProfile.expandAppRailOnHover")}
+              description={t(
+                "newUi.sidebar.userProfile.expandAppRailOnHoverDesc",
+              )}
+            >
+              <FakeSwitch
+                checked={expandAppRailOnHover}
+                onChange={(v) => {
+                  setExpandAppRailOnHover(v);
+                  localStorage.setItem("expandAppRailOnHover", v.toString());
+                  window.dispatchEvent(
+                    new Event("expandAppRailOnHoverChanged"),
+                  );
+                  if (storageMode === "cloud")
+                    saveToCloud({ expandAppRailOnHover: v });
+                }}
+              />
+            </SettingRow>
+          </div>
+
+          <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+              {t("newUi.sidebar.userProfile.settingsNavigation")}
+            </span>
+            <p className="text-[10px] text-muted-foreground mb-2">
+              {t("newUi.sidebar.userProfile.navigationTabsDesc")}
+            </p>
+            {(
+              [
+                {
+                  id: "hosts",
+                  icon: <Server size={12} />,
+                  label: t("nav.hosts"),
+                },
+                {
+                  id: "credentials",
+                  icon: <KeyRound size={12} />,
+                  label: t("nav.credentials"),
+                },
+                {
+                  id: "connections",
+                  icon: <Plug size={12} />,
+                  label: t("nav.connections"),
+                },
+                {
+                  id: "quick-connect",
+                  icon: <Zap size={12} />,
+                  label: t("nav.quickConnect"),
+                },
+                {
+                  id: "serial",
+                  icon: <Usb size={12} />,
+                  label: t("nav.serial"),
+                },
+                {
+                  id: "ssh-tools",
+                  icon: <Hammer size={12} />,
+                  label: t("nav.sshTools"),
+                },
+                {
+                  id: "snippets",
+                  icon: <Play size={12} />,
+                  label: t("nav.snippets"),
+                },
+                {
+                  id: "history",
+                  icon: <Clock size={12} />,
+                  label: t("nav.history"),
+                },
+                {
+                  id: "session-logs",
+                  icon: <ScrollText size={12} />,
+                  label: t("nav.sessionLogs"),
+                },
+                {
+                  id: "split-screen",
+                  icon: <LayoutPanelLeft size={12} />,
+                  label: t("nav.splitScreen"),
+                },
+                {
+                  id: "network_graph",
+                  icon: <Network size={12} />,
+                  label: t("nav.networkGraph"),
+                },
+              ] as { id: string; icon: React.ReactNode; label: string }[]
+            ).map((tab) => (
+              <div
+                key={tab.id}
+                className="flex items-center justify-between py-1.5"
+              >
+                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <span className="text-muted-foreground">{tab.icon}</span>
+                  {tab.label}
+                </span>
+                <FakeSwitch
+                  checked={!hiddenRailTabs.has(tab.id)}
+                  onChange={(visible) => {
+                    const next = new Set(hiddenRailTabs);
+                    if (visible) next.delete(tab.id);
+                    else next.add(tab.id);
+                    setHiddenRailTabs(next);
+                    const serialized = JSON.stringify([...next]);
+                    localStorage.setItem("hiddenRailTabs", serialized);
+                    window.dispatchEvent(new Event("hiddenRailTabsChanged"));
+                    if (storageMode === "cloud")
+                      saveToCloud({ hiddenRailTabs: serialized });
+                  }}
+                />
+              </div>
+            ))}
           </div>
 
           <div className="flex flex-col gap-1 border-t border-border pt-3">
@@ -1197,6 +1873,8 @@ export function UserProfilePanel({
                   window.dispatchEvent(
                     new Event("defaultSnippetFoldersCollapsedChanged"),
                   );
+                  if (storageMode === "cloud")
+                    saveToCloud({ foldersCollapsed: v });
                 }}
               />
             </SettingRow>
@@ -1209,6 +1887,8 @@ export function UserProfilePanel({
                 onChange={(v) => {
                   setConfirmSnippetExecution(v);
                   localStorage.setItem("confirmSnippetExecution", v.toString());
+                  if (storageMode === "cloud")
+                    saveToCloud({ confirmSnippetExecution: v });
                 }}
               />
             </SettingRow>
@@ -1229,6 +1909,8 @@ export function UserProfilePanel({
                 onChange={(v) => {
                   setDisableUpdateCheck(v);
                   localStorage.setItem("disableUpdateCheck", v.toString());
+                  if (storageMode === "cloud")
+                    saveToCloud({ disableUpdateCheck: v });
                 }}
               />
             </SettingRow>
@@ -1248,9 +1930,19 @@ export function UserProfilePanel({
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-medium">
-                  {t("newUi.sidebar.userProfile.totpAuthenticator")}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">
+                    {t("newUi.sidebar.userProfile.totpAuthenticator")}
+                  </span>
+                  <a
+                    href="https://docs.termix.site/features/authentication/totp"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-accent-brand hover:underline"
+                  >
+                    {t("hosts.docsLink")}
+                  </a>
+                </div>
                 <span className="text-[10px] text-muted-foreground">
                   {totpEnabled
                     ? t("newUi.sidebar.userProfile.totpEnabled")
@@ -1353,7 +2045,7 @@ export function UserProfilePanel({
                   </span>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(totpSecret);
+                      copyToClipboard(totpSecret);
                       toast.info(t("newUi.sidebar.userProfile.secretCopied"));
                     }}
                     className="text-muted-foreground hover:text-accent-brand shrink-0"
@@ -1458,6 +2150,93 @@ export function UserProfilePanel({
                 </Button>
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium">
+                  {t("newUi.sidebar.userProfile.passkeys")}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {t("newUi.sidebar.userProfile.passkeysDesc")}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Input
+                placeholder={t("newUi.sidebar.userProfile.passkeyName")}
+                value={passkeyName}
+                onChange={(e) => setPasskeyName(e.target.value)}
+                className="h-8 text-xs"
+                disabled={passkeyLoading}
+              />
+              <select
+                value={passkeyUserVerification}
+                onChange={(e) =>
+                  setPasskeyUserVerification(
+                    e.target.value as WebAuthnUserVerification,
+                  )
+                }
+                className="h-8 w-28 text-xs border border-border bg-background px-2 outline-none focus:ring-1 focus:ring-ring"
+                disabled={passkeyLoading}
+              >
+                <option value="preferred">
+                  {t("newUi.sidebar.userProfile.passkeyUvPreferred")}
+                </option>
+                <option value="required">
+                  {t("newUi.sidebar.userProfile.passkeyUvRequired")}
+                </option>
+                <option value="discouraged">
+                  {t("newUi.sidebar.userProfile.passkeyUvDiscouraged")}
+                </option>
+              </select>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[10px] border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand"
+              onClick={handleRegisterPasskey}
+              disabled={passkeyLoading}
+            >
+              <KeyRound className="size-3" />
+              {t("newUi.sidebar.userProfile.addPasskey")}
+            </Button>
+
+            <div className="flex flex-col divide-y divide-border border border-border">
+              {passkeys.length === 0 ? (
+                <div className="py-4 text-center text-[10px] text-muted-foreground">
+                  {t("newUi.sidebar.userProfile.noPasskeys")}
+                </div>
+              ) : (
+                passkeys.map((passkey) => (
+                  <div
+                    key={passkey.id}
+                    className="flex items-center justify-between gap-2 px-2 py-2"
+                  >
+                    <div className="min-w-0 flex flex-col">
+                      <span className="text-xs font-medium truncate">
+                        {passkey.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {passkey.deviceType || "unknown"}
+                        {passkey.backedUp ? " / synced" : ""}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeletePasskey(passkey.id)}
+                      disabled={passkeyLoading}
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {canChangePasword && (

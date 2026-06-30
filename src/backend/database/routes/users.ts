@@ -2,7 +2,7 @@ import type { AuthenticatedRequest } from "../../../types/index.js";
 import express from "express";
 import { db } from "../db/index.js";
 import { users, settings, roles, userRoles } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import type { Request, Response } from "express";
@@ -14,28 +14,97 @@ import {
   generateDeviceFingerprint,
 } from "../../utils/user-agent-parser.js";
 import { loginRateLimiter } from "../../utils/login-rate-limiter.js";
-import { getRequestOriginWithForceHTTPS } from "../../utils/request-origin.js";
+import {
+  getRequestBasePath,
+  getRequestBaseUrlWithForceHTTPS,
+} from "../../utils/request-origin.js";
 import { deleteUserAndRelatedData } from "./delete-user-data.js";
 import {
   getOIDCConfigFromEnv,
   isOIDCUserAllowed,
   verifyOIDCToken,
+  extractOidcGroups,
+  loadProviderConfig,
+  buildFetchOptions,
 } from "./user-oidc-utils.js";
 import { registerUserApiKeyRoutes } from "./user-api-key-routes.js";
 import { registerUserSettingsRoutes } from "./user-settings-routes.js";
+import { registerAcmeSSLRoutes } from "./acme-ssl-routes.js";
 import { registerUserTotpRoutes } from "./user-totp-routes.js";
 import { registerUserSessionRoutes } from "./user-session-routes.js";
 import { registerUserOidcAccountRoutes } from "./user-oidc-account-routes.js";
 import { registerUserPasswordResetRoutes } from "./user-password-reset-routes.js";
 import { registerUserAdminRoutes } from "./user-admin-routes.js";
 import { registerUserDataAccessRoutes } from "./user-data-access-routes.js";
+import { registerUserWebAuthnRoutes } from "./user-webauthn-routes.js";
+import { registerSSOProviderRoutes } from "./sso-provider-routes.js";
+import { registerLDAPAuthRoutes } from "./ldap-auth-routes.js";
+import { logAudit, getRequestMeta } from "../../utils/audit-logger.js";
 
 const authManager = AuthManager.getInstance();
 
 const router = express.Router();
 
+async function syncSharedCredentialsForUserRoles(
+  userId: string,
+  operation: string,
+) {
+  try {
+    const { SharedCredentialManager } =
+      await import("../../utils/shared-credential-manager.js");
+    const sharedCredManager = SharedCredentialManager.getInstance();
+    await sharedCredManager.createSharedCredentialsForUserRoles(userId);
+    await sharedCredManager.reEncryptPendingCredentialsForUser(userId);
+  } catch (error) {
+    authLogger.warn("Failed to sync role shared credentials", {
+      operation,
+      userId,
+      error,
+    });
+  }
+}
+
 function isNonEmptyString(val: unknown): val is string {
   return typeof val === "string" && val.trim().length > 0;
+}
+
+function isRegistrationAllowed(): boolean {
+  const envVal = process.env.ALLOW_REGISTRATION;
+  if (envVal !== undefined) return envVal.trim().toLowerCase() === "true";
+  try {
+    const row = db.$client
+      .prepare("SELECT value FROM settings WHERE key = 'allow_registration'")
+      .get() as { value: string } | undefined;
+    return row ? row.value === "true" : true;
+  } catch {
+    return true;
+  }
+}
+
+function isPasswordLoginAllowed(): boolean {
+  const envVal = process.env.ALLOW_PASSWORD_LOGIN;
+  if (envVal !== undefined) return envVal.trim().toLowerCase() === "true";
+  try {
+    const row = db.$client
+      .prepare("SELECT value FROM settings WHERE key = 'allow_password_login'")
+      .get() as { value: string } | undefined;
+    return row ? row.value === "true" : true;
+  } catch {
+    return true;
+  }
+}
+
+function isPasswordResetAllowed(): boolean {
+  const envVal = process.env.ALLOW_PASSWORD_RESET;
+  if (envVal !== undefined) return envVal.trim().toLowerCase() === "true";
+  try {
+    const row = db.$client
+      .prepare("SELECT value FROM settings WHERE key = 'allow_password_reset'")
+      .get() as { value: string } | undefined;
+    return row ? row.value === "true" : true;
+  } catch {
+    return true;
+  }
 }
 
 function isNativeAppRequest(req: Request): boolean {
@@ -80,20 +149,10 @@ const requireAdmin = authManager.createAdminMiddleware();
  *         description: Failed to create user.
  */
 router.post("/create", async (req, res) => {
-  try {
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'allow_registration'")
-      .get();
-    if (row && (row as Record<string, unknown>).value !== "true") {
-      return res
-        .status(403)
-        .json({ error: "Registration is currently disabled" });
-    }
-  } catch (e) {
-    authLogger.warn("Failed to check registration status", {
-      operation: "registration_check",
-      error: e,
-    });
+  if (!isRegistrationAllowed()) {
+    return res
+      .status(403)
+      .json({ error: "Registration is currently disabled" });
   }
 
   const { username, password } = req.body;
@@ -130,8 +189,7 @@ router.post("/create", async (req, res) => {
       return res.status(409).json({ error: "Username already exists" });
     }
 
-    const saltRounds = parseInt(process.env.SALT || "10", 10);
-    const password_hash = await bcrypt.hash(password, saltRounds);
+    const password_hash = await bcrypt.hash(password, 10);
     const id = nanoid();
 
     const isFirstUser = db.$client.transaction(() => {
@@ -225,6 +283,20 @@ router.post("/create", async (req, res) => {
       username,
       isAdmin: isFirstUser,
     });
+
+    const { ipAddress, userAgent } = getRequestMeta(req);
+    await logAudit({
+      userId: id,
+      username,
+      action: "create_user",
+      resourceType: "user",
+      resourceId: id,
+      resourceName: username,
+      ipAddress,
+      userAgent,
+      success: true,
+    });
+
     res.json({
       message: "User created",
       is_admin: isFirstUser,
@@ -272,6 +344,7 @@ router.post("/oidc-config", authenticateJWT, async (req, res) => {
       scopes,
       allowed_users,
       admin_group,
+      group_claim,
     } = req.body;
 
     const isDisableRequest =
@@ -331,6 +404,7 @@ router.post("/oidc-config", authenticateJWT, async (req, res) => {
         scopes: scopes || "openid email profile",
         allowed_users: allowed_users || "",
         admin_group: admin_group || "",
+        group_claim: group_claim || "",
       };
 
       let encryptedConfig;
@@ -440,35 +514,19 @@ router.delete("/oidc-config", authenticateJWT, async (req, res) => {
  *       500:
  *         description: Failed to get OIDC config.
  */
-router.get("/oidc-config", async (req, res) => {
+router.get("/oidc-config", async (_req, res) => {
   try {
-    const envConfig = getOIDCConfigFromEnv();
-    if (envConfig) {
-      return res.json({
-        client_id: envConfig.client_id,
-        issuer_url: envConfig.issuer_url,
-        authorization_url: envConfig.authorization_url,
-        scopes: envConfig.scopes,
-      });
-    }
-
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'oidc_config'")
-      .get();
-    if (!row) {
+    const providerResult = await loadProviderConfig(undefined);
+    if (!providerResult) {
       return res.json(null);
     }
-
-    const config = JSON.parse((row as Record<string, unknown>).value as string);
-
-    const publicConfig = {
+    const { config } = providerResult;
+    return res.json({
       client_id: config.client_id,
       issuer_url: config.issuer_url,
       authorization_url: config.authorization_url,
       scopes: config.scopes,
-    };
-
-    return res.json(publicConfig);
+    });
   } catch (err) {
     authLogger.error("Failed to get OIDC config", err);
     res.status(500).json({ error: "Failed to get OIDC config" });
@@ -569,24 +627,25 @@ router.get("/oidc-config/admin", requireAdmin, async (req, res) => {
  */
 router.get("/oidc/authorize", async (req, res) => {
   try {
-    const { rememberMe, desktopCallbackPort, appCallbackUrl } = req.query;
-    const origin = getRequestOriginWithForceHTTPS(req);
-    const backendCallbackUri = `${origin}/users/oidc/callback`;
+    const {
+      rememberMe,
+      desktopCallbackPort,
+      appCallbackUrl,
+      providerId: providerIdStr,
+    } = req.query;
+    const publicBaseUrl = getRequestBaseUrlWithForceHTTPS(req);
+    const backendCallbackUri = `${publicBaseUrl}/users/oidc/callback`;
 
-    const envConfig = getOIDCConfigFromEnv();
-    let config;
-
-    if (envConfig) {
-      config = envConfig;
-    } else {
-      const row = db.$client
-        .prepare("SELECT value FROM settings WHERE key = 'oidc_config'")
-        .get();
-      if (!row) {
-        return res.status(404).json({ error: "OIDC not configured" });
-      }
-      config = JSON.parse((row as Record<string, unknown>).value as string);
+    const resolvedProviderId = providerIdStr
+      ? parseInt(providerIdStr as string, 10)
+      : null;
+    const providerResult = await loadProviderConfig(
+      resolvedProviderId || undefined,
+    );
+    if (!providerResult) {
+      return res.status(404).json({ error: "OIDC not configured" });
     }
+    const { config, providerDbId } = providerResult;
     const state = nanoid();
     const nonce = nanoid();
 
@@ -607,9 +666,9 @@ router.get("/oidc/authorize", async (req, res) => {
       frontendOrigin = callbackUrl.toString();
     } else if (referer) {
       const refererUrl = new URL(referer);
-      frontendOrigin = `${refererUrl.protocol}//${refererUrl.host}`;
+      frontendOrigin = `${refererUrl.protocol}//${refererUrl.host}${getRequestBasePath(req)}`;
     } else {
-      frontendOrigin = origin;
+      frontendOrigin = publicBaseUrl;
     }
 
     db.$client
@@ -630,6 +689,12 @@ router.get("/oidc/authorize", async (req, res) => {
         `oidc_remember_me_${state}`,
         rememberMe === "true" ? "true" : "false",
       );
+
+    if (providerDbId != null) {
+      db.$client
+        .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+        .run(`oidc_provider_${state}`, String(providerDbId));
+    }
 
     const authUrl = new URL(config.authorization_url);
     authUrl.searchParams.set("client_id", config.client_id);
@@ -699,33 +764,262 @@ router.get("/oidc/callback", async (req, res) => {
       return res.status(400).json({ error: "Invalid state parameter" });
     }
 
-    const envConfig = getOIDCConfigFromEnv();
-    let config;
+    const storedProviderIdRow = db.$client
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(`oidc_provider_${state}`) as { value: string } | null;
+    const callbackProviderId = storedProviderIdRow
+      ? parseInt(storedProviderIdRow.value, 10)
+      : null;
 
-    if (envConfig) {
-      config = envConfig;
-    } else {
-      const configRow = db.$client
-        .prepare("SELECT value FROM settings WHERE key = 'oidc_config'")
-        .get();
-      if (!configRow) {
-        return res.status(500).json({ error: "OIDC not configured" });
+    const providerResult = await loadProviderConfig(
+      callbackProviderId || undefined,
+    );
+    if (!providerResult) {
+      return res.status(500).json({ error: "OIDC not configured" });
+    }
+    const {
+      config,
+      providerType: callbackProviderType,
+      providerDbId: callbackProviderDbId,
+    } = providerResult;
+
+    // Clean up provider state key
+    if (storedProviderIdRow) {
+      db.$client
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run(`oidc_provider_${state}`);
+    }
+
+    const caCert = config.ca_cert;
+    const fetchOptions = buildFetchOptions(caCert);
+
+    // GitHub does not issue OIDC id_tokens; handle its token exchange separately
+    if (callbackProviderType === "github") {
+      const ghTokenResponse = await fetch(config.token_url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: config.client_id,
+          client_secret: config.client_secret,
+          code: code,
+          redirect_uri: backendCallbackUri,
+        }),
+        ...fetchOptions,
+      });
+
+      if (!ghTokenResponse.ok) {
+        const errorText = await ghTokenResponse.text();
+        authLogger.error("GitHub token exchange failed", {
+          operation: "github_token_exchange_failed",
+          status: ghTokenResponse.status,
+          errorResponse: errorText,
+        });
+        return res
+          .status(400)
+          .json({ error: "Failed to exchange authorization code" });
       }
-      config = JSON.parse(
-        (configRow as Record<string, unknown>).value as string,
+
+      const ghTokenData = (await ghTokenResponse.json()) as Record<
+        string,
+        unknown
+      >;
+      db.$client
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run(`oidc_state_${state}`);
+      db.$client
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run(`oidc_backend_callback_${state}`);
+      db.$client
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run(`oidc_frontend_origin_${state}`);
+      db.$client
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run(`oidc_remember_me_${state}`);
+
+      const ghUserInfoResponse = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${ghTokenData.access_token}`,
+          Accept: "application/json",
+          "User-Agent": "Termix",
+        },
+        ...fetchOptions,
+      });
+      if (!ghUserInfoResponse.ok) {
+        return res
+          .status(400)
+          .json({ error: "Failed to get GitHub user information" });
+      }
+      const ghUserInfo = (await ghUserInfoResponse.json()) as Record<
+        string,
+        unknown
+      >;
+
+      const emailRes = await fetch("https://api.github.com/user/emails", {
+        headers: {
+          Authorization: `Bearer ${ghTokenData.access_token}`,
+          Accept: "application/json",
+          "User-Agent": "Termix",
+        },
+      });
+      if (emailRes.ok) {
+        const emails = (await emailRes.json()) as Array<{
+          email: string;
+          primary: boolean;
+          verified: boolean;
+        }>;
+        const primary = emails.find((e) => e.primary && e.verified);
+        if (primary) ghUserInfo.email = primary.email;
+      }
+
+      const ghIdentifier = `github:${callbackProviderDbId}:${String(ghUserInfo.id ?? ghUserInfo.login)}`;
+      const ghName = (ghUserInfo.name ||
+        ghUserInfo.login ||
+        ghIdentifier) as string;
+      const deviceInfo = parseUserAgent(req);
+
+      let ghUser = await db
+        .select()
+        .from(users)
+        .where(eq(users.oidcIdentifier, ghIdentifier));
+      if (!ghUser || ghUser.length === 0) {
+        const preCheckCount = db.$client
+          .prepare("SELECT COUNT(*) as count FROM users")
+          .get() as { count?: number };
+        const isFirstUser = (preCheckCount?.count || 0) === 0;
+
+        if (!isFirstUser && config.allowed_users) {
+          const email = ghUserInfo.email as string | undefined;
+          if (!isOIDCUserAllowed(config.allowed_users, ghIdentifier, email)) {
+            const redirectUrl = new URL(frontendOrigin);
+            redirectUrl.searchParams.set("error", "user_not_allowed");
+            return res.redirect(redirectUrl.toString());
+          }
+        }
+
+        let ghAutoProvision = false;
+        try {
+          const r = db.$client
+            .prepare(
+              "SELECT value FROM settings WHERE key = 'oidc_auto_provision'",
+            )
+            .get() as { value: string } | undefined;
+          if (r) ghAutoProvision = r.value === "true";
+        } catch {
+          /* */
+        }
+        if (!ghAutoProvision)
+          ghAutoProvision =
+            (process.env.OIDC_ALLOW_REGISTRATION || "").trim().toLowerCase() ===
+            "true";
+
+        if (!isFirstUser && !ghAutoProvision) {
+          const redirectUrl = new URL(frontendOrigin);
+          redirectUrl.searchParams.set("error", "registration_disabled");
+          return res.redirect(redirectUrl.toString());
+        }
+
+        const ghId = nanoid();
+        const ghIsFirst = db.$client.transaction(() => {
+          const c =
+            (
+              db.$client
+                .prepare("SELECT COUNT(*) as count FROM users")
+                .get() as { count?: number }
+            )?.count || 0;
+          const first = c === 0;
+          db.$client
+            .prepare(
+              "INSERT INTO users (id, username, password_hash, is_admin, is_oidc, oidc_identifier, sso_provider_id) VALUES (?, ?, ?, ?, 1, ?, ?)",
+            )
+            .run(
+              ghId,
+              ghName,
+              "",
+              first ? 1 : 0,
+              ghIdentifier,
+              callbackProviderDbId,
+            );
+          return first;
+        })();
+
+        try {
+          const defaultRoleName = ghIsFirst ? "admin" : "user";
+          const defaultRole = await db
+            .select({ id: roles.id })
+            .from(roles)
+            .where(eq(roles.name, defaultRoleName))
+            .limit(1);
+          if (defaultRole.length > 0)
+            await db.insert(userRoles).values({
+              userId: ghId,
+              roleId: defaultRole[0].id,
+              grantedBy: ghId,
+            });
+        } catch {
+          /* */
+        }
+
+        try {
+          const sessionDurationMs =
+            deviceInfo.type === "desktop" || deviceInfo.type === "mobile"
+              ? 30 * 24 * 60 * 60 * 1000
+              : 24 * 60 * 60 * 1000;
+          await authManager.registerOIDCUser(ghId, sessionDurationMs);
+        } catch {
+          await db.delete(users).where(eq(users.id, ghId));
+          return res.status(500).json({
+            error: "Failed to setup user security - user creation cancelled",
+          });
+        }
+
+        ghUser = await db.select().from(users).where(eq(users.id, ghId));
+      }
+
+      const ghUserRecord = ghUser[0];
+      try {
+        await authManager.authenticateOIDCUser(
+          ghUserRecord.id,
+          deviceInfo.type,
+        );
+      } catch {
+        /* */
+      }
+      await syncSharedCredentialsForUserRoles(
+        ghUserRecord.id,
+        "github_oidc_role_shared_credentials",
       );
-
-      if (config.client_secret?.startsWith("encrypted:")) {
-        config.client_secret = Buffer.from(
-          config.client_secret.substring(10),
-          "base64",
-        ).toString("utf8");
-      } else if (config.client_secret?.startsWith("encoded:")) {
-        config.client_secret = Buffer.from(
-          config.client_secret.substring(8),
-          "base64",
-        ).toString("utf8");
+      const ghToken = await authManager.generateJWTToken(ghUserRecord.id, {
+        deviceType: deviceInfo.type,
+        deviceInfo: deviceInfo.deviceInfo,
+        rememberMe: storedRememberMe,
+      });
+      const ghRedirectUrl = new URL(frontendOrigin);
+      ghRedirectUrl.searchParams.set("success", "true");
+      const ghIsTokenCallback =
+        frontendOrigin.startsWith("http://127.0.0.1:") ||
+        frontendOrigin.startsWith("termix-mobile:");
+      const ghMaxAge =
+        deviceInfo.type === "desktop" || deviceInfo.type === "mobile"
+          ? 30 * 24 * 60 * 60 * 1000
+          : storedRememberMe
+            ? 30 * 24 * 60 * 60 * 1000
+            : 24 * 60 * 60 * 1000;
+      res.clearCookie("jwt", authManager.getClearCookieOptions(req));
+      if (ghIsTokenCallback) {
+        ghRedirectUrl.searchParams.set("token", ghToken);
+        return res.redirect(ghRedirectUrl.toString());
       }
+      return res
+        .cookie(
+          "jwt",
+          ghToken,
+          authManager.getSecureCookieOptions(req, ghMaxAge),
+        )
+        .redirect(ghRedirectUrl.toString());
     }
 
     const tokenResponse = await fetch(config.token_url, {
@@ -741,6 +1035,7 @@ router.get("/oidc/callback", async (req, res) => {
         code: code,
         redirect_uri: backendCallbackUri,
       }),
+      ...fetchOptions,
     });
 
     if (!tokenResponse.ok) {
@@ -783,7 +1078,7 @@ router.get("/oidc/callback", async (req, res) => {
 
     try {
       const discoveryUrl = `${normalizedIssuerUrl}/.well-known/openid-configuration`;
-      const discoveryResponse = await fetch(discoveryUrl);
+      const discoveryResponse = await fetch(discoveryUrl, fetchOptions);
       if (discoveryResponse.ok) {
         const discovery = (await discoveryResponse.json()) as Record<
           string,
@@ -818,6 +1113,7 @@ router.get("/oidc/callback", async (req, res) => {
           tokenData.id_token as string,
           config.issuer_url,
           config.client_id,
+          caCert,
         );
       } catch {
         try {
@@ -834,20 +1130,22 @@ router.get("/oidc/callback", async (req, res) => {
       }
     }
 
-    if (!userInfo && tokenData.access_token) {
+    if (tokenData.access_token) {
       for (const userInfoUrl of userInfoUrls) {
         try {
           const userInfoResponse = await fetch(userInfoUrl, {
             headers: {
               Authorization: `Bearer ${tokenData.access_token}`,
             },
+            ...fetchOptions,
           });
 
           if (userInfoResponse.ok) {
-            userInfo = (await userInfoResponse.json()) as Record<
+            const fetchedUserInfo = (await userInfoResponse.json()) as Record<
               string,
               unknown
             >;
+            userInfo = { ...userInfo, ...fetchedUserInfo };
             break;
           } else {
             authLogger.error(
@@ -949,33 +1247,17 @@ router.get("/oidc/callback", async (req, res) => {
       }
 
       if (!isFirstUser && !oidcAutoProvision) {
-        try {
-          const regRow = db.$client
-            .prepare(
-              "SELECT value FROM settings WHERE key = 'allow_registration'",
-            )
-            .get();
-          if (regRow && (regRow as Record<string, unknown>).value !== "true") {
-            authLogger.warn(
-              "OIDC user attempted to register when registration is disabled",
-              {
-                operation: "oidc_registration_disabled",
-                identifier,
-                name,
-              },
-            );
-
-            const redirectUrl = new URL(frontendOrigin);
-            redirectUrl.searchParams.set("error", "registration_disabled");
-
-            return res.redirect(redirectUrl.toString());
-          }
-        } catch (e) {
-          authLogger.warn("Failed to check registration status during OIDC", {
-            operation: "oidc_registration_check",
-            error: e,
-          });
-        }
+        authLogger.warn(
+          "OIDC user attempted to register but auto-provisioning is disabled",
+          {
+            operation: "oidc_registration_disabled",
+            identifier,
+            name,
+          },
+        );
+        const redirectUrl = new URL(frontendOrigin);
+        redirectUrl.searchParams.set("error", "registration_disabled");
+        return res.redirect(redirectUrl.toString());
       }
 
       const id = nanoid();
@@ -986,7 +1268,7 @@ router.get("/oidc/callback", async (req, res) => {
         const first = (countResult?.count || 0) === 0;
         db.$client
           .prepare(
-            "INSERT INTO users (id, username, password_hash, is_admin, is_oidc, oidc_identifier, client_id, client_secret, issuer_url, authorization_url, token_url, identifier_path, name_path, scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, username, password_hash, is_admin, is_oidc, oidc_identifier, sso_provider_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
           .run(
             id,
@@ -995,14 +1277,7 @@ router.get("/oidc/callback", async (req, res) => {
             first ? 1 : 0,
             1,
             identifier,
-            String(config.client_id),
-            String(config.client_secret),
-            String(config.issuer_url),
-            String(config.authorization_url),
-            String(config.token_url),
-            String(config.identifier_path),
-            String(config.name_path),
-            String(config.scopes),
+            callbackProviderDbId,
           );
         return first;
       })();
@@ -1107,14 +1382,65 @@ router.get("/oidc/callback", async (req, res) => {
 
     // Sync admin status based on OIDC group membership
     if (config.admin_group) {
-      const groups = (userInfo.groups || userInfo.roles || []) as string[];
+      const groups = extractOidcGroups(
+        userInfo as Record<string, unknown>,
+        config.group_claim,
+      );
+
+      authLogger.info(
+        `Evaluating OIDC admin group sync. parsedGroups: ${JSON.stringify(groups)}, configuredAdminGroup: ${config.admin_group}, groupClaim: ${config.group_claim || "(default)"}, availableUserInfoKeys: ${Object.keys(userInfo).join(",")}`,
+        {
+          operation: "oidc_admin_group_sync_eval",
+          userId: userRecord.id,
+        },
+      );
+
       const shouldBeAdmin = groups.includes(config.admin_group);
       if (!!userRecord.isAdmin !== shouldBeAdmin) {
+        authLogger.info("Syncing admin status based on OIDC group membership", {
+          operation: "oidc_admin_group_sync",
+          userId: userRecord.id,
+          group: config.admin_group,
+          isAdmin: shouldBeAdmin,
+        });
         await db
           .update(users)
           .set({ isAdmin: shouldBeAdmin })
           .where(eq(users.id, userRecord.id));
         userRecord.isAdmin = shouldBeAdmin;
+        try {
+          const newRoleName = shouldBeAdmin ? "admin" : "user";
+          const oldRoleName = shouldBeAdmin ? "user" : "admin";
+          const newRole = await db
+            .select({ id: roles.id })
+            .from(roles)
+            .where(eq(roles.name, newRoleName))
+            .limit(1);
+          const oldRole = await db
+            .select({ id: roles.id })
+            .from(roles)
+            .where(eq(roles.name, oldRoleName))
+            .limit(1);
+          if (oldRole.length > 0) {
+            await db
+              .delete(userRoles)
+              .where(
+                and(
+                  eq(userRoles.userId, userRecord.id),
+                  eq(userRoles.roleId, oldRole[0].id),
+                ),
+              );
+          }
+          if (newRole.length > 0) {
+            await db.insert(userRoles).values({
+              userId: userRecord.id,
+              roleId: newRole[0].id,
+              grantedBy: userRecord.id,
+            });
+          }
+        } catch {
+          /* non-fatal */
+        }
         authLogger.info("OIDC admin status synced", {
           operation: "oidc_admin_group_sync",
           userId: userRecord.id,
@@ -1133,14 +1459,10 @@ router.get("/oidc/callback", async (req, res) => {
       });
     }
 
-    try {
-      const { SharedCredentialManager } =
-        await import("../../utils/shared-credential-manager.js");
-      const sharedCredManager = SharedCredentialManager.getInstance();
-      await sharedCredManager.reEncryptPendingCredentialsForUser(userRecord.id);
-    } catch {
-      // expected - re-encryption may fail if no pending credentials
-    }
+    await syncSharedCredentialsForUserRoles(
+      userRecord.id,
+      "oidc_role_shared_credentials",
+    );
 
     const token = await authManager.generateJWTToken(userRecord.id, {
       deviceType: deviceInfo.type,
@@ -1252,21 +1574,10 @@ router.post("/login", async (req, res) => {
     });
   }
 
-  try {
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'allow_password_login'")
-      .get();
-    if (row && (row as { value: string }).value !== "true") {
-      return res
-        .status(403)
-        .json({ error: "Password authentication is currently disabled" });
-    }
-  } catch (e) {
-    authLogger.error("Failed to check password login status", {
-      operation: "login_check",
-      error: e,
-    });
-    return res.status(500).json({ error: "Failed to check login status" });
+  if (!isPasswordLoginAllowed()) {
+    return res
+      .status(403)
+      .json({ error: "Password authentication is currently disabled" });
   }
 
   try {
@@ -1354,18 +1665,10 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Incorrect password" });
     }
 
-    try {
-      const { SharedCredentialManager } =
-        await import("../../utils/shared-credential-manager.js");
-      const sharedCredManager = SharedCredentialManager.getInstance();
-      await sharedCredManager.reEncryptPendingCredentialsForUser(userRecord.id);
-    } catch (error) {
-      authLogger.warn("Failed to re-encrypt pending shared credentials", {
-        operation: "reencrypt_pending_credentials",
-        userId: userRecord.id,
-        error,
-      });
-    }
+    await syncSharedCredentialsForUserRoles(
+      userRecord.id,
+      "login_role_shared_credentials",
+    );
 
     if (userRecord.totpEnabled) {
       const deviceFingerprint = generateDeviceFingerprint(deviceInfo);
@@ -1409,6 +1712,17 @@ router.post("/login", async (req, res) => {
       userId: userRecord.id,
       username,
       sessionId: payload?.sessionId,
+    });
+
+    const { ipAddress: loginIp, userAgent: loginUa } = getRequestMeta(req);
+    await logAudit({
+      userId: userRecord.id,
+      username,
+      action: "login",
+      resourceType: "session",
+      ipAddress: loginIp,
+      userAgent: loginUa,
+      success: true,
     });
 
     const response: Record<string, unknown> = {
@@ -1656,12 +1970,7 @@ router.get("/db-health", requireAdmin, async (req, res) => {
  */
 router.get("/registration-allowed", async (req, res) => {
   try {
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'allow_registration'")
-      .get();
-    res.json({
-      allowed: row ? (row as Record<string, unknown>).value === "true" : true,
-    });
+    res.json({ allowed: isRegistrationAllowed() });
   } catch (err) {
     authLogger.error("Failed to get registration allowed", err);
     res.status(500).json({ error: "Failed to get registration allowed" });
@@ -1768,6 +2077,107 @@ router.patch("/oidc-auto-provision", authenticateJWT, async (req, res) => {
 
 /**
  * @openapi
+ * /users/oidc-silent-login-default:
+ *   get:
+ *     summary: Get OIDC silent login default setting
+ *     description: Returns whether silent OIDC login is enabled as the default behavior.
+ *     tags:
+ *       - Users
+ *     responses:
+ *       200:
+ *         description: Silent login default setting.
+ *       500:
+ *         description: Failed to get setting.
+ */
+router.get("/oidc-silent-login-default", async (_req, res) => {
+  try {
+    const row = db.$client
+      .prepare(
+        "SELECT value FROM settings WHERE key = 'oidc_silent_login_default'",
+      )
+      .get();
+    res.json({
+      enabled: row ? (row as Record<string, unknown>).value === "true" : false,
+    });
+  } catch (err) {
+    authLogger.error("Failed to get OIDC silent login default", err);
+    res.status(500).json({ error: "Failed to get OIDC silent login default" });
+  }
+});
+
+/**
+ * @openapi
+ * /users/oidc-silent-login-default:
+ *   patch:
+ *     summary: Set OIDC silent login default setting
+ *     description: Enables or disables silent OIDC login as the default behavior on the login page.
+ *     tags:
+ *       - Users
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Setting updated.
+ *       400:
+ *         description: Invalid value.
+ *       403:
+ *         description: Not authorized.
+ *       500:
+ *         description: Failed to update setting.
+ */
+router.patch(
+  "/oidc-silent-login-default",
+  authenticateJWT,
+  async (req, res) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    try {
+      const user = await db.select().from(users).where(eq(users.id, userId));
+      if (!user || user.length === 0 || !user[0].isAdmin) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      const { enabled } = req.body;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "Invalid value for enabled" });
+      }
+      const existing = db.$client
+        .prepare(
+          "SELECT value FROM settings WHERE key = 'oidc_silent_login_default'",
+        )
+        .get();
+      if (existing) {
+        db.$client
+          .prepare(
+            "UPDATE settings SET value = ? WHERE key = 'oidc_silent_login_default'",
+          )
+          .run(enabled ? "true" : "false");
+      } else {
+        db.$client
+          .prepare(
+            "INSERT INTO settings (key, value) VALUES ('oidc_silent_login_default', ?)",
+          )
+          .run(enabled ? "true" : "false");
+      }
+      const { saveMemoryDatabaseToFile } = await import("../db/index.js");
+      await saveMemoryDatabaseToFile();
+      res.json({ enabled });
+    } catch (err) {
+      authLogger.error("Failed to set OIDC silent login default", err);
+      res
+        .status(500)
+        .json({ error: "Failed to set OIDC silent login default" });
+    }
+  },
+);
+
+/**
+ * @openapi
  * /users/password-login-allowed:
  *   get:
  *     summary: Get password login status
@@ -1782,12 +2192,7 @@ router.patch("/oidc-auto-provision", authenticateJWT, async (req, res) => {
  */
 router.get("/password-login-allowed", async (req, res) => {
   try {
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'allow_password_login'")
-      .get();
-    res.json({
-      allowed: row ? (row as { value: string }).value === "true" : true,
-    });
+    res.json({ allowed: isPasswordLoginAllowed() });
   } catch (err) {
     authLogger.error("Failed to get password login allowed", err);
     res.status(500).json({ error: "Failed to get password login allowed" });
@@ -1832,6 +2237,17 @@ router.patch("/password-login-allowed", authenticateJWT, async (req, res) => {
     if (typeof allowed !== "boolean") {
       return res.status(400).json({ error: "Invalid value for allowed" });
     }
+    if (!allowed) {
+      const totpRow = db.$client
+        .prepare("SELECT COUNT(*) as count FROM users WHERE totp_enabled = 1")
+        .get() as { count?: number };
+      if ((totpRow?.count || 0) > 0) {
+        return res.status(409).json({
+          error:
+            "Cannot disable password login while 2FA is enabled for one or more users. Disable 2FA first.",
+        });
+      }
+    }
     db.$client
       .prepare(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('allow_password_login', ?)",
@@ -1862,12 +2278,7 @@ router.patch("/password-login-allowed", authenticateJWT, async (req, res) => {
  */
 router.get("/password-reset-allowed", async (req, res) => {
   try {
-    const row = db.$client
-      .prepare("SELECT value FROM settings WHERE key = 'allow_password_reset'")
-      .get();
-    res.json({
-      allowed: row ? (row as { value: string }).value === "true" : true,
-    });
+    res.json({ allowed: isPasswordResetAllowed() });
   } catch (err) {
     authLogger.error("Failed to get password reset allowed", err);
     res.status(500).json({ error: "Failed to get password reset allowed" });
@@ -2084,8 +2495,7 @@ router.post("/change-password", authenticateJWT, async (req, res) => {
       .json({ error: "Failed to update password and re-encrypt data." });
   }
 
-  const saltRounds = parseInt(process.env.SALT || "10", 10);
-  const password_hash = await bcrypt.hash(newPassword, saltRounds);
+  const password_hash = await bcrypt.hash(newPassword, 10);
   await db
     .update(users)
     .set({ passwordHash: password_hash })
@@ -2097,12 +2507,35 @@ router.post("/change-password", authenticateJWT, async (req, res) => {
     userId,
   });
 
+  const { ipAddress: pwIp, userAgent: pwUa } = getRequestMeta(req);
+  const pwUser = await db
+    .select({ username: users.username })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  await logAudit({
+    userId,
+    username: pwUser[0]?.username ?? userId,
+    action: "change_password",
+    resourceType: "user",
+    resourceId: userId,
+    ipAddress: pwIp,
+    userAgent: pwUa,
+    success: true,
+  });
+
   res.json({ message: "Password changed successfully. Please log in again." });
 });
 
 registerUserAdminRoutes(router, authenticateJWT);
 
 registerUserTotpRoutes(router, {
+  authenticateJWT,
+  authManager,
+  isNativeAppRequest,
+});
+
+registerUserWebAuthnRoutes(router, {
   authenticateJWT,
   authManager,
   isNativeAppRequest,
@@ -2184,6 +2617,25 @@ router.delete("/delete-user", authenticateJWT, async (req, res) => {
       targetUserId,
       targetUsername: username,
     });
+
+    const { ipAddress: deleteIp, userAgent: deleteUa } = getRequestMeta(req);
+    const delAdminRecord = await db
+      .select({ username: users.username })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    await logAudit({
+      userId,
+      username: delAdminRecord[0]?.username ?? userId,
+      action: "delete_user",
+      resourceType: "user",
+      resourceId: targetUserId,
+      resourceName: username,
+      ipAddress: deleteIp,
+      userAgent: deleteUa,
+      success: true,
+    });
+
     res.json({ message: `User ${username} deleted successfully` });
   } catch (err) {
     authLogger.error("Failed to delete user", err);
@@ -2219,7 +2671,11 @@ registerUserOidcAccountRoutes(router, {
 });
 
 registerUserSettingsRoutes(router, authenticateJWT);
+registerAcmeSSLRoutes(router, authenticateJWT);
 
 registerUserApiKeyRoutes(router, requireAdmin);
+
+registerSSOProviderRoutes(router);
+registerLDAPAuthRoutes(router);
 
 export default router;

@@ -28,7 +28,14 @@
   <img src="https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks&color=F39044&labelColor=1a1a1a" />
   <img src="https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release&color=F39044&labelColor=1a1a1a&v=1" />
   <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720?color=F39044&labelColor=1a1a1a" /></a>
+  <a href="https://donate.termix.site/"><img alt="Donate" src="https://img.shields.io/badge/Donate-Support%20Termix-F39044?style=flat&labelColor=1a1a1a" /></a>
 </p>
+
+<br />
+
+Termix is free and open source. If you find it useful, consider [donating](https://donate.termix.site/) to help cover server costs and development time.
+
+<a href="https://donate.termix.site/"><img src="https://raw.githubusercontent.com/Termix-SSH/Termix/badges/donation-goal.svg" alt="Monthly donation goal" /></a>
 
 <br />
 
@@ -87,36 +94,64 @@ Manage files directly on remote servers with support for viewing and editing cod
 <tr>
 <td width="50%" valign="top">
 
-**Docker Management:**
-Start, stop, pause, remove containers. View container stats. Control container using docker exec terminal. It was not made to replace Portainer or Dockge but rather to simply manage your containers compared to creating them.
+**Docker and Podman Management:**
+Start, stop, pause, remove containers. View container stats. Control containers using a docker exec terminal. Supports both Docker and Podman as the container runtime. It was not made to replace Portainer or Dockge but rather to simply manage your containers compared to creating them.
 
 </td>
 <td width="50%" valign="top">
 
 **SSH Host Manager:**
-Save, organize, and manage your SSH connections with tags and folders, and easily save reusable login info while being able to automate the deployment of SSH keys.
+Save, organize, and manage your SSH connections with tags and folders (folder customization and nested folder support), and easily save reusable login info while being able to automate the deployment of SSH keys.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-**Server Stats:**
-View CPU, memory, and disk usage along with network, uptime, system information, firewall, port monitor, on most Linux based servers.
+**Host Metrics:**
+View CPU, memory, disk usage, network, uptime, system information, firewall, port monitor, log viewer, users/permissions, certificates, and many more which work on most Linux based servers. Includes time-series history graphs and threshold-based alerts with ntfy and webhook support.
 
 </td>
 <td width="50%" valign="top">
 
 **User Authentication:**
-Secure user management with admin controls and OIDC (with access control) and 2FA (TOTP) support. View active user sessions across all platforms and revoke permissions. Link your OIDC/Local accounts together.
+Secure user management with admin controls and OIDC/LDAP/SSO (with access control), 2FA (TOTP), and passkey (WebAuthn) support. View active user sessions across all platforms and revoke permissions. Link your OIDC/Local accounts together. View audit log of all users actions.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
+**Tailscale Integration:**
+List devices from your tailnet to quickly add them as hosts, and connect using Tailscale SSH as an authentication method, letting your tailnet ACLs handle authorization without storing credentials.
+
+</td>
+<td width="50%" valign="top">
+
 **RBAC:**
 Create roles and share hosts across users/roles.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Serial Connections:**
+Connect to serial devices (routers, switches, microcontrollers, etc.) directly from the browser or desktop app. Configure baud rate, data bits, stop bits, and parity. Uses the Web Serial API in supported browsers or a native backend in the Electron app.
+
+</td>
+<td width="50%" valign="top">
+
+**Alerts:**
+Set threshold-based alert rules on host metrics (CPU, memory, disk, etc.) and get notified via ntfy or webhooks when they fire. View firing and resolved alerts in a history log.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Homepage:**
+A fully customizable homepage with a drag-and-drop widget grid. Add widgets for host status, service links, clocks, notes, RSS feeds, weather, Docker containers, host metrics charts, embedded terminals, iframes, and more.
 
 </td>
 <td width="50%" valign="top">
@@ -170,7 +205,9 @@ Built-in support ~30 languages (managed by [Crowdin](https://docs.termix.site/tr
 - **Command History** - Auto-complete and view previously ran SSH commands
 - **Quick Connect** - Connect to a server without having to save the connection data
 - **Command Palette** - Double tap left shift to quickly access SSH connections with your keyboard
-- **SSH Feature Rich** - Supports jump hosts, Warpgate, TOTP based connections, SOCKS5, host key verification, password autofill, [OPKSSH](https://github.com/openpubkey/opkssh), tmux, port knocking, etc.
+- **Proxmox Integration** - Auto-add hosts into Termix from your Proxmox instance
+- **SSH Feature Rich** - Supports jump hosts, Warpgate, TOTP based connections, SOCKS5, host key verification, password autofill, [OPKSSH](https://github.com/openpubkey/opkssh), tmux, port knocking, terminal logging, SSH agent forwarding, Bitwarden SSH agent, HashiCorp Vault SSH signing, and more.
+- **Termix ID** - A sshid.io equivalent built into Termix. Claim a handle, publish your public SSH keys at a resolver URL, and use a built-in CA to issue SSH certificates.
 
 </details>
 
@@ -254,6 +291,14 @@ networks:
 
 <br />
 
+## Donate
+
+Termix is free and open source with no subscriptions or paid plans. If you find it useful, consider donating to help cover server costs, domains, and development time.
+
+[Donate](https://donate.termix.site/)
+
+<br />
+
 ## Screenshots
 
 <div align="center">
@@ -295,6 +340,10 @@ networks:
 <tr>
 <td><img src="./repo-images/Image 13.png" alt="Termix Screenshot 13" width="400" /></td>
 <td><img src="./repo-images/Image 14.png" alt="Termix Screenshot 14" width="400" /></td>
+</tr>
+<tr>
+<td><img src="./repo-images/Image 15.png" alt="Termix Screenshot 15" width="400" /></td>
+<td><img src="./repo-images/Image 16.png" alt="Termix Screenshot 16" width="400" /></td>
 </tr>
 </table>
 
@@ -342,6 +391,10 @@ See [Projects](https://github.com/orgs/Termix-SSH/projects/5) for all planned fe
 &nbsp;&nbsp;&nbsp;
 <a href="https://aws.amazon.com/">
   <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/960px-Amazon_Web_Services_Logo.svg.png" height="40" alt="AWS" />
+</a>
+&nbsp;&nbsp;&nbsp;
+<a href="https://rackgenius.com/">
+  <img src="https://rackgenius.com/rackgenius-logo.png" height="40" alt="AWS" />
 </a>
 
 </div>

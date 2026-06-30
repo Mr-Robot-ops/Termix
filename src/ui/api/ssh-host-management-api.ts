@@ -1,7 +1,13 @@
 import { AxiosError } from "axios";
-import { getAllServerStatuses, handleApiError, sshHostApi } from "@/main-axios";
+import {
+  authApi,
+  getAllServerStatuses,
+  handleApiError,
+  sshHostApi,
+} from "@/main-axios";
 import type { SSHHost, SSHHostData, ProxyNode } from "@/types/index";
 import type { ServerStatus, SSHHostWithStatus } from "@/main-axios";
+import type { ProxmoxDiscoverResult } from "@/types/proxmox";
 
 // SSH HOST MANAGEMENT
 // ============================================================================
@@ -82,6 +88,7 @@ export async function wakeOnLan(hostId: number): Promise<{ success: boolean }> {
 export async function bulkImportSSHHosts(
   hosts: SSHHostData[],
   overwrite = false,
+  credentials?: Record<string, unknown>[],
 ): Promise<{
   message: string;
   success: number;
@@ -94,10 +101,48 @@ export async function bulkImportSSHHosts(
     const response = await sshHostApi.post("/bulk-import", {
       hosts,
       overwrite,
+      ...(credentials ? { credentials } : {}),
     });
     return response.data;
   } catch (error) {
     handleApiError(error, "bulk import SSH hosts");
+  }
+}
+
+export async function importSSHConfigHosts(
+  content: string,
+  overwrite = false,
+): Promise<{
+  message: string;
+  success: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}> {
+  try {
+    const response = await sshHostApi.post("/ssh-config-import", {
+      content,
+      overwrite,
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "import SSH config hosts");
+  }
+}
+
+export async function discoverProxmoxGuests(
+  hostId: number,
+): Promise<ProxmoxDiscoverResult> {
+  try {
+    const response = await authApi.post(
+      "/proxmox/discover",
+      { hostId },
+      { timeout: 120000 },
+    );
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "discover Proxmox guests");
   }
 }
 
@@ -147,11 +192,27 @@ export async function exportSSHHostWithCredentials(
   }
 }
 
-export async function exportAllSSHHosts(): Promise<{
+export function exportAllSSHHosts(): Promise<{
+  hosts: SSHHost[];
+}>;
+export function exportAllSSHHosts(options: { share: true }): Promise<{
+  version: string;
+  exportedAt: string;
+  credentials: Record<string, unknown>[];
+  hosts: SSHHost[];
+}>;
+export async function exportAllSSHHosts(options?: {
+  share?: boolean;
+}): Promise<{
+  version?: string;
+  exportedAt?: string;
+  credentials?: Record<string, unknown>[];
   hosts: SSHHost[];
 }> {
   try {
-    const response = await sshHostApi.get("/db/hosts/export");
+    const response = await sshHostApi.get(
+      options?.share ? "/db/hosts/export?share=1" : "/db/hosts/export",
+    );
     return response.data;
   } catch (error) {
     handleApiError(error, "export all SSH hosts");

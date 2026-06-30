@@ -10,8 +10,18 @@ export type Host = {
   ram: number | null;
   lastAccess: string;
   tags?: string[];
-  authType: "password" | "key" | "credential" | "none" | "opkssh";
+  authType:
+    | "password"
+    | "key"
+    | "credential"
+    | "none"
+    | "opkssh"
+    | "tailscale"
+    | "vault"
+    | "agent";
+  useWarpgate?: boolean;
   credentialId?: string;
+  vaultProfileId?: string;
   overrideCredentialUsername?: boolean;
   password?: string;
   hasPassword?: boolean;
@@ -24,9 +34,11 @@ export type Host = {
   keyType?: string;
   notes?: string;
   macAddress?: string;
+  wolBroadcastAddress?: string;
   pin?: boolean;
 
   enableTerminal: boolean;
+  enableCommandHistory: boolean;
   terminalConfig?: {
     cursorBlink: boolean;
     cursorStyle: "block" | "underline" | "bar";
@@ -52,6 +64,8 @@ export type Host = {
     keepaliveCountMax?: number;
     environmentVariables: { key: string; value: string }[];
     startupSnippetId?: number | null;
+    linkClickBehavior?: "confirm" | "direct";
+    agentSocketPath?: string;
   };
 
   useSocks5?: boolean;
@@ -87,9 +101,22 @@ export type Host = {
   }[];
 
   enableFileManager: boolean;
+  scpLegacy?: boolean;
   defaultPath?: string;
 
   enableDocker: boolean;
+  dockerConfig?: {
+    runtime?: "docker" | "podman";
+  } | null;
+  enableProxmox: boolean;
+  enableTmuxMonitor: boolean;
+  proxmoxConfig?: {
+    defaultCredentialId: number | null;
+    defaultAuthType?: string;
+    windowsPatterns: string;
+    dockerPatterns: string;
+    preferredPrefixes: string;
+  } | null;
 
   statsConfig?: {
     statusCheckEnabled: boolean;
@@ -112,12 +139,14 @@ export type Host = {
   vncPort: number;
   telnetPort: number;
 
+  rdpCredentialId?: string;
   rdpUser?: string;
   rdpPassword?: string;
   domain?: string;
   security?: string;
   ignoreCert?: boolean;
 
+  vncCredentialId?: string;
   vncPassword?: string;
   vncUser?: string;
 
@@ -134,6 +163,7 @@ export type Credential = {
   username: string;
   type: "password" | "key";
   value?: string;
+  password?: string;
   publicKey?: string;
   passphrase?: string;
   description?: string;
@@ -141,9 +171,32 @@ export type Credential = {
   tags?: string[];
 };
 
+// HashiCorp Vault SSH signer profile — shareable connection settings only
+// (no secrets). Users authenticate to Vault via OIDC at connect time.
+export type VaultProfile = {
+  id: string;
+  name: string;
+  description?: string;
+  folder?: string;
+  tags?: string[];
+  vaultAddr: string;
+  vaultNamespace?: string;
+  oidcMount?: string;
+  oidcRole?: string;
+  sshMount?: string;
+  sshRole: string;
+  validPrincipals?: string;
+  keyType?: string;
+  shared: boolean;
+  owned: boolean;
+};
+
 export type HostFolder = {
   name: string;
   children: (Host | HostFolder)[];
+  path?: string;
+  color?: string;
+  icon?: string;
 };
 
 export type TabType =
@@ -152,14 +205,25 @@ export type TabType =
   | "rdp"
   | "vnc"
   | "telnet"
-  | "stats"
+  | "host-metrics"
   | "files"
   | "host-manager"
   | "user-profile"
   | "admin-settings"
   | "docker"
   | "tunnel"
-  | "network_graph";
+  | "network_graph"
+  | "tmux_monitor" // --- tmux-monitor ---
+  | "serial"
+  | "homepage";
+
+export type SerialConfig = {
+  path: string;
+  baudRate: number;
+  dataBits: 5 | 6 | 7 | 8;
+  stopBits: 1 | 2;
+  parity: "none" | "even" | "odd";
+};
 
 export type TunnelStatusValue =
   | "CONNECTED"
@@ -188,14 +252,20 @@ export type Tab = {
   instanceId: string;
   type: TabType;
   label: string;
+  customLabel?: string;
   host?: Host;
   openedAt: number;
   restoredSessionId?: string | null;
+  initialFilePath?: string;
+  serialConfig?: SerialConfig;
   terminalRef?: import("react").RefObject<{
+    disconnect?: () => void;
+    isConnected?: () => boolean;
     sendInput?: (data: string) => void;
     reconnect?: () => void;
     fit?: () => void;
     notifyResize?: () => void;
+    getApplicationCursorKeysMode?: () => boolean;
   } | null>;
 };
 
@@ -223,7 +293,9 @@ export type DashboardCardId =
   | "quick_actions"
   | "host_status"
   | "recent_activity"
-  | "network_graph";
+  | "network_graph"
+  | "service_links"
+  | "homepage_preview";
 
 export type DashboardCardConfig = {
   id: DashboardCardId;
@@ -258,12 +330,15 @@ export type UserProfileSection =
   | "api-keys";
 export type AdminSection =
   | "general"
-  | "oidc"
+  | "sso"
   | "users"
   | "sessions"
   | "roles"
+  | "host-defaults"
   | "database"
-  | "api-keys";
+  | "api-keys"
+  | "audit-log"
+  | "ssl";
 export type AccentColorId = string;
 export type ThemeId =
   | "dark"
@@ -295,6 +370,7 @@ export type Snippet = {
   content: string;
   folder: string | null;
   order: number;
+  hostIds?: number[];
 };
 
 export const FOLDER_ICONS = [

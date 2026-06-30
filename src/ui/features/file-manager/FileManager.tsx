@@ -24,6 +24,7 @@ import { useConfirmation } from "@/hooks/use-confirmation.ts";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { FileManagerDialogs } from "./FileManagerDialogs.tsx";
+import { PassphraseDialog } from "@/ssh/dialogs/PassphraseDialog.tsx";
 import { FileManagerToolbar } from "./FileManagerToolbar.tsx";
 import { TransferToHostDialog } from "./components/TransferToHostDialog.tsx";
 import { TerminalWindow } from "./components/TerminalWindow.tsx";
@@ -34,6 +35,7 @@ import {
 } from "@/ssh/connection-log/ConnectionLogContext.tsx";
 import { ConnectionLog } from "@/ssh/connection-log/ConnectionLog.tsx";
 import { SimpleLoader } from "@/lib/SimpleLoader.tsx";
+import { copyToClipboard } from "@/lib/clipboard.ts";
 import {
   listSSHFiles,
   resolveSSHPath,
@@ -77,7 +79,15 @@ import type {
 } from "./file-manager-types.ts";
 import { formatFileSize } from "./file-manager-utils.ts";
 
-function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
+const LARGE_FILE_WARNING_SIZE = 50 * 1024 * 1024;
+
+function FileManagerContent({
+  initialHost,
+  initialFilePath,
+  initialPath,
+  onClose,
+  onOpenTerminalTab,
+}: FileManagerProps) {
   const { openWindow } = useWindowManager();
   const { t } = useTranslation();
   const formatTransferMetrics = useMemo(
@@ -93,10 +103,10 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
 
   const [currentHost] = useState<SSHHost | null>(initialHost || null);
   const [currentPath, setCurrentPath] = useState(
-    initialHost?.defaultPath || "/",
+    initialPath || initialHost?.defaultPath || "/",
   );
   const [navHistory, setNavHistory] = useState<string[]>([
-    initialHost?.defaultPath || "/",
+    initialPath || initialHost?.defaultPath || "/",
   ]);
   const [navIndex, setNavIndex] = useState(0);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -132,6 +142,7 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
   const [authDialogReason, setAuthDialogReason] = useState<
     "no_keyboard" | "auth_failed" | "timeout"
   >("no_keyboard");
+  const [showPassphraseDialog, setShowPassphraseDialog] = useState(false);
   const [pinnedFiles, setPinnedFiles] = useState<Set<string>>(new Set());
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
   const [hasConnectionError, setHasConnectionError] = useState<boolean>(false);
@@ -157,6 +168,8 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
   const [clipboard, setClipboard] = useState<{
     files: FileItem[];
     operation: "copy" | "cut";
+    sourceHostId: number | null;
+    sourceSessionId: string | null;
   } | null>(null);
 
   interface UndoAction {
@@ -265,6 +278,60 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
       stopKeepalive();
     };
   }, [sshSessionId, startKeepalive, stopKeepalive]);
+
+  const initialFileOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!sshSessionId || !initialFilePath || initialFileOpenedRef.current)
+      return;
+    initialFileOpenedRef.current = true;
+
+    const fileName = initialFilePath.split("/").pop() || initialFilePath;
+    const fileDir =
+      initialFilePath.lastIndexOf("/") > 0
+        ? initialFilePath.substring(0, initialFilePath.lastIndexOf("/"))
+        : "/";
+
+    setCurrentPath(fileDir);
+
+    const file: FileItem = {
+      name: fileName,
+      path: initialFilePath,
+      type: "file",
+    };
+
+    const windowCount = Date.now() % 10;
+    const offsetX = Math.min(
+      120 + windowCount * 30,
+      Math.max(0, window.innerWidth - 820),
+    );
+    const offsetY = Math.min(
+      120 + windowCount * 30,
+      Math.max(0, window.innerHeight - 620),
+    );
+
+    const createWindowComponent = (windowId: string) => (
+      <FileWindow
+        windowId={windowId}
+        file={file}
+        sshSessionId={sshSessionId}
+        sshHost={currentHost}
+        initialX={offsetX}
+        initialY={offsetY}
+        onFileNotFound={handleFileNotFound}
+      />
+    );
+
+    openWindow({
+      title: fileName,
+      x: offsetX,
+      y: offsetY,
+      width: 800,
+      height: 600,
+      isMaximized: false,
+      isMinimized: false,
+      component: createWindowComponent,
+    });
+  }, [sshSessionId, initialFilePath]);
 
   const initialLoadDoneRef = useRef(false);
   const lastPathChangeRef = useRef<string>("");
@@ -411,6 +478,12 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
       if (result?.status === "auth_required") {
         setAuthDialogReason(result.reason || "no_keyboard");
         setShowAuthDialog(true);
+        setIsLoading(false);
+        return;
+      }
+
+      if (result?.status === "passphrase_required") {
+        setShowPassphraseDialog(true);
         setIsLoading(false);
         return;
       }
@@ -730,6 +803,23 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
   }, [currentHost?.id, handleRefreshDirectory]);
 
   useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          files: FileItem[];
+          operation: "copy" | "cut";
+          sourceHostId: number | null;
+          sourceSessionId: string | null;
+        }>
+      ).detail;
+      if (!detail) return;
+      setClipboard(detail);
+    };
+    window.addEventListener("file-manager:clipboard", handler);
+    return () => window.removeEventListener("file-manager:clipboard", handler);
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const activeElement = document.activeElement;
       if (
@@ -776,12 +866,15 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
         files.push({ file, relativePath: path });
       } else if (entry.isDirectory) {
         const reader = (entry as FileSystemDirectoryEntry).createReader();
-        const dirEntries = await new Promise<FileSystemEntry[]>(
-          (resolve, reject) => reader.readEntries(resolve, reject),
-        );
-        for (const child of dirEntries) {
-          await readEntry(child, `${path}/${child.name}`);
-        }
+        let batch: FileSystemEntry[];
+        do {
+          batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+            reader.readEntries(resolve, reject),
+          );
+          for (const child of batch) {
+            await readEntry(child, `${path}/${child.name}`);
+          }
+        } while (batch.length > 0);
       }
     }
 
@@ -838,24 +931,11 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
             "/"
           : currentPath;
 
-        const fileContent = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(reader.error);
-          reader.onload = () => {
-            if (typeof reader.result === "string") {
-              resolve(reader.result.split(",")[1] || "");
-            } else {
-              reject(new Error("Failed to read file"));
-            }
-          };
-          reader.readAsDataURL(file);
-        });
-
         await uploadSSHFile(
           sshSessionId,
           uploadPath,
           file.name,
-          fileContent,
+          file,
           currentHost?.id,
         );
       }
@@ -892,31 +972,33 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
       { duration: Infinity },
     );
 
+    const updateProgress = (p: {
+      chunkIndex: number;
+      totalChunks: number;
+      bytesSent: number;
+      totalBytes: number;
+    }) => {
+      const percent = Math.min(
+        100,
+        Math.round((p.bytesSent / p.totalBytes) * 100),
+      );
+      toast.loading(
+        `Uploading ${file.name} — ${percent}% (chunk ${p.chunkIndex + 1}/${p.totalChunks})`,
+        { id: progressToast, duration: Infinity },
+      );
+    };
+
     try {
       await ensureSSHConnection();
-
-      const fileContent = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error);
-
-        reader.onload = () => {
-          if (typeof reader.result === "string") {
-            const base64 = reader.result.split(",")[1] || "";
-            resolve(base64);
-          } else {
-            reject(new Error("Failed to read file"));
-          }
-        };
-        reader.readAsDataURL(file);
-      });
 
       await uploadSSHFile(
         sshSessionId,
         currentPath,
         file.name,
-        fileContent,
+        file,
         currentHost?.id,
         undefined,
+        updateProgress,
       );
 
       toast.dismiss(progressToast);
@@ -1241,55 +1323,81 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
     }
   };
 
+  function openFileWindow(file: FileItem, sessionId: string) {
+    const windowCount = Date.now() % 10;
+    const baseOffsetX = 120 + windowCount * 30;
+    const baseOffsetY = 120 + windowCount * 30;
+
+    const maxOffsetX = Math.max(0, window.innerWidth - 800 - 100);
+    const maxOffsetY = Math.max(0, window.innerHeight - 600 - 100);
+
+    const offsetX = Math.min(baseOffsetX, maxOffsetX);
+    const offsetY = Math.min(baseOffsetY, maxOffsetY);
+
+    const createWindowComponent = (windowId: string) => (
+      <FileWindow
+        windowId={windowId}
+        file={file}
+        sshSessionId={sessionId}
+        sshHost={currentHost}
+        initialX={offsetX}
+        initialY={offsetY}
+        onFileNotFound={handleFileNotFound}
+      />
+    );
+
+    openWindow({
+      title: file.name,
+      x: offsetX,
+      y: offsetY,
+      width: 800,
+      height: 600,
+      isMaximized: false,
+      isMinimized: false,
+      component: createWindowComponent,
+    });
+  }
+
+  async function confirmLargeFileOpen(file: FileItem) {
+    if (!file.size || file.size <= LARGE_FILE_WARNING_SIZE) return true;
+
+    return confirmWithToast(
+      {
+        title: t("fileManager.largeFileWarning"),
+        description: t("fileManager.largeFileWarningDesc", {
+          size: formatFileSize(file.size),
+        }),
+        confirmText: t("fileManager.confirm"),
+        cancelText: t("common.cancel"),
+      },
+      undefined,
+      "default",
+      t("common.cancel"),
+      { duration: 12000 },
+    );
+  }
+
   async function handleFileOpen(file: FileItem) {
     if (file.type === "directory") {
       if (sshSessionId) setIsLoading(true);
       setCurrentPath(file.path);
-    } else if (file.type === "link") {
-      await handleSymlinkClick(file);
-    } else {
-      if (!sshSessionId) {
-        toast.error(t("fileManager.noSSHConnection"));
-        return;
-      }
-
-      await recordRecentFile(file);
-
-      const windowCount = Date.now() % 10;
-      const baseOffsetX = 120 + windowCount * 30;
-      const baseOffsetY = 120 + windowCount * 30;
-
-      const maxOffsetX = Math.max(0, window.innerWidth - 800 - 100);
-      const maxOffsetY = Math.max(0, window.innerHeight - 600 - 100);
-
-      const offsetX = Math.min(baseOffsetX, maxOffsetX);
-      const offsetY = Math.min(baseOffsetY, maxOffsetY);
-
-      const windowTitle = file.name;
-
-      const createWindowComponent = (windowId: string) => (
-        <FileWindow
-          windowId={windowId}
-          file={file}
-          sshSessionId={sshSessionId}
-          sshHost={currentHost}
-          initialX={offsetX}
-          initialY={offsetY}
-          onFileNotFound={handleFileNotFound}
-        />
-      );
-
-      openWindow({
-        title: windowTitle,
-        x: offsetX,
-        y: offsetY,
-        width: 800,
-        height: 600,
-        isMaximized: false,
-        isMinimized: false,
-        component: createWindowComponent,
-      });
+      return;
     }
+
+    if (file.type === "link") {
+      await handleSymlinkClick(file);
+      return;
+    }
+
+    if (!sshSessionId) {
+      toast.error(t("fileManager.noSSHConnection"));
+      return;
+    }
+
+    if (!(await confirmLargeFileOpen(file))) return;
+
+    await recordRecentFile(file);
+    openFileWindow(file, sshSessionId);
   }
 
   function handleContextMenu(event: React.MouseEvent, file?: FileItem) {
@@ -1325,14 +1433,32 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
   }
 
   function handleCopyFiles(files: FileItem[]) {
-    setClipboard({ files, operation: "copy" });
+    const entry = {
+      files,
+      operation: "copy" as const,
+      sourceHostId: currentHost?.id ?? null,
+      sourceSessionId: sshSessionId,
+    };
+    setClipboard(entry);
+    window.dispatchEvent(
+      new CustomEvent("file-manager:clipboard", { detail: entry }),
+    );
     toast.success(
       t("fileManager.filesCopiedToClipboard", { count: files.length }),
     );
   }
 
   function handleCutFiles(files: FileItem[]) {
-    setClipboard({ files, operation: "cut" });
+    const entry = {
+      files,
+      operation: "cut" as const,
+      sourceHostId: currentHost?.id ?? null,
+      sourceSessionId: sshSessionId,
+    };
+    setClipboard(entry);
+    window.dispatchEvent(
+      new CustomEvent("file-manager:clipboard", { detail: entry }),
+    );
     toast.success(
       t("fileManager.filesCutToClipboard", { count: files.length }),
     );
@@ -1343,23 +1469,93 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
 
     const paths = files.map((file) => file.path).join("\n");
 
-    navigator.clipboard.writeText(paths).then(
-      () => {
+    copyToClipboard(paths).then((ok) => {
+      if (ok) {
         toast.success(
           files.length === 1
             ? t("fileManager.pathCopiedToClipboard")
             : t("fileManager.pathsCopiedToClipboard", { count: files.length }),
         );
-      },
-      (err) => {
-        console.error("Failed to copy path to clipboard:", err);
+      } else {
         toast.error(t("fileManager.failedToCopyPath"));
-      },
-    );
+      }
+    });
+  }
+
+  function handleCopyFolderLink(path: string) {
+    if (!currentHost?.id) return;
+    const params = new URLSearchParams({
+      view: "file-manager",
+      hostId: String(currentHost.id),
+      path,
+    });
+    const url = `${window.location.origin}?${params.toString()}`;
+    copyToClipboard(url).then((ok) => {
+      if (ok) {
+        toast.success(t("fileManager.folderLinkCopied"));
+      } else {
+        toast.error(t("fileManager.failedToCopyFolderLink"));
+      }
+    });
+  }
+
+  async function handleCrossHostPaste() {
+    if (!clipboard || !sshSessionId || !currentHost) return;
+
+    const { files, operation, sourceSessionId } = clipboard;
+    if (!sourceSessionId) return;
+
+    const sourcePaths = files.map((f) => f.path);
+
+    try {
+      const { transferId } = await transferToHost(
+        sourceSessionId,
+        sourcePaths,
+        sshSessionId,
+        currentPath,
+        operation === "cut",
+        "auto",
+        2,
+      );
+
+      const monitorHandle = beginTransferProgressMonitoring(transferId, t, {
+        formatTransferMetrics,
+      });
+      if (!monitorHandle) return;
+
+      const finalStatus = await monitorHandle.waitForCompletion;
+
+      if (
+        finalStatus.status !== "success" &&
+        finalStatus.status !== "partial"
+      ) {
+        return;
+      }
+
+      if (operation === "cut") {
+        setClipboard(null);
+      }
+
+      handleRefreshDirectory();
+      clearSelection();
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast.error(
+        `${t("transfer.transferError")}: ${err.message || t("fileManager.unknownError")}`,
+      );
+    }
   }
 
   async function handlePasteFiles() {
     if (!clipboard || !sshSessionId) return;
+
+    if (
+      clipboard.sourceHostId !== null &&
+      clipboard.sourceHostId !== currentHost?.id
+    ) {
+      await handleCrossHostPaste();
+      return;
+    }
 
     try {
       await ensureSSHConnection();
@@ -2121,6 +2317,85 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
     if (onClose) onClose();
   }
 
+  async function handlePassphraseSubmit(passphrase: string) {
+    if (!currentHost) return;
+
+    try {
+      setIsLoading(true);
+      setShowPassphraseDialog(false);
+
+      const sessionId = currentHost.id.toString();
+
+      const result = await connectSSH(sessionId, {
+        hostId: currentHost.id,
+        ip: currentHost.ip,
+        port: currentHost.port,
+        username: currentHost.username,
+        sshKey: currentHost.key,
+        keyPassword: passphrase,
+        authType: "key",
+        credentialId: currentHost.credentialId,
+        userId: currentHost.userId,
+        jumpHosts: currentHost.jumpHosts,
+        useSocks5: currentHost.useSocks5,
+        socks5Host: currentHost.socks5Host,
+        socks5Port: currentHost.socks5Port,
+        socks5Username: currentHost.socks5Username,
+        socks5Password: currentHost.socks5Password,
+        socks5ProxyChain: currentHost.socks5ProxyChain,
+      });
+
+      if (result?.status === "passphrase_required") {
+        setShowPassphraseDialog(true);
+        setIsLoading(false);
+        toast.error(t("fileManager.incorrectPassphrase"));
+        return;
+      }
+
+      if (result?.requires_totp) {
+        setTotpRequired(true);
+        setTotpSessionId(sessionId);
+        setTotpPrompt(result.prompt || t("fileManager.verificationCodePrompt"));
+        setIsLoading(false);
+        return;
+      }
+
+      if (result?.status === "auth_required") {
+        setAuthDialogReason(result.reason || "auth_failed");
+        setShowAuthDialog(true);
+        setIsLoading(false);
+        return;
+      }
+
+      setSshSessionId(sessionId);
+
+      try {
+        const response = await listSSHFiles(sessionId, currentPath);
+        const files = Array.isArray(response)
+          ? response
+          : response?.files || [];
+        setFiles(files);
+        clearSelection();
+        initialLoadDoneRef.current = true;
+        toast.success(t("fileManager.connectedSuccessfully"));
+        logFileManagerActivity();
+      } catch (dirError: unknown) {
+        console.error("Failed to load initial directory:", dirError);
+      }
+    } catch (error: unknown) {
+      console.error("SSH connection with passphrase failed:", error);
+      setShowPassphraseDialog(true);
+      toast.error(t("fileManager.incorrectPassphrase"));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handlePassphraseCancel() {
+    setShowPassphraseDialog(false);
+    if (onClose) onClose();
+  }
+
   function generateUniqueName(
     baseName: string,
     type: "file" | "directory",
@@ -2321,6 +2596,7 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
         initialPath={path}
         initialX={offsetX}
         initialY={offsetY}
+        onPromoteToTab={onOpenTerminalTab}
       />
     );
 
@@ -2367,6 +2643,7 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
         initialX={offsetX}
         initialY={offsetY}
         executeCommand={executeCmd}
+        onPromoteToTab={onOpenTerminalTab}
       />
     );
 
@@ -2542,7 +2819,7 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
               });
               break;
             case "modified":
-              result = (a.modified || "").localeCompare(b.modified || "");
+              result = (a.modifiedTimestamp || 0) - (b.modifiedTimestamp || 0);
               break;
             case "size":
               result = (a.size || 0) - (b.size || 0);
@@ -2750,6 +3027,7 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
                 onExtractArchive={handleExtractArchive}
                 onCompress={handleOpenCompressDialog}
                 onCopyPath={handleCopyPath}
+                onCopyFolderLink={handleCopyFolderLink}
                 onTransferToHost={handleOpenTransferDialog}
               />
             </div>
@@ -2766,6 +3044,21 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
           sourceHost={currentHost}
           sourceSessionId={sshSessionId}
           onConfirm={handleTransferConfirm}
+        />
+      )}
+
+      {currentHost && (
+        <PassphraseDialog
+          isOpen={showPassphraseDialog}
+          onSubmit={handlePassphraseSubmit}
+          onCancel={handlePassphraseCancel}
+          hostInfo={{
+            ip: currentHost.ip,
+            port: currentHost.port,
+            username: currentHost.username,
+            name: currentHost.name,
+          }}
+          backgroundColor="var(--bg-canvas)"
         />
       )}
 
@@ -2806,10 +3099,22 @@ function FileManagerContent({ initialHost, onClose }: FileManagerProps) {
   );
 }
 
-function FileManagerInner({ initialHost, onClose }: FileManagerProps) {
+function FileManagerInner({
+  initialHost,
+  initialFilePath,
+  initialPath,
+  onClose,
+  onOpenTerminalTab,
+}: FileManagerProps) {
   return (
     <WindowManager>
-      <FileManagerContent initialHost={initialHost} onClose={onClose} />
+      <FileManagerContent
+        initialHost={initialHost}
+        initialFilePath={initialFilePath}
+        initialPath={initialPath}
+        onClose={onClose}
+        onOpenTerminalTab={onOpenTerminalTab}
+      />
     </WindowManager>
   );
 }

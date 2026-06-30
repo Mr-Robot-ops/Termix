@@ -16,6 +16,7 @@ import {
   deleteCredential,
   deployCredentialToHost,
   renameCredentialFolder,
+  getLinkedCredentialIds,
 } from "@/main-axios";
 
 import type { Host, Credential } from "@/types/ui-types";
@@ -23,7 +24,54 @@ import { CredentialEditorView } from "./CredentialEditorView";
 import { HostEditor } from "./HostEditor";
 import { mapCredentials, sshHostToHost } from "./HostManagerData";
 import { HostCredentialList } from "./HostCredentialList";
-import { makeCredentialTabs, makeHostTabs, TabStrip } from "./HostManagerTabs";
+import type {
+  CredentialFilterState,
+  CredentialSortKey,
+} from "./CredentialsPanel";
+import {
+  makeCredentialTabs,
+  makeHostTabs,
+  makeHostSshSubTabs,
+  SSH_GROUP_TABS,
+  TabStrip,
+} from "./HostManagerTabs";
+
+function sortCredentials(
+  creds: Credential[],
+  key: CredentialSortKey,
+): Credential[] {
+  if (key === "default") return creds;
+  const sorted = [...creds];
+  switch (key) {
+    case "name-asc":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case "name-desc":
+      sorted.sort((a, b) => b.name.localeCompare(a.name));
+      break;
+    case "username-asc":
+      sorted.sort((a, b) => a.username.localeCompare(b.username));
+      break;
+    case "username-desc":
+      sorted.sort((a, b) => b.username.localeCompare(a.username));
+      break;
+  }
+  return sorted;
+}
+
+function credentialPassesFilters(
+  cred: Credential,
+  filters: CredentialFilterState,
+): boolean {
+  if (filters.type.length > 0 && !filters.type.includes(cred.type))
+    return false;
+  if (
+    filters.tags.length > 0 &&
+    !filters.tags.some((tag) => cred.tags?.includes(tag))
+  )
+    return false;
+  return true;
+}
 
 export function HostManager({
   pendingEditId,
@@ -31,6 +79,9 @@ export function HostManager({
   onEditingChange,
   hideListHeader,
   externalSearch,
+  externalSort,
+  externalFilter,
+  onTagsChange,
   active = true,
 }: {
   pendingEditId?: MutableRefObject<string | null>;
@@ -38,6 +89,9 @@ export function HostManager({
   onEditingChange?: (editing: boolean) => void;
   hideListHeader?: boolean;
   externalSearch?: string;
+  externalSort?: CredentialSortKey;
+  externalFilter?: CredentialFilterState;
+  onTagsChange?: (tags: string[]) => void;
   active?: boolean;
 } = {}) {
   const { t } = useTranslation();
@@ -75,6 +129,13 @@ export function HostManager({
     string | null
   >(null);
   const [editingCredFolderValue, setEditingCredFolderValue] = useState("");
+  const [termixIdLinkedIds, setTermixIdLinkedIds] = useState<Set<number>>(
+    new Set(),
+  );
+
+  useEffect(() => {
+    onTagsChange?.([...new Set(credentials.flatMap((c) => c.tags ?? []))]);
+  }, [credentials]);
 
   const applyPendingEdit = (hostList: Host[]) => {
     if (pendingEditId?.current) {
@@ -114,9 +175,16 @@ export function HostManager({
       .finally(() => setCredentialsLoading(false));
   };
 
+  const reloadLinkedIds = () => {
+    getLinkedCredentialIds()
+      .then((d) => setTermixIdLinkedIds(new Set(d.credentialIds)))
+      .catch(() => {});
+  };
+
   useEffect(() => {
     reloadHosts();
     reloadCredentials();
+    reloadLinkedIds();
 
     window.addEventListener("termix:hosts-changed", reloadHosts);
     window.addEventListener("termix:credentials-changed", reloadCredentials);
@@ -198,14 +266,22 @@ export function HostManager({
   }, [active]);
 
   const allHosts = hosts;
-  const filteredCredentials = credentials.filter(
+  const searchedCredentials = credentials.filter(
     (c) =>
       c.name.toLowerCase().includes(effectiveSearch.toLowerCase()) ||
       c.username.toLowerCase().includes(effectiveSearch.toLowerCase()),
   );
+  const filteredCredentials = sortCredentials(
+    externalFilter
+      ? searchedCredentials.filter((c) =>
+          credentialPassesFilters(c, externalFilter),
+        )
+      : searchedCredentials,
+    externalSort ?? "default",
+  );
 
   const credentialFolders = Array.from(
-    new Set(credentials.map((c) => c.folder || "Uncategorized")),
+    new Set(filteredCredentials.map((c) => c.folder || "Uncategorized")),
   ).sort();
 
   const handleRenameCredentialFolder = async (
@@ -233,8 +309,7 @@ export function HostManager({
     const tabs = isHost
       ? makeHostTabs(t).filter((tab) => {
           if (tab.id === "general") return true;
-          if (["ssh", "tunnels", "docker", "files", "stats"].includes(tab.id))
-            return editingProtocols.enableSsh;
+          if (tab.id === "ssh") return editingProtocols.enableSsh;
           if (tab.id === "rdp") return editingProtocols.enableRdp;
           if (tab.id === "vnc") return editingProtocols.enableVnc;
           if (tab.id === "telnet") return editingProtocols.enableTelnet;
@@ -243,6 +318,11 @@ export function HostManager({
       : makeCredentialTabs(t);
     const activeTab = isHost ? activeHostTab : activeCredentialTab;
     const setActiveTab = isHost ? setActiveHostTab : setActiveCredentialTab;
+    const showSshSubTabs =
+      isHost &&
+      editingProtocols.enableSsh &&
+      SSH_GROUP_TABS.has(activeHostTab as never);
+    const sshSubTabs = makeHostSshSubTabs(t);
 
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -276,8 +356,32 @@ export function HostManager({
           <TabStrip
             tabs={tabs}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={(id) => {
+              if (isHost && id === "ssh") {
+                if (!SSH_GROUP_TABS.has(activeHostTab as never)) {
+                  setActiveHostTab("ssh");
+                }
+              } else {
+                setActiveTab(id);
+              }
+            }}
+            isActive={
+              isHost
+                ? (id) =>
+                    id === "ssh"
+                      ? SSH_GROUP_TABS.has(activeHostTab as never)
+                      : activeHostTab === id
+                : undefined
+            }
           />
+          {showSshSubTabs && (
+            <TabStrip
+              tabs={sshSubTabs}
+              activeTab={activeHostTab}
+              onTabChange={setActiveHostTab}
+              variant="secondary"
+            />
+          )}
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col gap-3">
           {isHost ? (
@@ -340,6 +444,7 @@ export function HostManager({
                     username: saved.username ?? "",
                     type: saved.authType === "key" ? "key" : "password",
                     value: saved.value,
+                    password: saved.password,
                     publicKey: saved.publicKey,
                     passphrase: saved.passphrase,
                     description: saved.description,
@@ -405,6 +510,7 @@ export function HostManager({
             allHosts={allHosts}
             editingFolderName={editingCredFolderName}
             editingFolderValue={editingCredFolderValue}
+            termixIdLinkedIds={termixIdLinkedIds}
             onEditingFolderNameChange={setEditingCredFolderName}
             onEditingFolderValueChange={setEditingCredFolderValue}
             onRenameFolder={handleRenameCredentialFolder}

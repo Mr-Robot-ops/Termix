@@ -14,7 +14,7 @@ if [ "$(id -u)" = "0" ]; then
         groupmod -o -g "$PGID" node 2>/dev/null || true
         usermod -o -u "$PUID" node 2>/dev/null || true
 
-        chown -R node:node /app/data /app/uploads /tmp/nginx 2>/dev/null || true
+        chown -R node:node /app/data /app/uploads /app/html /tmp/nginx 2>/dev/null || true
 
         echo "User node is now UID: $PUID, GID: $PGID"
 
@@ -41,7 +41,7 @@ fi
 mkdir -p /tmp/nginx
 envsubst '${PORT} ${SSL_PORT} ${SSL_CERT_PATH} ${SSL_KEY_PATH}' < $NGINX_CONF_SOURCE > /tmp/nginx/nginx.conf
 
-mkdir -p /app/data /app/uploads /app/data/.opk
+mkdir -p /app/data /app/uploads /app/data/.opk /app/data/acme-webroot/.well-known/acme-challenge
 chmod 755 /app/data /app/uploads /app/data/.opk 2>/dev/null || true
 
 if [ -w /app/data ]; then

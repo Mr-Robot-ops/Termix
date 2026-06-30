@@ -6,6 +6,7 @@ import {
   execWithSudo,
   type SSHSession,
 } from "./file-manager-session.js";
+import { isWindowsSftpPath } from "./transfer-paths.js";
 
 type FileOperationRoutesDeps = {
   sshSessions: Record<string, SSHSession>;
@@ -373,11 +374,23 @@ export function registerFileOperationRoutes(
       type: isDirectory ? "directory" : "file",
     });
     sshConn.lastActive = Date.now();
-    const escapedPath = itemPath.replace(/'/g, "'\"'\"'");
 
-    const deleteCommand = isDirectory
-      ? `rm -rf '${escapedPath}'`
-      : `rm -f '${escapedPath}'`;
+    const isWindowsPath = isWindowsSftpPath(itemPath);
+    let deleteCommand: string;
+    if (isWindowsPath) {
+      const winPath = itemPath
+        .replace(/\//g, "\\")
+        .replace(/^\\([A-Za-z]:\\)/, "$1");
+      const escapedWinPath = winPath.replace(/"/g, '""');
+      deleteCommand = isDirectory
+        ? `rd /s /q "${escapedWinPath}"`
+        : `del /f /q "${escapedWinPath}"`;
+    } else {
+      const escapedPath = itemPath.replace(/'/g, "'\"'\"'");
+      deleteCommand = isDirectory
+        ? `rm -rf '${escapedPath}'`
+        : `rm -f '${escapedPath}'`;
+    }
 
     const executeDelete = (useSudo: boolean): Promise<void> => {
       return new Promise((resolve) => {
@@ -449,7 +462,7 @@ export function registerFileOperationRoutes(
                 return;
               }
 
-              if (outputData.includes("SUCCESS") || code === 0) {
+              if (outputData.includes("SUCCESS")) {
                 fileLogger.success("Item deleted successfully", {
                   operation: "file_delete_success",
                   sessionId,
@@ -465,8 +478,18 @@ export function registerFileOperationRoutes(
                   },
                 });
               } else {
+                const detail =
+                  errorData.trim() ||
+                  outputData.trim() ||
+                  `command exited with code ${code} and produced no output (the remote shell may not support the delete command)`;
+                fileLogger.error(`Delete failed for ${itemPath}: ${detail}`, {
+                  operation: "file_delete_failed",
+                  sessionId,
+                  userId,
+                  path: itemPath,
+                });
                 res.status(500).json({
-                  error: `Command failed: ${errorData}`,
+                  error: `Delete failed: ${detail}`,
                 });
               }
               resolve();

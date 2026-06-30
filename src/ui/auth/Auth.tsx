@@ -12,6 +12,8 @@ import {
   ArrowLeft,
   Shield,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -21,7 +23,6 @@ import {
   getRegistrationAllowed,
   getPasswordLoginAllowed,
   getPasswordResetAllowed,
-  getOIDCConfig,
   getSetupRequired,
   initiatePasswordReset,
   verifyPasswordResetCode,
@@ -33,7 +34,10 @@ import {
   isElectron,
   getEmbeddedServerStatus,
   getCurrentToken,
+  getOidcSilentLoginDefault,
 } from "@/main-axios";
+import { getSSOProviders, ldapLogin } from "@/api/sso-provider-api";
+import type { SSOProviderPublic } from "@/types/index";
 import { ElectronServerConfig as ServerConfigComponent } from "@/auth/ElectronServerConfig";
 import { ElectronLoginForm } from "@/auth/ElectronLoginForm";
 import { Checkbox } from "@/components/checkbox";
@@ -209,7 +213,9 @@ export function Auth({ onLogin }: AuthProps) {
   const { t } = useTranslation();
   const [view, setView] = useState<AuthView>("login");
   const [loading, setLoading] = useState(false);
-  const [oidcLoading, setOidcLoading] = useState(false);
+  const [providerLoading, setProviderLoading] = useState<
+    Record<number, boolean>
+  >({});
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -245,9 +251,15 @@ export function Auth({ onLogin }: AuthProps) {
   const [registrationAllowed, setRegistrationAllowed] = useState(true);
   const [passwordLoginAllowed, setPasswordLoginAllowed] = useState(true);
   const [passwordResetAllowed, setPasswordResetAllowed] = useState(true);
-  const [oidcConfigured, setOidcConfigured] = useState(false);
-  const [oidcConfigLoaded, setOidcConfigLoaded] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<SSOProviderPublic[]>([]);
+  const [ssoProvidersLoaded, setSsoProvidersLoaded] = useState(false);
+  const [expandedLdapId, setExpandedLdapId] = useState<number | null>(null);
+  const [ldapUsername, setLdapUsername] = useState("");
+  const [ldapPassword, setLdapPassword] = useState("");
   const silentSigninHandledRef = useRef(false);
+  const [oidcSilentLoginDefault, setOidcSilentLoginDefault] = useState(false);
+  const [oidcSilentLoginDefaultLoaded, setOidcSilentLoginDefaultLoaded] =
+    useState(false);
   const [firstUser, setFirstUser] = useState(false);
   const [dbConnectionFailed, setDbConnectionFailed] = useState(false);
   const [dbHealthChecking, setDbHealthChecking] = useState(true);
@@ -267,6 +279,27 @@ export function Auth({ onLogin }: AuthProps) {
   }, [rememberMe]);
 
   useEffect(() => {
+    if (!isInElectronWebView()) return;
+
+    const handleOIDCSystemBrowserResult = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (!event.data || typeof event.data !== "object") return;
+      if (event.data.type !== "OIDC_SYSTEM_BROWSER_AUTH_RESULT") return;
+
+      const providerId =
+        typeof event.data.providerId === "number" ? event.data.providerId : -1;
+      if (event.data.success) return;
+
+      setProviderLoading((prev) => ({ ...prev, [providerId]: false }));
+      toast.error(event.data.error || t("errors.failedOidcLogin"));
+    };
+
+    window.addEventListener("message", handleOIDCSystemBrowserResult);
+    return () =>
+      window.removeEventListener("message", handleOIDCSystemBrowserResult);
+  }, [t]);
+
+  useEffect(() => {
     getRegistrationAllowed()
       .then((res) => setRegistrationAllowed(res.allowed))
       .catch(() => {});
@@ -276,10 +309,14 @@ export function Auth({ onLogin }: AuthProps) {
     getPasswordResetAllowed()
       .then((allowed) => setPasswordResetAllowed(allowed))
       .catch(() => setPasswordResetAllowed(false));
-    getOIDCConfig()
-      .then((res) => setOidcConfigured(!!res))
-      .catch(() => setOidcConfigured(false))
-      .finally(() => setOidcConfigLoaded(true));
+    getSSOProviders()
+      .then((providers) => setSsoProviders(providers || []))
+      .catch(() => setSsoProviders([]))
+      .finally(() => setSsoProvidersLoaded(true));
+    getOidcSilentLoginDefault()
+      .then((res) => setOidcSilentLoginDefault(res.enabled))
+      .catch(() => {})
+      .finally(() => setOidcSilentLoginDefaultLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -304,6 +341,18 @@ export function Auth({ onLogin }: AuthProps) {
         return;
       }
       if (isElectron()) {
+        const forceShow = localStorage.getItem("termix_show_server_config");
+        if (forceShow === "true") {
+          localStorage.removeItem("termix_show_server_config");
+          try {
+            const config = await getServerConfig();
+            setCurrentServerUrl(config?.serverUrl || "");
+          } catch {
+            // ignore
+          }
+          setShowServerConfig(true);
+          return;
+        }
         try {
           const [config, status] = await Promise.all([
             getServerConfig(),
@@ -334,6 +383,18 @@ export function Auth({ onLogin }: AuthProps) {
   useEffect(() => {
     if (view === "totp" && totpInputRef.current) totpInputRef.current.focus();
   }, [view]);
+
+  useEffect(() => {
+    setLdapUsername("");
+    setLdapPassword("");
+  }, [expandedLdapId]);
+
+  useEffect(() => {
+    if (!ssoProvidersLoaded) return;
+    if (!passwordLoginAllowed && ssoProviders.length > 0 && view === "login") {
+      setView("external");
+    }
+  }, [ssoProvidersLoaded, passwordLoginAllowed, ssoProviders.length, view]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -707,82 +768,172 @@ export function Auth({ onLogin }: AuthProps) {
     }
   }
 
-  const handleOIDCLogin = useCallback(async () => {
-    setOidcLoading(true);
-    try {
-      if (isElectron()) {
-        const electronAPI = (
-          window as unknown as {
-            electronAPI?: {
-              oidcSystemBrowserAuth?: (
-                authUrl: string,
-                port: number,
-              ) => Promise<{
-                success: boolean;
-                token?: string;
-                error?: string;
-              }>;
-            };
-          }
-        ).electronAPI;
-        if (electronAPI?.oidcSystemBrowserAuth) {
+  const handleOIDCLogin = useCallback(
+    async (providerId?: number) => {
+      const loadingKey = providerId ?? -1;
+      setProviderLoading((prev) => ({ ...prev, [loadingKey]: true }));
+      try {
+        if (isInElectronWebView()) {
+          // Inside the Electron iframe: delegate OIDC to the parent window so
+          // the system browser opens instead of navigating the iframe (which
+          // would break captcha stages like Cloudflare Turnstile).
           const callbackPort = 17832 + Math.floor(Math.random() * 100);
           const authResponse = await getOIDCAuthorizeUrl(
             rememberMe,
             callbackPort,
+            providerId,
           );
           const { auth_url: authUrl } = authResponse;
           if (!authUrl) throw new Error(t("errors.invalidAuthUrl"));
-          const result = await electronAPI.oidcSystemBrowserAuth(
-            authUrl,
-            callbackPort,
+          window.parent.postMessage(
+            {
+              type: "OIDC_SYSTEM_BROWSER_AUTH",
+              source: "oidc_request",
+              authUrl,
+              callbackPort,
+              providerId: loadingKey,
+            },
+            "*",
           );
-          if (result.success && result.token) {
-            localStorage.setItem("jwt", result.token);
-            window.location.reload();
-            return;
-          }
-          throw new Error(result.error || "Authentication failed");
+          return;
         }
+        if (isElectron()) {
+          const electronAPI = (
+            window as unknown as {
+              electronAPI?: {
+                oidcSystemBrowserAuth?: (
+                  authUrl: string,
+                  port: number,
+                ) => Promise<{
+                  success: boolean;
+                  token?: string;
+                  error?: string;
+                }>;
+              };
+            }
+          ).electronAPI;
+          if (electronAPI?.oidcSystemBrowserAuth) {
+            const callbackPort = 17832 + Math.floor(Math.random() * 100);
+            const authResponse = await getOIDCAuthorizeUrl(
+              rememberMe,
+              callbackPort,
+              providerId,
+            );
+            const { auth_url: authUrl } = authResponse;
+            if (!authUrl) throw new Error(t("errors.invalidAuthUrl"));
+            const result = await electronAPI.oidcSystemBrowserAuth(
+              authUrl,
+              callbackPort,
+            );
+            if (result.success && result.token) {
+              localStorage.setItem("jwt", result.token);
+              window.location.reload();
+              return;
+            }
+            throw new Error(result.error || "Authentication failed");
+          }
+        }
+        const authResponse = await getOIDCAuthorizeUrl(
+          rememberMe,
+          undefined,
+          providerId,
+        );
+        const { auth_url: authUrl } = authResponse;
+        if (!authUrl || authUrl === "undefined")
+          throw new Error(t("errors.invalidAuthUrl"));
+        window.location.replace(authUrl);
+      } catch (err: unknown) {
+        const error = err as {
+          message?: string;
+          response?: { data?: { error?: string } };
+        };
+        toast.error(
+          error?.response?.data?.error ||
+            error?.message ||
+            t("errors.failedOidcLogin"),
+        );
+        setProviderLoading((prev) => ({ ...prev, [loadingKey]: false }));
       }
-      const authResponse = await getOIDCAuthorizeUrl(rememberMe);
-      const { auth_url: authUrl } = authResponse;
-      if (!authUrl || authUrl === "undefined")
-        throw new Error(t("errors.invalidAuthUrl"));
-      window.location.replace(authUrl);
-    } catch (err: unknown) {
-      const error = err as {
-        message?: string;
-        response?: { data?: { error?: string } };
-      };
-      toast.error(
-        error?.response?.data?.error ||
-          error?.message ||
-          t("errors.failedOidcLogin"),
-      );
-      setOidcLoading(false);
-    }
-  }, [rememberMe, t]);
+    },
+    [rememberMe, t],
+  );
+
+  const handleLDAPLogin = useCallback(
+    async (providerId: number) => {
+      if (!ldapUsername.trim() || !ldapPassword) {
+        toast.error(t("errors.requiredField"));
+        return;
+      }
+      setProviderLoading((prev) => ({ ...prev, [providerId]: true }));
+      try {
+        await ldapLogin(
+          providerId,
+          ldapUsername.trim(),
+          ldapPassword,
+          rememberMe,
+        );
+        const meRes = await getUserInfo();
+        storeAuth(meRes.username || "");
+        toast.success(t("messages.loginSuccess"));
+        onLogin(
+          meRes.username || "",
+          meRes.userId || undefined,
+          !!meRes.is_admin,
+        );
+      } catch (err: unknown) {
+        const error = err as {
+          response?: { data?: { error?: string } };
+          message?: string;
+        };
+        toast.error(
+          error?.response?.data?.error ||
+            error?.message ||
+            t("auth.ldapLoginFailed"),
+        );
+      } finally {
+        setProviderLoading((prev) => ({ ...prev, [providerId]: false }));
+      }
+    },
+    [ldapUsername, ldapPassword, rememberMe, onLogin, t],
+  );
 
   useEffect(() => {
-    if (!oidcConfigLoaded || silentSigninHandledRef.current) return;
-    if (!shouldTriggerSilentSignin(window.location.search)) return;
+    if (!ssoProvidersLoaded || silentSigninHandledRef.current) return;
+    if (!oidcSilentLoginDefaultLoaded) return;
 
-    const nextSearch = removeSilentSigninFromSearch(window.location.search);
-    window.history.replaceState(
-      {},
-      document.title,
-      `${window.location.pathname}${nextSearch}${window.location.hash}`,
-    );
+    const urlTriggered = shouldTriggerSilentSignin(window.location.search);
+    if (!urlTriggered && !oidcSilentLoginDefault) return;
+
+    if (urlTriggered) {
+      const nextSearch = removeSilentSigninFromSearch(window.location.search);
+      window.history.replaceState(
+        {},
+        document.title,
+        `${window.location.pathname}${nextSearch}${window.location.hash}`,
+      );
+    }
 
     silentSigninHandledRef.current = true;
-    if (oidcConfigured && !isElectron()) {
-      handleOIDCLogin();
+
+    const oidcProvider = ssoProviders.find(
+      (p) => p.type === "oidc" || p.type === "github" || p.type === "google",
+    );
+    if (oidcProvider && !isElectron()) {
+      handleOIDCLogin(oidcProvider.id);
       return;
     }
 
-    toast.info(t("errors.silentSigninOidcUnavailable"));
-  }, [handleOIDCLogin, oidcConfigLoaded, oidcConfigured, t]);
+    if (urlTriggered) {
+      toast.info(t("errors.silentSigninOidcUnavailable"));
+    }
+  }, [
+    handleOIDCLogin,
+    ssoProvidersLoaded,
+    ssoProviders,
+    t,
+    oidcSilentLoginDefault,
+    oidcSilentLoginDefaultLoaded,
+  ]);
 
   // Electron server config / webview auth success screens
   if (isElectron() && !isInElectronWebView()) {
@@ -908,7 +1059,11 @@ export function Auth({ onLogin }: AuthProps) {
       label: t("common.register"),
       show: (passwordLoginAllowed || firstUser) && registrationAllowed,
     },
-    { id: "external", label: t("auth.external"), show: oidcConfigured },
+    {
+      id: "external",
+      label: t("auth.external"),
+      show: ssoProviders.length > 0,
+    },
   ];
 
   return (
@@ -1182,36 +1337,115 @@ export function Auth({ onLogin }: AuthProps) {
 
                 {view === "external" && (
                   <div className="flex flex-col gap-4">
-                    {isElectron() ? (
-                      <p className="text-xs text-muted-foreground text-center">
-                        {t("auth.externalNotSupportedInElectron")}
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="rememberOIDC"
-                            checked={rememberMe}
-                            onCheckedChange={(v) => setRememberMe(v === true)}
-                          />
-                          <label
-                            htmlFor="rememberOIDC"
-                            className="text-xs text-muted-foreground cursor-pointer"
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="rememberSSO"
+                        checked={rememberMe}
+                        onCheckedChange={(v) => setRememberMe(v === true)}
+                      />
+                      <label
+                        htmlFor="rememberSSO"
+                        className="text-xs text-muted-foreground cursor-pointer"
+                      >
+                        {t("auth.rememberMe")}
+                      </label>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      {ssoProviders.map((provider) => {
+                        const isLoading = !!providerLoading[provider.id];
+
+                        if (provider.type === "ldap") {
+                          const isExpanded = expandedLdapId === provider.id;
+                          return (
+                            <div
+                              key={provider.id}
+                              className="flex flex-col gap-0 border border-border"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedLdapId(
+                                    isExpanded ? null : provider.id,
+                                  )
+                                }
+                                className="flex items-center justify-between w-full px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                              >
+                                <span>
+                                  {t("auth.loginWithProvider", {
+                                    name: provider.name,
+                                  })}
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="size-3.5" />
+                                ) : (
+                                  <ChevronDown className="size-3.5" />
+                                )}
+                              </button>
+                              {isExpanded && (
+                                <form
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    handleLDAPLogin(provider.id);
+                                  }}
+                                  className="flex flex-col gap-3 p-3 border-t border-border"
+                                >
+                                  <Field
+                                    label={t("auth.ldapUsername")}
+                                    htmlFor={`ldap-user-${provider.id}`}
+                                  >
+                                    <Input
+                                      id={`ldap-user-${provider.id}`}
+                                      value={ldapUsername}
+                                      onChange={(e) =>
+                                        setLdapUsername(e.target.value)
+                                      }
+                                      disabled={isLoading}
+                                      autoFocus
+                                    />
+                                  </Field>
+                                  <Field
+                                    label={t("auth.ldapPassword")}
+                                    htmlFor={`ldap-pass-${provider.id}`}
+                                  >
+                                    <PasswordInput
+                                      id={`ldap-pass-${provider.id}`}
+                                      value={ldapPassword}
+                                      onChange={setLdapPassword}
+                                      disabled={isLoading}
+                                    />
+                                  </Field>
+                                  <Button
+                                    type="submit"
+                                    className="w-full bg-accent-brand hover:bg-accent-brand/90 text-background font-bold"
+                                    disabled={isLoading}
+                                  >
+                                    {isLoading
+                                      ? t("common.loading")
+                                      : t("auth.ldapSignIn")}
+                                  </Button>
+                                </form>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Button
+                            key={provider.id}
+                            onClick={() => handleOIDCLogin(provider.id)}
+                            disabled={isLoading}
+                            className="w-full bg-accent-brand hover:bg-accent-brand/90 text-background font-bold"
                           >
-                            {t("auth.rememberMe")}
-                          </label>
-                        </div>
-                        <Button
-                          onClick={handleOIDCLogin}
-                          disabled={oidcLoading}
-                          className="w-full bg-accent-brand hover:bg-accent-brand/90 text-background font-bold"
-                        >
-                          {oidcLoading
-                            ? t("common.loading")
-                            : t("auth.loginWithExternal")}
-                        </Button>
-                      </>
-                    )}
+                            {isLoading
+                              ? t("common.loading")
+                              : t("auth.loginWithProvider", {
+                                  name: provider.name,
+                                })}
+                          </Button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

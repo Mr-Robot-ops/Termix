@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/button";
 import { Separator } from "@/components/separator";
-import { Terminal } from "lucide-react";
+import { KeyRound, Terminal } from "lucide-react";
 import type { Tab } from "@/types/ui-types";
-import { getCookie, setCookie } from "@/main-axios";
+import { getCookie, getHostPassword, setCookie } from "@/main-axios";
+import { toast } from "sonner";
 
 export function SshToolsPanel({
   terminalTabs,
@@ -59,6 +60,51 @@ export function SshToolsPanel({
     }
   }
 
+  async function fillPassword() {
+    let filled = 0;
+    let missing = 0;
+
+    for (const tabId of selectedTabIds) {
+      const tab = terminalTabs.find((t) => t.id === tabId);
+      const hostId = tab?.host?.id ? Number(tab.host.id) : null;
+      const ref = tab?.terminalRef?.current;
+      if (!hostId || !ref?.sendInput) {
+        missing++;
+        continue;
+      }
+
+      const password = await getHostPassword(hostId, "password");
+      if (!password) {
+        missing++;
+        continue;
+      }
+
+      ref.sendInput(password + "\r");
+      filled++;
+    }
+
+    if (filled > 0) {
+      toast.success(
+        t("newUi.sidebar.sshTools.fillPasswordSuccess", { count: filled }),
+      );
+    }
+    if (missing > 0) {
+      toast.error(
+        t("newUi.sidebar.sshTools.fillPasswordMissing", { count: missing }),
+      );
+    }
+  }
+
+  function broadcastArrow(normalSeq: string, appSeq: string) {
+    for (const tabId of selectedTabIds) {
+      const tab = terminalTabs.find((t) => t.id === tabId);
+      const ref = tab?.terminalRef?.current;
+      if (!ref) continue;
+      const appMode = ref.getApplicationCursorKeysMode?.() ?? false;
+      ref.sendInput?.(appMode ? appSeq : normalSeq);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     e.preventDefault();
     e.stopPropagation();
@@ -86,16 +132,29 @@ export function SshToolsPanel({
       }
     }
 
+    if (key === "ArrowUp") {
+      broadcastArrow("\x1B[A", "\x1BOA");
+      return;
+    }
+    if (key === "ArrowDown") {
+      broadcastArrow("\x1B[B", "\x1BOB");
+      return;
+    }
+    if (key === "ArrowRight") {
+      broadcastArrow("\x1B[C", "\x1BOC");
+      return;
+    }
+    if (key === "ArrowLeft") {
+      broadcastArrow("\x1B[D", "\x1BOD");
+      return;
+    }
+
     const specialMap: Record<string, string> = {
       Enter: "\r",
       Backspace: "\x7F",
       Delete: "\x1B[3~",
       Tab: "\t",
       Escape: "\x1B",
-      ArrowUp: "\x1B[A",
-      ArrowDown: "\x1B[B",
-      ArrowRight: "\x1B[C",
-      ArrowLeft: "\x1B[D",
       Home: "\x1B[H",
       End: "\x1B[F",
       PageUp: "\x1B[5~",
@@ -227,6 +286,20 @@ export function SshToolsPanel({
             className="w-full px-2.5 py-2 text-xs bg-background border border-accent-brand/40 text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-accent-brand/70 caret-transparent"
           />
         )}
+
+        <Button
+          variant="outline"
+          disabled={selectedTabIds.size === 0}
+          className="w-full"
+          onClick={() => {
+            void fillPassword();
+          }}
+        >
+          <KeyRound className="size-3.5 mr-2" />
+          {selectedTabIds.size === 0
+            ? t("newUi.sidebar.sshTools.selectTerminalsAbove")
+            : `${t("newUi.sidebar.sshTools.fillPassword")} (${selectedTabIds.size})`}
+        </Button>
       </div>
 
       <Separator />

@@ -5,6 +5,7 @@ import { Card } from "@/components/card";
 import {
   AlertCircle,
   Clock,
+  ExternalLink,
   Network,
   Play,
   RefreshCw,
@@ -25,6 +26,7 @@ import {
 } from "@/main-axios";
 import type { Host as DemoHost } from "@/types/ui-types";
 import type { SSHHost, TunnelConnection, TunnelStatus } from "@/types";
+import { findHostByTunnelEndpoint } from "./tunnel-endpoints";
 
 function tunnelName(
   host: SSHHost,
@@ -303,11 +305,7 @@ export function TunnelTab({ host }: { label: string; host?: DemoHost }) {
         let endpointSsh: SSHHost | undefined;
         if (!isDirect) {
           const allHosts = await getSSHHosts();
-          endpointSsh = allHosts.find(
-            (h) =>
-              h.name === tunnel.endpointHost ||
-              `${h.username}@${h.ip}` === tunnel.endpointHost,
-          );
+          endpointSsh = findHostByTunnelEndpoint(allHosts, tunnel.endpointHost);
         }
         await connectTunnel({
           name,
@@ -350,7 +348,9 @@ export function TunnelTab({ host }: { label: string; host?: DemoHost }) {
             endpointSsh?.authType === "password"
               ? endpointSsh.password
               : undefined,
-          endpointAuthMethod: endpointSsh?.authType ?? "password",
+          endpointAuthMethod: isDirect
+            ? sshHost.authType
+            : (endpointSsh?.authType ?? "password"),
           endpointSSHKey:
             endpointSsh?.authType === "key" ? endpointSsh.key : undefined,
           endpointKeyPassword:
@@ -426,6 +426,15 @@ export function TunnelTab({ host }: { label: string; host?: DemoHost }) {
               </div>
             </div>
           </div>
+          <a
+            href="https://docs.termix.site/features/networking/tunnels"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center size-9 text-muted-foreground hover:text-foreground transition-colors"
+            title={t("hosts.docsLink")}
+          >
+            <ExternalLink className="size-4" />
+          </a>
         </Card>
 
         {tunnels.length > 0 ? (

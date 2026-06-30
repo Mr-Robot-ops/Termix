@@ -11,6 +11,97 @@ import {
   normalizeImportedHost,
 } from "./host-normalizers.js";
 
+type SSHConfigHost = {
+  name: string;
+  hostname?: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  proxyJump?: string;
+};
+
+type ShareCredential = {
+  alias?: unknown;
+  name?: unknown;
+  description?: unknown;
+  folder?: unknown;
+  tags?: unknown;
+  authType?: unknown;
+  username?: unknown;
+  keyType?: unknown;
+};
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function tagString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((tag) => textValue(tag))
+      .filter((tag): tag is string => !!tag)
+      .join(",");
+  }
+  return textValue(value) || "";
+}
+
+function normalizeCredentialAuthType(value: unknown): "password" | "key" {
+  return value === "key" ? "key" : "password";
+}
+
+export function parseSSHConfig(content: string): SSHConfigHost[] {
+  const results: SSHConfigHost[] = [];
+  let current: SSHConfigHost | null = null;
+
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const spaceIdx = line.indexOf(" ");
+    if (spaceIdx === -1) continue;
+
+    const key = line.slice(0, spaceIdx).toLowerCase();
+    const value = line.slice(spaceIdx + 1).trim();
+
+    if (key === "host") {
+      if (current && current.hostname) results.push(current);
+      // Skip wildcard patterns
+      if (value === "*" || value.includes("*") || value.includes("?")) {
+        current = null;
+      } else {
+        current = { name: value };
+      }
+      continue;
+    }
+
+    if (!current) continue;
+
+    switch (key) {
+      case "hostname":
+        current.hostname = value;
+        break;
+      case "user":
+        current.user = value;
+        break;
+      case "port": {
+        const p = Number.parseInt(value, 10);
+        if (p > 0 && p <= 65535) current.port = p;
+        break;
+      }
+      case "identityfile":
+        if (!current.identityFile) current.identityFile = value;
+        break;
+      case "proxyjump":
+        current.proxyJump = value;
+        break;
+    }
+  }
+
+  if (current && current.hostname) results.push(current);
+
+  return results;
+}
+
 export function registerHostBulkRoutes(
   router: Router,
   authenticateJWT: RequestHandler,
@@ -100,7 +191,12 @@ export function registerHostBulkRoutes(
 
       try {
         const ownedHosts = await db
-          .select({ id: hosts.id, statsConfig: hosts.statsConfig })
+          .select({
+            id: hosts.id,
+            statsConfig: hosts.statsConfig,
+            credentialId: hosts.credentialId,
+            proxmoxConfig: hosts.proxmoxConfig,
+          })
           .from(hosts)
           .where(and(inArray(hosts.id, hostIds), eq(hosts.userId, userId)));
 
@@ -132,6 +228,12 @@ export function registerHostBulkRoutes(
           simpleUpdates.enableFileManager = updates.enableFileManager;
         if (typeof updates.enableDocker === "boolean")
           simpleUpdates.enableDocker = updates.enableDocker;
+        if (typeof updates.enableTmuxMonitor === "boolean")
+          simpleUpdates.enableTmuxMonitor = updates.enableTmuxMonitor;
+        // Disabling Proxmox is a plain flag flip; enabling is handled per-host
+        // below so each host can default to its own stored credential.
+        if (updates.enableProxmox === false)
+          simpleUpdates.enableProxmox = false;
 
         if (Object.keys(simpleUpdates).length > 0) {
           await db
@@ -157,6 +259,37 @@ export function registerHostBulkRoutes(
           }
         }
 
+        // Enabling Proxmox needs per-host handling: each host defaults its
+        // Proxmox credential to the credential already stored on that host, so
+        // discovery works right away without picking one by hand. Existing
+        // proxmoxConfig values are preserved.
+        if (updates.enableProxmox === true) {
+          for (const host of ownedHosts) {
+            try {
+              const existing = host.proxmoxConfig
+                ? JSON.parse(host.proxmoxConfig as string)
+                : {};
+              const merged = {
+                defaultCredentialId:
+                  existing.defaultCredentialId ?? host.credentialId ?? null,
+                windowsPatterns: existing.windowsPatterns ?? "win, windows",
+                dockerPatterns: existing.dockerPatterns ?? "docker",
+                preferredPrefixes:
+                  existing.preferredPrefixes ?? "10., 192.168.",
+              };
+              await db
+                .update(hosts)
+                .set({
+                  enableProxmox: true,
+                  proxmoxConfig: JSON.stringify(merged),
+                })
+                .where(and(eq(hosts.id, host.id), eq(hosts.userId, userId)));
+            } catch {
+              errors.push(`Failed to enable Proxmox for host ${host.id}`);
+            }
+          }
+        }
+
         DatabaseSaveTrigger.triggerSave("bulk_update");
 
         return res.json({
@@ -176,7 +309,11 @@ export function registerHostBulkRoutes(
     authenticateJWT,
     async (req: Request, res: Response) => {
       const userId = (req as AuthenticatedRequest).userId;
-      const { hosts: hostsToImport, overwrite } = req.body;
+      const {
+        hosts: hostsToImport,
+        overwrite,
+        credentials: credentialsToImport,
+      } = req.body;
 
       if (!Array.isArray(hostsToImport) || hostsToImport.length === 0) {
         return res
@@ -197,6 +334,80 @@ export function registerHostBulkRoutes(
         failed: 0,
         errors: [] as string[],
       };
+
+      const credentialAliasMap = new Map<string, number>();
+      const addCredentialAlias = (alias: unknown, id: number) => {
+        const key = textValue(alias);
+        if (key) credentialAliasMap.set(key.toLowerCase(), id);
+      };
+
+      try {
+        const existingCredentials = await SimpleDBOps.select<
+          Record<string, unknown>
+        >(
+          db
+            .select()
+            .from(sshCredentials)
+            .where(eq(sshCredentials.userId, userId)),
+          "ssh_credentials",
+          userId,
+        );
+
+        for (const credential of existingCredentials) {
+          addCredentialAlias(credential.name, credential.id as number);
+        }
+
+        if (Array.isArray(credentialsToImport)) {
+          for (const rawCredential of credentialsToImport as ShareCredential[]) {
+            const alias = textValue(rawCredential.alias);
+            const name = textValue(rawCredential.name) || alias;
+            if (!alias || !name) continue;
+
+            const existingId = credentialAliasMap.get(name.toLowerCase());
+            if (existingId) {
+              addCredentialAlias(alias, existingId);
+              continue;
+            }
+
+            const now = new Date().toISOString();
+            const created = await SimpleDBOps.insert(
+              sshCredentials,
+              "ssh_credentials",
+              {
+                userId,
+                name,
+                description:
+                  textValue(rawCredential.description) ||
+                  "Imported placeholder. Add the secret before connecting.",
+                folder: textValue(rawCredential.folder),
+                tags: tagString(rawCredential.tags),
+                authType: normalizeCredentialAuthType(rawCredential.authType),
+                username: textValue(rawCredential.username),
+                password: null,
+                key: null,
+                privateKey: null,
+                publicKey: null,
+                keyPassword: null,
+                keyType: textValue(rawCredential.keyType),
+                detectedKeyType: null,
+                usageCount: 0,
+                lastUsed: null,
+                createdAt: now,
+                updatedAt: now,
+              },
+              userId,
+            );
+
+            const createdCredential = created as Record<string, unknown>;
+            addCredentialAlias(alias, createdCredential.id as number);
+            addCredentialAlias(name, createdCredential.id as number);
+          }
+        }
+      } catch (error) {
+        results.errors.push(
+          `Credential placeholders: ${error instanceof Error ? error.message : "failed to prepare credential aliases"}`,
+        );
+      }
 
       let existingHostMap: Map<string, { id: number }> | undefined;
       if (overwrite) {
@@ -222,6 +433,17 @@ export function registerHostBulkRoutes(
         try {
           const effectiveConnectionType = hostData.connectionType || "ssh";
 
+          if (
+            effectiveConnectionType === "ssh" &&
+            hostData.authType === "credential" &&
+            !hostData.credentialId &&
+            hostData.credentialAlias
+          ) {
+            hostData.credentialId = credentialAliasMap.get(
+              hostData.credentialAlias.toLowerCase(),
+            );
+          }
+
           if (!isNonEmptyString(hostData.ip) || !isValidPort(hostData.port)) {
             results.failed++;
             results.errors.push(
@@ -244,13 +466,19 @@ export function registerHostBulkRoutes(
           if (
             effectiveConnectionType === "ssh" &&
             hostData.authType &&
-            !["password", "key", "credential", "none", "opkssh"].includes(
-              hostData.authType,
-            )
+            ![
+              "password",
+              "key",
+              "credential",
+              "none",
+              "opkssh",
+              "tailscale",
+              "vault",
+            ].includes(hostData.authType)
           ) {
             results.failed++;
             results.errors.push(
-              `Host ${i + 1}: Invalid authType. Must be 'password', 'key', 'credential', 'none', or 'opkssh'`,
+              `Host ${i + 1}: Invalid authType. Must be 'password', 'key', 'credential', 'none', 'opkssh', 'tailscale', or 'vault'`,
             );
             continue;
           }
@@ -316,6 +544,12 @@ export function registerHostBulkRoutes(
 
               if (fallback.length > 0) {
                 hostData.credentialId = fallback[0].id;
+              } else if (isNonEmptyString(hostData.key)) {
+                hostData.authType = "key";
+                hostData.credentialId = undefined;
+              } else if (isNonEmptyString(hostData.password)) {
+                hostData.authType = "password";
+                hostData.credentialId = undefined;
               } else {
                 results.failed++;
                 results.errors.push(
@@ -340,6 +574,8 @@ export function registerHostBulkRoutes(
             enableTunnel: hostData.enableTunnel !== false,
             enableFileManager: hostData.enableFileManager !== false,
             enableDocker: hostData.enableDocker || false,
+            enableProxmox: hostData.enableProxmox || false,
+            enableTmuxMonitor: hostData.enableTmuxMonitor || false,
             showTerminalInSidebar: hostData.showTerminalInSidebar ? 1 : 0,
             showFileManagerInSidebar: hostData.showFileManagerInSidebar ? 1 : 0,
             showTunnelInSidebar: hostData.showTunnelInSidebar ? 1 : 0,
@@ -361,6 +597,9 @@ export function registerHostBulkRoutes(
               : null,
             dockerConfig: hostData.dockerConfig
               ? JSON.stringify(hostData.dockerConfig)
+              : null,
+            proxmoxConfig: hostData.proxmoxConfig
+              ? JSON.stringify(hostData.proxmoxConfig)
               : null,
             terminalConfig: hostData.terminalConfig
               ? JSON.stringify(hostData.terminalConfig)
@@ -453,6 +692,214 @@ export function registerHostBulkRoutes(
           results.failed++;
           results.errors.push(
             `Host ${i + 1}: ${error instanceof Error ? error.message : "Unknown error"}`,
+          );
+        }
+      }
+
+      res.json({
+        message: `Import completed: ${results.success} created, ${results.updated} updated, ${results.failed} failed`,
+        success: results.success,
+        updated: results.updated,
+        skipped: results.skipped,
+        failed: results.failed,
+        errors: results.errors,
+      });
+    },
+  );
+
+  /**
+   * @openapi
+   * /host/ssh-config-import:
+   *   post:
+   *     summary: Import hosts from an OpenSSH config file
+   *     description: Parses an OpenSSH ~/.ssh/config file and imports the defined hosts.
+   *     tags:
+   *       - SSH
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - content
+   *             properties:
+   *               content:
+   *                 type: string
+   *                 description: Raw text content of the SSH config file.
+   *               overwrite:
+   *                 type: boolean
+   *     responses:
+   *       200:
+   *         description: Import completed.
+   *       400:
+   *         description: Invalid request body.
+   */
+  router.post(
+    "/ssh-config-import",
+    authenticateJWT,
+    async (req: Request, res: Response) => {
+      const userId = (req as AuthenticatedRequest).userId;
+      const { content, overwrite } = req.body;
+
+      if (!isNonEmptyString(content)) {
+        return res.status(400).json({
+          error: "content is required and must be a non-empty string",
+        });
+      }
+
+      let parsed: SSHConfigHost[];
+      try {
+        parsed = parseSSHConfig(content);
+      } catch (err) {
+        return res
+          .status(400)
+          .json({ error: "Failed to parse SSH config file" });
+      }
+
+      if (parsed.length === 0) {
+        return res.status(400).json({
+          error: "No valid Host entries found in the SSH config file",
+        });
+      }
+
+      if (parsed.length > 100) {
+        return res
+          .status(400)
+          .json({ error: "Maximum 100 hosts allowed per import" });
+      }
+
+      const hostsToImport = parsed.map((h) => ({
+        name: h.name,
+        ip: h.hostname,
+        port: h.port ?? 22,
+        username: h.user,
+        authType: h.identityFile ? "key" : undefined,
+        connectionType: "ssh",
+        enableSsh: true,
+        ...(h.proxyJump
+          ? {
+              jumpHosts: [{ host: h.proxyJump, port: 22 }],
+            }
+          : {}),
+      }));
+
+      const results = {
+        success: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [] as string[],
+      };
+
+      let existingHostMap: Map<string, { id: number }> | undefined;
+      if (overwrite) {
+        try {
+          const allHosts = await SimpleDBOps.select<Record<string, unknown>>(
+            db.select().from(hosts).where(eq(hosts.userId, userId)),
+            "ssh_data",
+            userId,
+          );
+          existingHostMap = new Map();
+          for (const h of allHosts) {
+            const key = `${h.ip}:${h.port}:${h.username}`;
+            existingHostMap.set(key, { id: h.id as number });
+          }
+        } catch {
+          existingHostMap = undefined;
+        }
+      }
+
+      for (let i = 0; i < hostsToImport.length; i++) {
+        const hostData = normalizeImportedHost(
+          hostsToImport[i] as Record<string, unknown>,
+        );
+
+        try {
+          if (!isNonEmptyString(hostData.ip) || !isValidPort(hostData.port)) {
+            results.failed++;
+            results.errors.push(
+              `Host "${parsed[i].name}": Missing required fields (HostName, Port)`,
+            );
+            continue;
+          }
+
+          const sshDataObj: Record<string, unknown> = {
+            userId,
+            connectionType: "ssh",
+            name: hostData.name || hostData.ip,
+            folder: "Default",
+            tags: "",
+            ip: hostData.ip,
+            port: hostData.port,
+            username: hostData.username || null,
+            authType: hostData.authType || "none",
+            password: null,
+            key: null,
+            keyPassword: null,
+            keyType: null,
+            credentialId: null,
+            pin: false,
+            enableTerminal: true,
+            enableTunnel: true,
+            enableFileManager: true,
+            enableDocker: false,
+            enableProxmox: false,
+            enableTmuxMonitor: false,
+            showTerminalInSidebar: 0,
+            showFileManagerInSidebar: 0,
+            showTunnelInSidebar: 0,
+            showDockerInSidebar: 0,
+            showServerStatsInSidebar: 0,
+            defaultPath: "/",
+            sudoPassword: null,
+            tunnelConnections: "[]",
+            jumpHosts: hostData.jumpHosts
+              ? JSON.stringify(hostData.jumpHosts)
+              : null,
+            quickActions: null,
+            statsConfig: null,
+            dockerConfig: null,
+            proxmoxConfig: null,
+            terminalConfig: null,
+            forceKeyboardInteractive: "false",
+            notes: null,
+            useSocks5: 0,
+            socks5Host: null,
+            socks5Port: null,
+            socks5Username: null,
+            socks5Password: null,
+            socks5ProxyChain: null,
+            portKnockSequence: null,
+            overrideCredentialUsername: 0,
+            enableSsh: true,
+            enableRdp: false,
+            enableVnc: false,
+            enableTelnet: false,
+            updatedAt: new Date().toISOString(),
+          };
+
+          const lookupKey = `${hostData.ip}:${hostData.port}:${hostData.username}`;
+          const existing = existingHostMap?.get(lookupKey);
+
+          if (existing) {
+            await SimpleDBOps.update(
+              hosts,
+              "ssh_data",
+              eq(hosts.id, existing.id),
+              sshDataObj,
+              userId,
+            );
+            results.updated++;
+          } else {
+            sshDataObj.createdAt = new Date().toISOString();
+            await SimpleDBOps.insert(hosts, "ssh_data", sshDataObj, userId);
+            results.success++;
+          }
+        } catch (error) {
+          results.failed++;
+          results.errors.push(
+            `Host "${parsed[i].name}": ${error instanceof Error ? error.message : "Unknown error"}`,
           );
         }
       }

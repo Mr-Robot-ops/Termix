@@ -104,7 +104,7 @@ import {
     await AutoSSLSetup.initialize();
     systemLogger.success("SSL setup completed", {
       operation: "backend_init_ssl",
-      sslEnabled: process.env.SSL_ENABLED === "true",
+      sslEnabled: process.env.ENABLE_SSL === "true",
     });
 
     const dbModule = await import("./database/db/index.js");
@@ -142,10 +142,13 @@ import {
     await import("./ssh/terminal.js");
     await import("./ssh/tunnel.js");
     await import("./ssh/file-manager.js");
-    await import("./ssh/server-stats.js");
+    await import("./ssh/host-metrics.js");
     await import("./ssh/docker.js");
     await import("./ssh/docker-console.js");
+    await import("./ssh/tmux-monitor.js"); // --- tmux-monitor ---
+    await import("./serial/serial.js");
     await import("./dashboard.js");
+    await import("./homepage.js");
 
     // Initialize log level from database settings
     const { getDb: getDbForSettings } = await import("./database/db/index.js");
@@ -191,7 +194,7 @@ import {
     systemLogger.success("Termix backend started successfully", {
       operation: "backend_init_complete",
       port: process.env.PORT || 4090,
-      ssl: process.env.SSL_ENABLED === "true",
+      ssl: process.env.ENABLE_SSL === "true",
       duration: Date.now() - initStartTime,
     });
 

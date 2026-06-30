@@ -7,10 +7,12 @@ import {
   forwardRef,
   useCallback,
 } from "react";
+import { createPortal } from "react-dom";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { RobustClipboardProvider } from "@/lib/clipboard-provider";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
@@ -44,6 +46,7 @@ import {
 } from "@/lib/terminal-rendered-command.ts";
 import "./terminal-global-styles.ts";
 import { useTheme } from "@/components/theme-provider.tsx";
+import { globalShortcutHandler } from "@/lib/global-shortcut-handler";
 import { useCommandTracker } from "@/features/terminal/command-history/useCommandTracker.ts";
 import {
   highlightTerminalOutput,
@@ -266,8 +269,31 @@ interface SSHTerminalProps {
   onTitleChange?: (title: string) => void;
   initialPath?: string;
   executeCommand?: string;
+  /** Attach to this tmux session right after connecting (tmux monitor). */
+  tmuxAttachSession?: string;
   onOpenFileManager?: (path?: string) => void;
+  onOpenFileInEditor?: (filePath: string) => void;
   previewTheme?: string | null;
+  /** When true, suppress automatic focus on connect/visibility change. */
+  disableAutoFocus?: boolean;
+}
+
+const TERMINAL_FONT_ZOOM_MIN = 8;
+const TERMINAL_FONT_ZOOM_MAX = 36;
+const ALTERNATE_SCREEN_SEQUENCE = /\x1b\[\?(47|1047|1049)([hl])/g;
+
+function updateAlternateScreenMode(output: string, currentMode: boolean) {
+  ALTERNATE_SCREEN_SEQUENCE.lastIndex = 0;
+  let isActive = currentMode;
+  let sawSequence = false;
+  let match: RegExpExecArray | null;
+
+  while ((match = ALTERNATE_SCREEN_SEQUENCE.exec(output)) !== null) {
+    sawSequence = true;
+    isActive = match[2] === "h";
+  }
+
+  return { isActive, sawSequence };
 }
 
 const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
@@ -277,10 +303,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       isVisible,
       splitScreen = false,
       onClose,
+      onTitleChange,
       initialPath,
       executeCommand,
+      tmuxAttachSession,
       onOpenFileManager,
+      onOpenFileInEditor,
       previewTheme,
+      disableAutoFocus = false,
     },
     ref,
   ) {
@@ -304,8 +334,16 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     };
 
     const activeTheme = previewTheme || config.theme;
-    const themeColors = resolveTermixThemeColors(activeTheme, appTheme);
-    const backgroundColor = themeColors.background;
+    const themeColors = resolveTermixThemeColors(
+      activeTheme,
+      appTheme,
+      config.customThemeColors,
+    );
+    const backgroundImage = config.backgroundImage || "";
+    const backgroundImageOpacity = config.backgroundImageOpacity ?? 0.15;
+    const backgroundColor = backgroundImage
+      ? "transparent"
+      : themeColors.background;
     const fitAddonRef = useRef<FitAddon | null>(null);
     const webSocketRef = useRef<WebSocket | null>(null);
     const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -355,6 +393,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const currentHostIdRef = useRef<number | null>(null);
     const currentHostConfigRef = useRef<TerminalHostConfig | null>(null);
 
+    // Vault SSH signer interactive OIDC flow
+    const [vaultDialog, setVaultDialog] = useState<{
+      stage: "waiting" | "error";
+      error?: string;
+    } | null>(null);
+    const vaultFailedRef = useRef(false);
+    const vaultPopupRef = useRef<Window | null>(null);
+    const vaultTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     const [hostKeyVerification, setHostKeyVerification] = useState<{
       isOpen: boolean;
       scenario: "new" | "changed";
@@ -367,6 +414,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const pendingRestoredSessionIdRef = useRef<string | null>(
       hostConfig.restoredSessionId ?? null,
     );
+    const [linkClickDialog, setLinkClickDialog] = useState<{
+      url: string;
+    } | null>(null);
+
     const [tmuxSessionPicker, setTmuxSessionPicker] = useState<{
       sessions: Array<{
         name: string;
@@ -407,10 +458,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const totpTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const activityLoggedRef = useRef(false);
-    const [commandHistoryTrackingEnabled, setCommandHistoryTrackingEnabled] =
-      useState<boolean>(
-        () => localStorage.getItem("commandHistoryTracking") === "true",
-      );
+    const [
+      globalCommandHistoryTrackingEnabled,
+      setGlobalCommandHistoryTrackingEnabled,
+    ] = useState<boolean>(
+      () => localStorage.getItem("commandHistoryTracking") === "true",
+    );
     const [autocompleteSettings, setAutocompleteSettings] =
       useState<TerminalAutocompleteSettings>(() =>
         getTerminalAutocompleteSettings(),
@@ -422,7 +475,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
     useEffect(() => {
       const handleCommandHistoryTrackingChanged = () => {
-        setCommandHistoryTrackingEnabled(
+        setGlobalCommandHistoryTrackingEnabled(
           localStorage.getItem("commandHistoryTracking") === "true",
         );
       };
@@ -439,6 +492,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         );
       };
     }, []);
+    const commandHistoryTrackingEnabled =
+      hostConfig.enableCommandHistory !== false &&
+      globalCommandHistoryTrackingEnabled;
 
     const {
       trackInput,
@@ -1800,7 +1856,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     );
 
     const activityLoggingRef = useRef(false);
-    const sudoPromptShownRef = useRef(false);
+    const passwordPromptShownRef = useRef(false);
+    const alternateScreenModeRef = useRef(false);
 
     const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null);
     const pendingSizeRef = useRef<{ cols: number; rows: number } | null>(null);
@@ -1808,6 +1865,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const lastFittedSizeRef = useRef<{ cols: number; rows: number } | null>(
       null,
     );
+    const terminalFontSizeRef = useRef(config.fontSize);
     const DEBOUNCE_MS = 140;
 
     const logTerminalActivity = async () => {
@@ -1904,6 +1962,27 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       } finally {
         isFittingRef.current = false;
       }
+    }
+
+    function zoomTerminalFont(deltaY: number) {
+      const direction = deltaY < 0 ? 1 : -1;
+      const currentFontSize =
+        terminal.options.fontSize ??
+        terminalFontSizeRef.current ??
+        DEFAULT_TERMINAL_CONFIG.fontSize;
+      const nextFontSize = Math.min(
+        TERMINAL_FONT_ZOOM_MAX,
+        Math.max(TERMINAL_FONT_ZOOM_MIN, currentFontSize + direction),
+      );
+
+      if (nextFontSize === currentFontSize) {
+        return;
+      }
+
+      terminalFontSizeRef.current = nextFontSize;
+      terminal.options.fontSize = nextFontSize;
+      performFit();
+      hardRefresh();
     }
 
     function handleTotpSubmit(code: string) {
@@ -2047,6 +2126,92 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       }, DEBOUNCE_MS);
     }
 
+    function formatTerminalOutput(output: string): string {
+      const alternateScreen = updateAlternateScreenMode(
+        output,
+        alternateScreenModeRef.current,
+      );
+      alternateScreenModeRef.current = alternateScreen.isActive;
+
+      const syntaxHighlightingEnabled =
+        syntaxHighlightingEnabledRef.current &&
+        hostConfig.terminalConfig?.syntaxHighlighting !== false;
+      if (
+        !syntaxHighlightingEnabled ||
+        alternateScreen.sawSequence ||
+        alternateScreen.isActive
+      ) {
+        return output;
+      }
+
+      return highlightTerminalOutput(
+        output,
+        hostConfig.terminalConfig?.syntaxHighlightingOptions,
+      );
+    }
+
+    async function resolvePasswordForPrompt(isSudoPrompt: boolean) {
+      let passwordToFill = isSudoPrompt
+        ? hostConfig.terminalConfig?.sudoPassword || hostConfig.password
+        : hostConfig.password || hostConfig.terminalConfig?.sudoPassword;
+
+      if (!passwordToFill && hostConfig.id) {
+        passwordToFill = isSudoPrompt
+          ? (await getHostPassword(hostConfig.id, "sudoPassword")) ||
+            (await getHostPassword(hostConfig.id, "password")) ||
+            undefined
+          : (await getHostPassword(hostConfig.id, "password")) ||
+            (await getHostPassword(hostConfig.id, "sudoPassword")) ||
+            undefined;
+      }
+
+      return passwordToFill;
+    }
+
+    function maybeOfferPasswordFill(strippedData: string) {
+      const passwordPromptPattern =
+        /(?:\[sudo\][^\n\r]*:\s*$|sudo:[^\n\r]*password[^\n\r]*required|password for [^\n\r]*:\s*$|Password:\s*$|password:\s*$)/im;
+      if (!passwordPromptPattern.test(strippedData)) return;
+
+      const hasStoredPassword =
+        hostConfig.terminalConfig?.sudoPassword ||
+        hostConfig.password ||
+        hostConfig.hasSudoPassword ||
+        hostConfig.hasPassword;
+      if (!hasStoredPassword || passwordPromptShownRef.current) return;
+
+      passwordPromptShownRef.current = true;
+      const isSudoPrompt = /(?:\[sudo\]|sudo:)/i.test(strippedData);
+
+      confirmWithToast(
+        t("terminal.passwordPromptFillTitle"),
+        async () => {
+          const passwordToFill = await resolvePasswordForPrompt(isSudoPrompt);
+          if (
+            passwordToFill &&
+            webSocketRef.current &&
+            webSocketRef.current.readyState === WebSocket.OPEN
+          ) {
+            webSocketRef.current.send(
+              JSON.stringify({
+                type: "input",
+                data: passwordToFill + "\n",
+              }),
+            );
+          }
+          setTimeout(() => {
+            passwordPromptShownRef.current = false;
+          }, 3000);
+        },
+        t("common.confirm"),
+        t("common.cancel"),
+        { confirmOnEnter: true },
+      );
+      setTimeout(() => {
+        passwordPromptShownRef.current = false;
+      }, 15000);
+    }
+
     useImperativeHandle(
       ref,
       () => ({
@@ -2103,6 +2268,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             connectToHost(cols, rows);
           }
         },
+        isConnected: () => isConnected,
         fit: () => {
           if (!fitAddonRef.current || !terminal || isFittingRef.current) return;
           isFittingRef.current = true;
@@ -2127,6 +2293,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             isFittingRef.current = false;
           }
         },
+        focus: () => terminal?.focus(),
         sendInput: (data: string) => {
           if (webSocketRef.current?.readyState === 1) {
             webSocketRef.current.send(JSON.stringify({ type: "input", data }));
@@ -2145,6 +2312,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         },
         refresh: () => hardRefresh(),
+        getApplicationCursorKeysMode: () =>
+          terminal?.modes?.applicationCursorKeysMode ?? false,
         openFileManager: () => {
           if (webSocketRef.current?.readyState === WebSocket.OPEN) {
             webSocketRef.current.send(JSON.stringify({ type: "get_cwd" }));
@@ -2153,7 +2322,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         },
       }),
-      [terminal],
+      [isConnected, terminal],
     );
 
     function getUseRightClickCopyPaste() {
@@ -2347,6 +2516,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       rows: number,
     ) {
       ws.addEventListener("open", () => {
+        alternateScreenModeRef.current = false;
         connectionTimeoutRef.current = setTimeout(() => {
           if (
             !isConnected &&
@@ -2403,7 +2573,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           ws.send(
             JSON.stringify({
               type: "connectToHost",
-              data: { cols, rows, hostConfig, initialPath, executeCommand },
+              data: {
+                cols,
+                rows,
+                hostConfig,
+                initialPath,
+                executeCommand,
+                tmuxAttachSession,
+              },
             }),
           );
         }
@@ -2411,6 +2588,26 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           if (data.includes("\r") || data.includes("\n")) {
             syncCommandTrackerFromRenderedLine();
           }
+
+          if (data === "\r" || data === "\n") {
+            const currentCmd = getCurrentCommand().trim();
+            const termixMatch = currentCmd.match(/^termix\s+(.+)$/);
+            if (termixMatch && onOpenFileInEditor) {
+              const filePath = termixMatch[1].trim();
+              trackInputRef.current(data);
+              terminal.write("\r\n");
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(
+                  JSON.stringify({
+                    type: "open_file_in_editor",
+                    path: filePath,
+                  }),
+                );
+              }
+              return;
+            }
+          }
+
           trackInputRef.current(data);
           if (
             data.includes("\r") ||
@@ -2458,78 +2655,31 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             if (typeof msg.data === "string") {
               rememberAutocompleteOutputSystemdServices(msg.data);
               observeAutocompleteCommandOutput(msg.data);
-              const outputData = syntaxHighlightingEnabledRef.current
-                ? highlightTerminalOutput(msg.data)
-                : msg.data;
+              if (showAutocompleteRef.current) {
+                showAutocompleteRef.current = false;
+                setShowAutocomplete(false);
+                setAutocompleteSuggestions([]);
+                currentAutocompleteCommand.current = "";
+              }
 
               terminal.write(
-                outputData,
+                formatTerminalOutput(msg.data),
                 queueAutocompleteRefreshAfterTerminalWrite,
               );
-              const sudoPasswordPattern =
-                /(?:\[sudo\][^\n]*:\s*$|sudo:[^\n]*password[^\n]*required|password for [^\n]*:\s*$|Password:\s*$)/i;
-              const hasSudoPw =
-                hostConfig.terminalConfig?.sudoPassword ||
-                hostConfig.password ||
-                hostConfig.hasSudoPassword ||
-                hostConfig.hasPassword;
-              if (
-                config.sudoPasswordAutoFill &&
-                sudoPasswordPattern.test(msg.data) &&
-                hasSudoPw &&
-                !sudoPromptShownRef.current
-              ) {
-                sudoPromptShownRef.current = true;
-                confirmWithToast(
-                  t("terminal.sudoPasswordPopupTitle"),
-                  async () => {
-                    // Fetch password on-demand from server
-                    let passwordToFill =
-                      hostConfig.terminalConfig?.sudoPassword ||
-                      hostConfig.password;
-                    if (!passwordToFill && hostConfig.id) {
-                      passwordToFill =
-                        (await getHostPassword(
-                          hostConfig.id,
-                          "sudoPassword",
-                        )) ||
-                        (await getHostPassword(hostConfig.id, "password")) ||
-                        undefined;
-                    }
-                    if (
-                      passwordToFill &&
-                      webSocketRef.current &&
-                      webSocketRef.current.readyState === WebSocket.OPEN
-                    ) {
-                      webSocketRef.current.send(
-                        JSON.stringify({
-                          type: "input",
-                          data: passwordToFill + "\n",
-                        }),
-                      );
-                    }
-                    setTimeout(() => {
-                      sudoPromptShownRef.current = false;
-                    }, 3000);
-                  },
-                  t("common.confirm"),
-                  t("common.cancel"),
-                  { confirmOnEnter: true },
-                );
-                setTimeout(() => {
-                  sudoPromptShownRef.current = false;
-                }, 15000);
-              }
+              // Strip ANSI escape codes before testing — newer sudo versions (Ubuntu 26.04+)
+              // emit colored prompts with embedded escape sequences that break the regex.
+              const strippedData = msg.data.replace(
+                /\x1b(?:[@-Z\\-_]|\[[0-9;?>=!]*[@-~])/g,
+                "",
+              );
+              maybeOfferPasswordFill(strippedData);
             } else {
               const stringData = String(msg.data);
               rememberAutocompleteOutputSystemdServices(stringData);
               observeAutocompleteCommandOutput(stringData);
-              const outputData = syntaxHighlightingEnabledRef.current
-                ? highlightTerminalOutput(stringData)
-                : stringData;
 
               terminal.write(
-                outputData,
+                formatTerminalOutput(stringData),
                 queueAutocompleteRefreshAfterTerminalWrite,
               );
             }
@@ -2627,6 +2777,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             setIsConnecting(false);
           } else if (msg.type === "connected") {
             opksshFailedRef.current = false;
+            vaultFailedRef.current = false;
             wasConnectedRef.current = true;
             setIsConnected(true);
             setIsConnecting(false);
@@ -2814,6 +2965,86 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 );
               }
             }
+          } else if (msg.type === "vault_auth_required") {
+            if (connectionTimeoutRef.current) {
+              clearTimeout(connectionTimeoutRef.current);
+              connectionTimeoutRef.current = null;
+            }
+            if (vaultFailedRef.current) {
+              setVaultDialog({
+                stage: "error",
+                error: t("terminal.vaultAuthFailed"),
+              });
+              updateConnectionError(t("terminal.vaultAuthFailed"));
+              addLog({
+                type: "error",
+                stage: "auth",
+                message: t("terminal.vaultAuthFailed"),
+              });
+            } else {
+              vaultFailedRef.current = true;
+              webSocketRef.current?.send(
+                JSON.stringify({
+                  type: "vault_start_auth",
+                  data: { hostId: msg.hostId },
+                }),
+              );
+            }
+          } else if (msg.type === "vault_auth_url") {
+            if (connectionErrorRef.current) return;
+            try {
+              vaultPopupRef.current = window.open(
+                msg.url,
+                "termix-vault-oidc",
+                "width=540,height=720",
+              );
+            } catch {
+              vaultPopupRef.current = null;
+            }
+            setVaultDialog({ stage: "waiting" });
+            if (vaultTimeoutRef.current) clearTimeout(vaultTimeoutRef.current);
+            vaultTimeoutRef.current = setTimeout(() => {
+              setVaultDialog(null);
+              webSocketRef.current?.close();
+            }, 300000);
+          } else if (msg.type === "vault_completed") {
+            if (vaultTimeoutRef.current) {
+              clearTimeout(vaultTimeoutRef.current);
+              vaultTimeoutRef.current = null;
+            }
+            try {
+              vaultPopupRef.current?.close();
+            } catch {
+              // popup may already be closed
+            }
+            setVaultDialog(null);
+            if (webSocketRef.current && terminal) {
+              webSocketRef.current.send(
+                JSON.stringify({
+                  type: "vault_auth_completed",
+                  data: {
+                    hostId: currentHostIdRef.current,
+                    cols: terminal.cols || 80,
+                    rows: terminal.rows || 24,
+                    hostConfig: currentHostConfigRef.current,
+                  },
+                }),
+              );
+            }
+          } else if (msg.type === "vault_error") {
+            if (connectionErrorRef.current) return;
+            vaultFailedRef.current = true;
+            if (vaultTimeoutRef.current) {
+              clearTimeout(vaultTimeoutRef.current);
+              vaultTimeoutRef.current = null;
+            }
+            try {
+              vaultPopupRef.current?.close();
+            } catch {
+              // popup may already be closed
+            }
+            setVaultDialog({ stage: "error", error: msg.error });
+            setIsConnecting(false);
           } else if (msg.type === "opkssh_status") {
             if (connectionErrorRef.current) return;
             if (msg.stage === "chooser") {
@@ -2922,6 +3153,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }
           } else if (msg.type === "cwd") {
             onOpenFileManager?.(msg.path as string);
+          } else if (msg.type === "open_file_in_editor") {
+            onOpenFileInEditor?.(msg.path as string);
           } else if (msg.type === "passphrase_required") {
             setShowPassphraseDialog(true);
             setIsConnecting(false);
@@ -2961,6 +3194,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           } else if (msg.type === "sessionAttached") {
             isAttachingSessionRef.current = false;
             opksshFailedRef.current = false;
+            vaultFailedRef.current = false;
             wasConnectedRef.current = true;
             setIsConnected(true);
             setIsConnecting(false);
@@ -3201,33 +3435,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     }
 
     async function writeTextToClipboard(text: string): Promise<boolean> {
-      try {
-        if (window.electronClipboard) {
-          await window.electronClipboard.writeText(text);
-          return true;
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-          return true;
-        }
-      } catch {
-        // fall through to legacy method
-      }
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-        return true;
-      } catch {
-        toast.error(t("terminal.clipboardWriteFailed"));
-        return false;
-      }
+      const ok = await copyToClipboard(text);
+      if (!ok) toast.error(t("terminal.clipboardWriteFailed"));
+      return ok;
     }
 
     async function readTextFromClipboard(): Promise<string> {
@@ -3320,7 +3530,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       };
 
       const activeTheme = previewTheme || config.theme;
-      const themeColors = resolveTermixThemeColors(activeTheme, appTheme);
+      const themeColors = resolveTermixThemeColors(
+        activeTheme,
+        appTheme,
+        config.customThemeColors,
+      );
 
       const fontConfig = TERMINAL_FONTS.find(
         (f) => f.value === config.fontFamily,
@@ -3332,6 +3546,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       terminal.options.cursorStyle = config.cursorStyle;
       terminal.options.scrollback = config.scrollback;
       terminal.options.fontSize = config.fontSize;
+      terminalFontSizeRef.current = config.fontSize;
       terminal.options.fontFamily = fontFamily;
       terminal.options.rightClickSelectsWord = config.rightClickSelectsWord;
       terminal.options.fastScrollSensitivity = config.fastScrollSensitivity;
@@ -3345,7 +3560,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         | "both";
 
       terminal.options.theme = {
-        background: themeColors.background,
+        background: config.backgroundImage
+          ? "transparent"
+          : themeColors.background,
         foreground: themeColors.foreground,
         cursor: themeColors.cursor,
         cursorAccent: themeColors.cursorAccent,
@@ -3392,7 +3609,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const fontFamily = fontConfig?.fallback || TERMINAL_FONTS[0].fallback;
 
       const activeTheme = previewTheme || config.theme;
-      const themeColors = resolveTermixThemeColors(activeTheme, appTheme);
+      const themeColors = resolveTermixThemeColors(
+        activeTheme,
+        appTheme,
+        config.customThemeColors,
+      );
 
       // Set initial options before opening the terminal
       terminal.options = {
@@ -3403,7 +3624,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         fontFamily,
         allowTransparency: true, // MUST be set before open()
         convertEol: false,
-        macOptionIsMeta: false,
+        macOptionIsMeta: true,
         macOptionClickForcesSelection: false,
         rightClickSelectsWord: config.rightClickSelectsWord,
         fastScrollSensitivity: config.fastScrollSensitivity,
@@ -3413,7 +3634,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         lineHeight: config.lineHeight,
         bellStyle: config.bellStyle as "none" | "sound" | "visual" | "both",
         theme: {
-          background: themeColors.background,
+          background: config.backgroundImage
+            ? "transparent"
+            : themeColors.background,
           foreground: themeColors.foreground,
           cursor: themeColors.cursor,
           cursorAccent: themeColors.cursorAccent,
@@ -3447,7 +3670,17 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           uri.startsWith("http://") || uri.startsWith("https://")
             ? uri
             : `https://${uri}`;
-        window.open(url, "_blank");
+
+        const hostBehavior = hostConfig.terminalConfig?.linkClickBehavior;
+        const globalBehavior =
+          localStorage.getItem("terminalLinkClickBehavior") ?? "confirm";
+        const behavior = hostBehavior ?? globalBehavior;
+
+        if (behavior === "direct") {
+          window.open(url, "_blank");
+        } else {
+          setLinkClickDialog({ url });
+        }
       });
 
       fitAddonRef.current = fitAddon;
@@ -3459,12 +3692,32 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       terminal.unicode.activeVersion = "11";
 
       terminal.open(xtermRef.current);
+
+      const xtermTextarea = xtermRef.current.querySelector("textarea");
+      if (xtermTextarea) {
+        xtermTextarea.setAttribute("autocomplete", "off");
+        xtermTextarea.setAttribute("autocorrect", "off");
+        xtermTextarea.setAttribute("autocapitalize", "none");
+        xtermTextarea.setAttribute("spellcheck", "false");
+        xtermTextarea.setAttribute("data-gramm", "false");
+        xtermTextarea.setAttribute("data-gramm_editor", "false");
+        xtermTextarea.setAttribute("data-enable-grammarly", "false");
+      }
+
+      terminal.onTitleChange((title) => {
+        if (title) onTitleChange?.(title);
+      });
       document.fonts.ready.then(() => {
         terminal.refresh(0, terminal.rows - 1);
         fitAddon.fit();
       });
 
       terminal.attachCustomWheelEventHandler((ev) => {
+        if (ev.ctrlKey || ev.metaKey) {
+          zoomTerminalFont(ev.deltaY);
+          return false;
+        }
+
         const cfg = {
           ...DEFAULT_TERMINAL_CONFIG,
           ...hostConfig.terminalConfig,
@@ -3571,7 +3824,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         return false;
       };
 
+      // On macOS Electron, Tab key events can be swallowed by Chromium's focus
+      // traversal system before xterm.js sees them. Calling preventDefault() in
+      // the capture phase blocks that traversal while still allowing the event to
+      // reach xterm.js's internal handler (which fires our attachCustomKeyEventHandler).
+      const handleTabCapture = (e: KeyboardEvent) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+        }
+      };
+
       element?.addEventListener("keydown", handleBackspaceMode, true);
+      element?.addEventListener("keydown", handleTabCapture, true);
 
       const resizeObserver = new ResizeObserver(() => {
         if (resizeTimeout.current) clearTimeout(resizeTimeout.current);
@@ -3595,6 +3859,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         element?.removeEventListener("mousemove", handleTmuxDragMove);
         element?.removeEventListener("mouseup", handleTmuxDragEnd);
         element?.removeEventListener("keydown", handleBackspaceMode, true);
+        element?.removeEventListener("keydown", handleTabCapture, true);
         if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
         if (resizeTimeout.current) clearTimeout(resizeTimeout.current);
       };
@@ -3661,6 +3926,36 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           !e.altKey &&
           !e.metaKey &&
           (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete");
+        // Forward global app shortcuts to AppShell directly — xterm swallows
+        // all keydown events and synthetic re-dispatch is unreliable.
+        // stopPropagation prevents the same event from also firing the window listener.
+        if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+          const globalCodes = [
+            "BracketRight",
+            "BracketLeft",
+            "Backslash",
+            "Minus",
+          ];
+          if (globalCodes.includes(e.code)) {
+            e.stopPropagation();
+            globalShortcutHandler.current?.(e);
+            return false;
+          }
+        }
+
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+          const arrowCodes = [
+            "ArrowLeft",
+            "ArrowRight",
+            "ArrowUp",
+            "ArrowDown",
+          ];
+          if (arrowCodes.includes(e.code)) {
+            e.stopPropagation();
+            globalShortcutHandler.current?.(e);
+            return false;
+          }
+        }
 
         if (
           e.ctrlKey &&
@@ -3696,6 +3991,38 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             writeTextToClipboard(selection);
             return false;
           }
+        }
+
+        if (
+          e.ctrlKey &&
+          e.shiftKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          e.key.toLowerCase() === "c"
+        ) {
+          const selection = terminal.getSelection();
+          if (selection) {
+            e.preventDefault();
+            e.stopPropagation();
+            writeTextToClipboard(selection);
+            terminal.clearSelection();
+            return false;
+          }
+        }
+
+        if (
+          e.ctrlKey &&
+          e.shiftKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          e.key.toLowerCase() === "v"
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          readTextFromClipboard().then((text) => {
+            if (text) terminal.paste(text);
+          });
+          return false;
         }
 
         if (
@@ -3951,7 +4278,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const fitTimeoutId = setTimeout(() => {
         if (!isFittingRef.current && terminal.cols > 0 && terminal.rows > 0) {
           performFit();
-          if (!splitScreen && !isConnecting) {
+          if (!splitScreen && !isConnecting && !disableAutoFocus) {
             requestAnimationFrame(() => terminal.focus());
           }
         }
@@ -3963,10 +4290,30 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const hasConnectionError = !!connectionError;
 
     return (
-      <div className="h-full w-full relative" style={{ backgroundColor }}>
+      <div
+        className="h-full w-full relative"
+        style={{
+          backgroundColor: backgroundImage ? "transparent" : backgroundColor,
+          ...(backgroundImage && {
+            backgroundImage: `url(${backgroundImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }),
+        }}
+      >
+        {backgroundImage && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundColor: themeColors.background,
+              opacity: 1 - backgroundImageOpacity,
+            }}
+          />
+        )}
         <div
           ref={xtermRef}
-          className="h-full w-full"
+          className="h-full w-full relative"
           style={{
             pointerEvents: isVisible ? "auto" : "none",
             visibility:
@@ -4146,6 +4493,70 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           />
         )}
 
+        {vaultDialog && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="w-[420px] max-w-[90%] border border-border bg-background p-5 shadow-lg">
+              <h3 className="text-sm font-bold mb-2 text-foreground">
+                {vaultDialog.stage === "error"
+                  ? t("terminal.vaultAuthFailed")
+                  : t("terminal.vaultAuthTitle")}
+              </h3>
+              {vaultDialog.stage === "error" ? (
+                <p className="text-xs text-destructive mb-4 break-words">
+                  {vaultDialog.error || t("terminal.vaultAuthFailed")}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground mb-4">
+                  {t("terminal.vaultAuthDescription")}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                {vaultDialog.stage === "waiting" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      try {
+                        vaultPopupRef.current?.focus();
+                      } catch {
+                        // popup may be gone
+                      }
+                    }}
+                  >
+                    {t("terminal.vaultReopen")}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (vaultTimeoutRef.current) {
+                      clearTimeout(vaultTimeoutRef.current);
+                      vaultTimeoutRef.current = null;
+                    }
+                    try {
+                      vaultPopupRef.current?.close();
+                    } catch {
+                      // popup may already be closed
+                    }
+                    webSocketRef.current?.send(
+                      JSON.stringify({
+                        type: "vault_cancel",
+                        data: { hostId: currentHostIdRef.current },
+                      }),
+                    );
+                    setVaultDialog(null);
+                  }}
+                >
+                  {vaultDialog.stage === "error"
+                    ? t("common.close")
+                    : t("hosts.cancelBtn")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {hostKeyVerification?.isOpen && (
           <HostKeyVerificationDialog
             isOpen={true}
@@ -4193,6 +4604,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                   }),
                 );
               }
+              setTimeout(() => terminal?.focus(), 50);
             }}
             onCreateNew={() => {
               setTmuxSessionPicker(null);
@@ -4204,6 +4616,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                   }),
                 );
               }
+              setTimeout(() => terminal?.focus(), 50);
             }}
             onCancel={() => setTmuxSessionPicker(null)}
             backgroundColor={backgroundColor}
@@ -4249,6 +4662,59 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
           lineHeightPx={autocompleteHint?.lineHeightPx}
         />
+
+        {linkClickDialog &&
+          createPortal(
+            <div
+              className="fixed inset-0 flex items-center justify-center z-[10000]"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+            >
+              <div
+                className="flex flex-col gap-3 p-4 rounded shadow-lg max-w-sm w-full mx-4"
+                style={{ backgroundColor }}
+              >
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {t("terminal.linkDialogTitle")}
+                </p>
+                <p className="text-sm break-all text-foreground select-all">
+                  {linkClickDialog.url}
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      writeTextToClipboard(linkClickDialog.url);
+                      setLinkClickDialog(null);
+                    }}
+                  >
+                    {t("terminal.linkDialogCopy")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      window.open(
+                        linkClickDialog.url,
+                        "_blank",
+                        "noopener,noreferrer",
+                      );
+                      setLinkClickDialog(null);
+                    }}
+                  >
+                    {t("terminal.linkDialogOpen")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLinkClickDialog(null)}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
     );
   },

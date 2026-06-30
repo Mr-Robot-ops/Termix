@@ -43,6 +43,7 @@ import {
   RotateCw,
   AlertCircle,
   Download,
+  ExternalLink,
   Upload,
   Link2,
   FolderPlus,
@@ -127,11 +128,17 @@ function buildNodeSvg(
 ): string {
   const isOnline = status === "online";
   const isOffline = status === "offline";
-  const statusColor = isOnline
-    ? "rgb(16,185,129)"
-    : isOffline
-      ? "rgb(239,68,68)"
-      : "rgb(100,116,139)";
+  const useRealColors = localStorage.getItem("statusColorScheme") === "status";
+  let statusColor: string;
+  if (isOnline) {
+    statusColor = useRealColors
+      ? "rgb(16,185,129)"
+      : resolveCssVar("--accent-brand", "rgb(16,185,129)");
+  } else if (isOffline) {
+    statusColor = useRealColors ? "rgb(239,68,68)" : "rgba(16,185,129,0.2)";
+  } else {
+    statusColor = "rgb(100,116,139)";
+  }
 
   const bg = resolveCssVar("--card", "#1e1e20");
   const border = resolveCssVar("--border", "#2a2a2c");
@@ -547,7 +554,7 @@ export function NetworkGraphCard({
 
   const hideMenu = () => setContextMenu((p) => ({ ...p, visible: false }));
 
-  const fireOpen = (hostId: string, type: string) => {
+  const fireOpen = (hostId: string, type?: string) => {
     window.dispatchEvent(
       new CustomEvent("termix:open-tab", { detail: { hostId, type } }),
     );
@@ -564,7 +571,7 @@ export function NetworkGraphCard({
         setShowNodeDetail(true);
       }
     } else if (action === "connect") {
-      fireOpen(targetId, "terminal");
+      fireOpen(targetId);
     } else if (action === "move") {
       setSelectedNodeId(targetId);
       const node = cyRef.current.$id(targetId);
@@ -806,11 +813,11 @@ export function NetworkGraphCard({
             </button>
           )}
           <button
-            onClick={() => handleConnectAction("stats")}
+            onClick={() => handleConnectAction("host-metrics")}
             className="flex items-center gap-2 px-3 py-2 text-xs w-full text-left hover:bg-muted transition-colors"
           >
             <Server className="size-3 shrink-0" />
-            {t("networkGraph.serverStats")}
+            {t("networkGraph.hostMetrics")}
           </button>
           {!embedded && (
             <>
@@ -1303,6 +1310,16 @@ export function NetworkGraphCard({
               <Upload className="size-3.5" />
             </button>
           </div>
+          <div className="w-px h-5 bg-border mx-1" />
+          <a
+            href="https://docs.termix.site/features/dashboard/network-graph"
+            target="_blank"
+            rel="noreferrer"
+            title={t("hosts.docsLink")}
+            className={btnCls}
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
         </div>
         {cytoscapeEl}
         {dialogs}
@@ -1355,6 +1372,15 @@ export function NetworkGraphCard({
           >
             <ArrowUp className="size-3" />
           </button>
+          <a
+            href="https://docs.termix.site/features/dashboard/network-graph"
+            target="_blank"
+            rel="noreferrer"
+            title={t("hosts.docsLink")}
+            className={btnCls}
+          >
+            <ExternalLink className="size-3" />
+          </a>
         </div>
       </div>
       {cytoscapeEl}

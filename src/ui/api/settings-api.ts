@@ -71,6 +71,54 @@ export async function updateSessionTimeout(
 }
 
 // ============================================================================
+// TAILSCALE SETTINGS
+// ============================================================================
+
+export async function getTailscaleSettings(): Promise<{
+  apiKey: string;
+  hasApiKey: boolean;
+}> {
+  try {
+    const response = await authApi.get("/users/tailscale-settings");
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "fetch Tailscale settings");
+  }
+}
+
+export async function updateTailscaleSettings(
+  apiKey: string,
+): Promise<{ hasApiKey: boolean }> {
+  try {
+    const response = await authApi.patch("/users/tailscale-settings", {
+      apiKey,
+    });
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "update Tailscale settings");
+  }
+}
+
+export async function getTailscaleDevices(): Promise<{
+  devices: Array<{
+    id: string;
+    name: string;
+    hostname: string;
+    addresses: string[];
+    os: string;
+    lastSeen: string;
+  }>;
+  hasApiKey: boolean;
+}> {
+  try {
+    const response = await authApi.get("/tailscale/devices");
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "fetch Tailscale devices");
+  }
+}
+
+// ============================================================================
 // GUACAMOLE SETTINGS
 // ============================================================================
 
@@ -98,3 +146,43 @@ export async function updateGuacamoleSettings(settings: {
 }
 
 // ============================================================================
+// HOST DEFAULTS SETTINGS
+// ============================================================================
+
+export type HostDefaults = {
+  useSocks5?: boolean;
+  socks5Host?: string;
+  socks5Port?: number;
+  socks5Username?: string;
+  socks5Password?: string;
+  credentialId?: number | null;
+  metricsEnabled?: boolean;
+  statusCheckEnabled?: boolean;
+  fontSize?: number;
+  fontFamily?: string;
+  theme?: string;
+  cursorStyle?: string;
+  cursorBlink?: boolean;
+  enableSessionLogging?: boolean;
+  enableCommandHistory?: boolean;
+};
+
+export async function getHostDefaults(): Promise<HostDefaults> {
+  try {
+    const response = await authApi.get("/users/host-defaults");
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "fetch host defaults");
+  }
+}
+
+export async function updateHostDefaults(
+  defaults: HostDefaults,
+): Promise<HostDefaults> {
+  try {
+    const response = await authApi.patch("/users/host-defaults", defaults);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, "update host defaults");
+  }
+}

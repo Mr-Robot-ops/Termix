@@ -1,34 +1,43 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Bell,
   Clock,
+  Fingerprint,
   Hammer,
   KeyRound,
   LayoutPanelLeft,
+  LogOut,
   Network,
   Play,
   Plug,
+  ScrollText,
   Server,
   Settings,
+  Usb,
   User,
   Zap,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/dropdown-menu";
 import type { SplitMode, TabType, ToolsTab } from "@/types/ui-types";
+import { getAlertFirings } from "@/api/alerts-api";
 
 export type RailView =
   | "hosts"
   | "credentials"
+  | "termix-id"
   | "quick-connect"
+  | "serial"
   | ToolsTab
   | "connections"
+  | "session-logs"
   | "user-profile"
-  | "admin-settings";
+  | "admin-settings"
+  | "alerts";
+
+export type HideableRailView =
+  | Exclude<RailView, "user-profile" | "admin-settings">
+  | "network_graph"
+  | "homepage";
 
 type RailItem =
   | {
@@ -44,13 +53,20 @@ type RailItem =
 function buildRailButtons(
   splitMode: SplitMode,
   t: (key: string) => string,
+  hidden: Set<string>,
 ): RailItem[] {
-  return [
+  const all: RailItem[] = [
     { view: "hosts", icon: <Server size={16} />, title: t("nav.hosts") },
     {
       view: "credentials",
       icon: <KeyRound size={16} />,
       title: t("nav.credentials"),
+    },
+    { kind: "separator" },
+    {
+      view: "termix-id",
+      icon: <Fingerprint size={16} />,
+      title: t("nav.termixId"),
     },
     { kind: "separator" },
     {
@@ -65,11 +81,23 @@ function buildRailButtons(
       title: t("nav.quickConnect"),
     },
     { kind: "separator" },
+    {
+      view: "serial",
+      icon: <Usb size={16} />,
+      title: t("nav.serial"),
+    },
+    { kind: "separator" },
     { view: "ssh-tools", icon: <Hammer size={16} />, title: t("nav.sshTools") },
     { kind: "separator" },
     { view: "snippets", icon: <Play size={16} />, title: t("nav.snippets") },
     { kind: "separator" },
     { view: "history", icon: <Clock size={16} />, title: t("nav.history") },
+    { kind: "separator" },
+    {
+      view: "session-logs",
+      icon: <ScrollText size={16} />,
+      title: t("nav.sessionLogs"),
+    },
     { kind: "separator" },
     {
       view: "split-screen",
@@ -86,6 +114,26 @@ function buildRailButtons(
     },
     { kind: "separator" },
   ];
+
+  // Filter out hidden items, then collapse consecutive/leading/trailing separators
+  const filtered = all.filter((item) => {
+    if (item.kind === "separator") return true;
+    if (item.kind === "tab") return !hidden.has(item.tabType);
+    return !hidden.has(item.view);
+  });
+
+  const result: RailItem[] = [];
+  for (const item of filtered) {
+    if (item.kind === "separator") {
+      if (result.length === 0 || result[result.length - 1].kind === "separator")
+        continue;
+      result.push(item);
+    } else {
+      result.push(item);
+    }
+  }
+  if (result[result.length - 1]?.kind === "separator") result.pop();
+  return result;
 }
 
 const btnBase =
@@ -98,8 +146,6 @@ export function AppRail({
   splitMode,
   username,
   isAdmin,
-  profileDropdownOpen,
-  onProfileDropdownChange,
   onRailClick,
   onOpenTab,
   onLogout,
@@ -109,8 +155,6 @@ export function AppRail({
   splitMode: SplitMode;
   username: string;
   isAdmin: boolean;
-  profileDropdownOpen: boolean;
-  onProfileDropdownChange: (open: boolean) => void;
   onRailClick: (view: RailView) => void;
   onOpenTab?: (type: TabType) => void;
   onLogout: () => void;
@@ -120,25 +164,75 @@ export function AppRail({
   const [pinned, setPinned] = useState(
     () => localStorage.getItem("pinAppRail") === "true",
   );
+  const [expandOnHover, setExpandOnHover] = useState(
+    () => localStorage.getItem("expandAppRailOnHover") !== "false",
+  );
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   useEffect(() => {
-    const handler = () =>
+    let cancelled = false;
+    const poll = () => {
+      getAlertFirings({ acknowledged: false, limit: 50 })
+        .then((firings) => {
+          if (!cancelled) setUnreadAlerts(firings.length);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const iv = setInterval(poll, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, []);
+  const [hiddenTabs, setHiddenTabs] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("hiddenRailTabs");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  useEffect(() => {
+    const pinHandler = () =>
       setPinned(localStorage.getItem("pinAppRail") === "true");
-    window.addEventListener("pinAppRailChanged", handler);
-    return () => window.removeEventListener("pinAppRailChanged", handler);
+    const hoverHandler = () =>
+      setExpandOnHover(
+        localStorage.getItem("expandAppRailOnHover") !== "false",
+      );
+    window.addEventListener("pinAppRailChanged", pinHandler);
+    window.addEventListener("expandAppRailOnHoverChanged", hoverHandler);
+    return () => {
+      window.removeEventListener("pinAppRailChanged", pinHandler);
+      window.removeEventListener("expandAppRailOnHoverChanged", hoverHandler);
+    };
   }, []);
 
-  const railExpanded = pinned || hovered || profileDropdownOpen;
-  const railButtons = buildRailButtons(splitMode, t);
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const stored = localStorage.getItem("hiddenRailTabs");
+        setHiddenTabs(stored ? new Set(JSON.parse(stored)) : new Set());
+      } catch {
+        setHiddenTabs(new Set());
+      }
+    };
+    window.addEventListener("hiddenRailTabsChanged", handler);
+    return () => window.removeEventListener("hiddenRailTabsChanged", handler);
+  }, []);
+
+  const railExpanded = pinned || (expandOnHover && hovered);
+  const railButtons = buildRailButtons(splitMode, t, hiddenTabs);
 
   return (
     <div
-      className="hidden md:flex flex-col items-stretch bg-sidebar border-r border-border shrink-0 overflow-hidden pt-2 gap-1 transition-[width] duration-200"
+      className="hidden md:flex flex-col items-stretch bg-sidebar border-r border-border shrink-0 overflow-hidden pt-2 gap-1 transition-[width] duration-200 min-h-0"
       style={{ width: railExpanded ? 160 : 40 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex flex-col flex-1 gap-1">
+      <div className="flex flex-col flex-1 gap-1 overflow-y-auto scrollbar-none min-h-0">
         {railButtons.map((item, i) =>
           item.kind === "separator" ? (
             <div
@@ -202,6 +296,11 @@ export function AppRail({
       <div className="shrink-0 flex flex-col gap-1 border-t border-border pt-1 pb-1">
         {[
           {
+            view: "alerts" as RailView,
+            icon: <Bell size={16} />,
+            title: t("nav.alerts"),
+          },
+          {
             view: "user-profile" as RailView,
             icon: <User size={16} />,
             title: t("nav.userProfile"),
@@ -227,10 +326,15 @@ export function AppRail({
             }`}
           >
             <span
-              className="shrink-0 flex items-center justify-center"
+              className="relative shrink-0 flex items-center justify-center"
               style={{ width: 16, height: 16 }}
             >
               {item.icon}
+              {item.view === "alerts" && unreadAlerts > 0 && (
+                <span className="absolute -top-1 -right-1 flex size-3 items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-white leading-none">
+                  {unreadAlerts > 9 ? "9+" : unreadAlerts}
+                </span>
+              )}
             </span>
             <span
               className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-opacity duration-150 ${railExpanded ? "opacity-100 delay-75" : "opacity-0"}`}
@@ -239,50 +343,50 @@ export function AppRail({
             </span>
           </button>
         ))}
+        <div className="mx-2 my-1 border-t border-border" />
+        <button
+          onClick={onLogout}
+          style={btnStyle}
+          className={`${btnBase} text-muted-foreground hover:text-destructive hover:bg-destructive/10`}
+        >
+          <span
+            className="shrink-0 flex items-center justify-center"
+            style={{ width: 16, height: 16 }}
+          >
+            <LogOut size={16} />
+          </span>
+          <span
+            className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-opacity duration-150 ${railExpanded ? "opacity-100 delay-75" : "opacity-0"}`}
+          >
+            {t("common.logout")}
+          </span>
+        </button>
       </div>
 
       <div className="shrink-0 border-t border-border">
-        <DropdownMenu
-          open={profileDropdownOpen}
-          onOpenChange={onProfileDropdownChange}
+        <button
+          className="flex items-center gap-2.5 w-full h-10 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          style={{ padding: "0 6px" }}
         >
-          <DropdownMenuTrigger asChild>
-            <button
-              className="flex items-center gap-2.5 w-full h-10 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-              style={{ padding: "0 6px" }}
-            >
-              <div
-                className="rounded-full bg-accent-brand/20 border border-accent-brand/30 flex items-center justify-center font-bold text-accent-brand shrink-0"
-                style={{ width: 24, height: 24, fontSize: 11 }}
-              >
-                {username.charAt(0).toUpperCase() || "U"}
-              </div>
-              <div
-                className={`flex flex-col items-start overflow-hidden transition-opacity duration-150 ${
-                  railExpanded ? "opacity-100 delay-75" : "opacity-0"
-                }`}
-              >
-                <span className="text-xs font-semibold leading-tight whitespace-nowrap">
-                  {username || "User"}
-                </span>
-                <span className="text-[10px] text-muted-foreground leading-tight whitespace-nowrap">
-                  {isAdmin ? t("nav.roleAdministrator") : t("nav.roleUser")}
-                </span>
-              </div>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="right"
-            align="end"
-            sideOffset={1}
-            className="!w-auto min-w-max [clip-path:inset(-4px_-4px_-4px_0px)]"
+          <div
+            className="rounded-full bg-accent-brand/20 border border-accent-brand/30 flex items-center justify-center font-bold text-accent-brand shrink-0"
+            style={{ width: 24, height: 24, fontSize: 11 }}
           >
-            <DropdownMenuItem variant="destructive" onClick={onLogout}>
-              <KeyRound size={14} />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            {username.charAt(0).toUpperCase() || "U"}
+          </div>
+          <div
+            className={`flex flex-col items-start overflow-hidden transition-opacity duration-150 ${
+              railExpanded ? "opacity-100 delay-75" : "opacity-0"
+            }`}
+          >
+            <span className="text-xs font-semibold leading-tight whitespace-nowrap">
+              {username || "User"}
+            </span>
+            <span className="text-[10px] text-muted-foreground leading-tight whitespace-nowrap">
+              {isAdmin ? t("nav.roleAdministrator") : t("nav.roleUser")}
+            </span>
+          </div>
+        </button>
       </div>
     </div>
   );

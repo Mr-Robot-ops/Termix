@@ -1,6 +1,7 @@
 import { TERMINAL_THEMES } from "@/lib/terminal-themes";
 import type { Host } from "@/types/ui-types";
 import type { SSHHostData } from "@/types";
+import type { HostDefaults } from "@/api/settings-api";
 
 type HostSocks5ProxyNode = NonNullable<Host["socks5ProxyChain"]>[number];
 
@@ -42,27 +43,32 @@ export function mapSnippetResponse(
   }));
 }
 
-export function createHostEditorForm(host: Host | null) {
-  const rawTheme = host?.terminalConfig?.theme;
+export function createHostEditorForm(
+  host: Host | null,
+  defaults?: HostDefaults,
+) {
+  const d = host ? undefined : defaults;
+  const rawTheme = host?.terminalConfig?.theme ?? d?.theme;
   const normalizedTheme =
     !rawTheme ||
     ["Termix Dark", "Termix Light", "termixDark", "termixLight"].includes(
       rawTheme,
     )
       ? "termix"
-      : TERMINAL_THEMES[rawTheme]
+      : rawTheme === "custom" || TERMINAL_THEMES[rawTheme]
         ? rawTheme
         : "termix";
 
   return {
     name: host?.name ?? "",
     ip: host?.ip ?? "",
-    username: host?.username ?? "",
+    username: host?.username ?? (host ? "" : "root"),
     sshPort: host?.sshPort ?? host?.port ?? 22,
     rdpPort: host?.rdpPort ?? 3389,
     vncPort: host?.vncPort ?? 5900,
     telnetPort: host?.telnetPort ?? 23,
     authType: host?.authType ?? "password",
+    useWarpgate: host?.useWarpgate ?? false,
     password: host?.password ?? "",
     key: host?.key ?? (host?.hasKey ? "existing_key" : ""),
     keyPassword: host?.hasKeyPassword
@@ -70,7 +76,10 @@ export function createHostEditorForm(host: Host | null) {
       : (host?.keyPassword ?? ""),
     keyType: host?.keyType ?? "auto",
     keySubTab: "paste" as "paste" | "upload",
-    credentialId: host?.credentialId ?? "",
+    credentialId:
+      host?.credentialId ??
+      (d?.credentialId != null ? String(d.credentialId) : ""),
+    vaultProfileId: host?.vaultProfileId ?? "",
     overrideCredentialUsername: host?.overrideCredentialUsername ?? false,
     folder: host?.folder ?? "",
     tags: host?.tags ?? ([] as string[]),
@@ -78,30 +87,47 @@ export function createHostEditorForm(host: Host | null) {
     notes: host?.notes ?? "",
     pin: host?.pin ?? false,
     macAddress: host?.macAddress ?? "",
-    useSocks5: host?.useSocks5 ?? false,
-    socks5Host: host?.socks5Host ?? "",
-    socks5Port: host?.socks5Port ?? 1080,
-    socks5Username: host?.socks5Username ?? "",
-    socks5Password: host?.socks5Password ?? "",
+    wolBroadcastAddress: host?.wolBroadcastAddress ?? "",
+    useSocks5: host?.useSocks5 ?? d?.useSocks5 ?? false,
+    socks5Host: host?.socks5Host ?? d?.socks5Host ?? "",
+    socks5Port: host?.socks5Port ?? d?.socks5Port ?? 1080,
+    socks5Username: host?.socks5Username ?? d?.socks5Username ?? "",
+    socks5Password: host?.socks5Password ?? d?.socks5Password ?? "",
     socks5ProxyMode: ((host?.socks5ProxyChain ?? []).length > 0
       ? "chain"
       : "single") as "single" | "chain",
     socks5ProxyChain: (host?.socks5ProxyChain ?? []) as HostSocks5ProxyNode[],
     enableTerminal: host?.enableTerminal ?? true,
+    enableSessionLogging:
+      host?.enableSessionLogging ?? d?.enableSessionLogging ?? true,
+    enableCommandHistory:
+      host?.enableCommandHistory ?? d?.enableCommandHistory ?? true,
     enableFileManager: host?.enableFileManager ?? false,
+    scpLegacy: host?.scpLegacy ?? false,
     enableDocker: host?.enableDocker ?? false,
+    dockerConfig: host?.dockerConfig ?? { runtime: "docker" as const },
+    enableTmuxMonitor: host?.enableTmuxMonitor ?? false,
+    enableProxmox: host?.enableProxmox ?? false,
+    proxmoxConfig: host?.proxmoxConfig ?? {
+      defaultCredentialId: null as number | null,
+      defaultAuthType: "password" as string,
+      windowsPatterns: "win, windows",
+      dockerPatterns: "docker",
+      preferredPrefixes: "10., 192.168.",
+    },
     enableTunnel: host?.enableTunnel ?? false,
     defaultPath: host?.defaultPath ?? "/",
     forceKeyboardInteractive: host?.forceKeyboardInteractive ?? false,
-    fontSize: host?.terminalConfig?.fontSize ?? 14,
+    fontSize: host?.terminalConfig?.fontSize ?? d?.fontSize ?? 14,
     fontFamily:
-      host?.terminalConfig?.fontFamily ?? "Caskaydia Cove Nerd Font Mono",
+      host?.terminalConfig?.fontFamily ??
+      d?.fontFamily ??
+      "Caskaydia Cove Nerd Font Mono",
     theme: normalizedTheme,
-    cursorStyle: (host?.terminalConfig?.cursorStyle ?? "bar") as
-      | "block"
-      | "underline"
-      | "bar",
-    cursorBlink: host?.terminalConfig?.cursorBlink ?? true,
+    cursorStyle: (host?.terminalConfig?.cursorStyle ??
+      d?.cursorStyle ??
+      "bar") as "block" | "underline" | "bar",
+    cursorBlink: host?.terminalConfig?.cursorBlink ?? d?.cursorBlink ?? true,
     scrollback: host?.terminalConfig?.scrollback ?? 10000,
     letterSpacing: host?.terminalConfig?.letterSpacing ?? 0,
     lineHeight: host?.terminalConfig?.lineHeight ?? 1.0,
@@ -129,6 +155,27 @@ export function createHostEditorForm(host: Host | null) {
     sudoPassword: host?.terminalConfig?.sudoPassword ?? "",
     keepaliveInterval: host?.terminalConfig?.keepaliveInterval ?? 60,
     keepaliveCountMax: host?.terminalConfig?.keepaliveCountMax ?? 5,
+    backgroundImage: host?.terminalConfig?.backgroundImage ?? "",
+    backgroundImageOpacity:
+      host?.terminalConfig?.backgroundImageOpacity ?? 0.15,
+    customThemeColors: host?.terminalConfig?.customThemeColors ?? null,
+    allowLegacyAlgorithms: host?.terminalConfig?.allowLegacyAlgorithms ?? true,
+    linkClickBehavior: (host?.terminalConfig?.linkClickBehavior ??
+      "default") as "default" | "confirm" | "direct",
+    agentSocketPath: host?.terminalConfig?.agentSocketPath ?? "",
+    useSSHTitle: host?.terminalConfig?.useSSHTitle ?? false,
+    syntaxHighlighting: host?.terminalConfig?.syntaxHighlighting ?? true,
+    syntaxHighlightingOptions: {
+      logLevels:
+        host?.terminalConfig?.syntaxHighlightingOptions?.logLevels ?? true,
+      paths: host?.terminalConfig?.syntaxHighlightingOptions?.paths ?? true,
+      timestamps:
+        host?.terminalConfig?.syntaxHighlightingOptions?.timestamps ?? true,
+      ipAddresses:
+        host?.terminalConfig?.syntaxHighlightingOptions?.ipAddresses ?? true,
+      urls: host?.terminalConfig?.syntaxHighlightingOptions?.urls ?? true,
+      numbers: host?.terminalConfig?.syntaxHighlightingOptions?.numbers ?? true,
+    },
     environmentVariables:
       host?.terminalConfig?.environmentVariables ??
       ([] as { key: string; value: string }[]),
@@ -139,21 +186,37 @@ export function createHostEditorForm(host: Host | null) {
       ([] as { port: number; protocol: "tcp" | "udp"; delay: number }[]),
     quickActions:
       host?.quickActions ?? ([] as { name: string; snippetId: string }[]),
+    rdpCredentialId: host?.rdpCredentialId ?? "",
     rdpUser: host?.rdpUser ?? "",
     rdpPassword: host?.rdpPassword ?? "",
     domain: host?.domain ?? "",
     security: host?.security ?? "",
     ignoreCert: host?.ignoreCert ?? false,
+    vncCredentialId: host?.vncCredentialId ?? "",
     vncPassword: host?.vncPassword ?? "",
     vncUser: host?.vncUser ?? "",
     telnetUser: host?.telnetUser ?? "",
     telnetPassword: host?.telnetPassword ?? "",
+    telnetCredentialId:
+      host?.telnetCredentialId != null ? String(host.telnetCredentialId) : "",
+    rdpAuthType: (host?.rdpAuthType ??
+      (host?.rdpCredentialId ? "credential" : "direct")) as
+      | "direct"
+      | "credential",
+    vncAuthType: (host?.vncAuthType ??
+      (host?.vncCredentialId ? "credential" : "direct")) as
+      | "direct"
+      | "credential",
+    telnetAuthType: (host?.telnetAuthType ??
+      (host?.telnetCredentialId ? "credential" : "direct")) as
+      | "direct"
+      | "credential",
     guacamoleConfig: host?.guacamoleConfig ?? {},
     statsConfig: host?.statsConfig ?? {
-      statusCheckEnabled: true,
+      statusCheckEnabled: d?.statusCheckEnabled ?? true,
       statusCheckInterval: 60,
       useGlobalStatusInterval: true,
-      metricsEnabled: true,
+      metricsEnabled: d?.metricsEnabled ?? true,
       metricsInterval: 30,
       useGlobalMetricsInterval: true,
       enabledWidgets: [
@@ -167,6 +230,7 @@ export function createHostEditorForm(host: Host | null) {
         "processes",
         "ports",
         "firewall",
+        "temperature",
       ],
     },
   };
@@ -178,6 +242,14 @@ export function buildHostEditorPayload(
   form: HostEditorForm,
   protocols: HostProtocols,
 ): SSHHostData {
+  // Only carry the auth fields that belong to the selected method so switching
+  // method (e.g. on a cloned host) doesn't leave a stale credentialId or key
+  // behind that the backend would keep resolving.
+  const usesCredential = form.authType === "credential";
+  const usesKey = form.authType === "key";
+  const usesPassword = form.authType === "password";
+  const usesAgent = form.authType === "agent";
+
   return {
     connectionType: protocols.enableSsh
       ? "ssh"
@@ -200,21 +272,37 @@ export function buildHostEditorPayload(
     tags: form.tags,
     pin: form.pin,
     authType: form.authType,
-    password: form.password || null,
-    key: form.key === "existing_key" ? undefined : form.key || null,
-    keyPassword:
-      form.keyPassword === "existing_key_password"
+    useWarpgate: form.useWarpgate,
+    password: usesPassword || usesKey ? form.password || null : null,
+    key: usesKey
+      ? form.key === "existing_key"
         ? undefined
-        : form.keyPassword || null,
-    keyType: form.keyType !== "auto" ? form.keyType : null,
-    credentialId: form.credentialId ? Number(form.credentialId) : null,
+        : form.key || null
+      : null,
+    keyPassword: usesKey
+      ? form.keyPassword === "existing_key_password"
+        ? undefined
+        : form.keyPassword || null
+      : null,
+    keyType: usesKey && form.keyType !== "auto" ? form.keyType : null,
+    credentialId:
+      usesCredential && form.credentialId ? Number(form.credentialId) : null,
+    vaultProfileId: form.vaultProfileId ? Number(form.vaultProfileId) : null,
     overrideCredentialUsername: form.overrideCredentialUsername,
     notes: form.notes,
     macAddress: form.macAddress || null,
+    wolBroadcastAddress: form.wolBroadcastAddress || null,
     enableTerminal: form.enableTerminal,
+    enableSessionLogging: form.enableSessionLogging,
+    enableCommandHistory: form.enableCommandHistory,
     enableTunnel: form.enableTunnel,
     enableFileManager: form.enableFileManager,
+    scpLegacy: form.scpLegacy,
     enableDocker: form.enableDocker,
+    dockerConfig: form.enableDocker ? form.dockerConfig : null,
+    enableTmuxMonitor: form.enableTmuxMonitor,
+    enableProxmox: form.enableProxmox,
+    proxmoxConfig: form.enableProxmox ? form.proxmoxConfig : null,
     defaultPath: form.defaultPath || "/",
     useSocks5: form.useSocks5,
     socks5Host:
@@ -236,15 +324,54 @@ export function buildHostEditorPayload(
     vncPort: Number(form.vncPort),
     telnetPort: Number(form.telnetPort),
     forceKeyboardInteractive: form.forceKeyboardInteractive,
-    rdpUser: form.rdpUser || null,
-    rdpPassword: form.rdpPassword || null,
+    rdpAuthType: protocols.enableRdp ? form.rdpAuthType : null,
+    rdpCredentialId:
+      protocols.enableRdp &&
+      form.rdpAuthType === "credential" &&
+      form.rdpCredentialId
+        ? Number(form.rdpCredentialId)
+        : null,
+    rdpUser:
+      protocols.enableRdp && form.rdpAuthType === "direct"
+        ? form.rdpUser || null
+        : null,
+    rdpPassword:
+      protocols.enableRdp && form.rdpAuthType === "direct"
+        ? form.rdpPassword || null
+        : null,
     rdpDomain: form.domain || null,
     rdpSecurity: form.security || null,
     rdpIgnoreCert: form.ignoreCert,
-    vncPassword: form.vncPassword || null,
-    vncUser: form.vncUser || null,
-    telnetUser: form.telnetUser || null,
-    telnetPassword: form.telnetPassword || null,
+    vncAuthType: protocols.enableVnc ? form.vncAuthType : null,
+    vncCredentialId:
+      protocols.enableVnc &&
+      form.vncAuthType === "credential" &&
+      form.vncCredentialId
+        ? Number(form.vncCredentialId)
+        : null,
+    vncPassword:
+      protocols.enableVnc && form.vncAuthType === "direct"
+        ? form.vncPassword || null
+        : null,
+    vncUser:
+      protocols.enableVnc && form.vncAuthType === "direct"
+        ? form.vncUser || null
+        : null,
+    telnetAuthType: protocols.enableTelnet ? form.telnetAuthType : null,
+    telnetCredentialId:
+      protocols.enableTelnet &&
+      form.telnetAuthType === "credential" &&
+      form.telnetCredentialId
+        ? Number(form.telnetCredentialId)
+        : null,
+    telnetUser:
+      protocols.enableTelnet && form.telnetAuthType === "direct"
+        ? form.telnetUser || null
+        : null,
+    telnetPassword:
+      protocols.enableTelnet && form.telnetAuthType === "direct"
+        ? form.telnetPassword || null
+        : null,
     jumpHosts: form.jumpHosts,
     portKnockSequence: form.portKnockSequence,
     tunnelConnections: form.serverTunnels,
@@ -279,11 +406,24 @@ export function buildHostEditorPayload(
           agentForwarding: form.agentForwarding,
           autoMosh: form.autoMosh,
           autoTmux: form.autoTmux,
-          sudoPasswordAutoFill: form.sudoPasswordAutoFill,
+          sudoPasswordAutoFill: false,
           sudoPassword: form.sudoPassword || null,
           keepaliveInterval: Number(form.keepaliveInterval),
           keepaliveCountMax: Number(form.keepaliveCountMax),
           environmentVariables: form.environmentVariables,
+          useSSHTitle: form.useSSHTitle,
+          syntaxHighlighting: form.syntaxHighlighting,
+          syntaxHighlightingOptions: form.syntaxHighlightingOptions,
+          backgroundImage: form.backgroundImage || null,
+          backgroundImageOpacity: Number(form.backgroundImageOpacity),
+          customThemeColors:
+            form.theme === "custom" ? form.customThemeColors : null,
+          allowLegacyAlgorithms: form.allowLegacyAlgorithms,
+          linkClickBehavior:
+            form.linkClickBehavior !== "default"
+              ? form.linkClickBehavior
+              : undefined,
+          agentSocketPath: usesAgent ? form.agentSocketPath || null : null,
         }
       : null,
   };

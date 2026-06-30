@@ -9,7 +9,7 @@ import {
   deleteUser,
   revokeAllUserSessions,
   createRole,
-  registerUser,
+  adminCreateUser,
   makeUserAdmin,
   removeAdminStatus,
   getRegistrationAllowed,
@@ -26,14 +26,38 @@ import {
   updateLogLevel,
   getGuacamoleSettings,
   updateGuacamoleSettings,
-  getAdminOIDCConfig,
-  updateOIDCConfig,
-  disableOIDCConfig,
   getOidcAutoProvision,
   updateOidcAutoProvision,
+  getOidcSilentLoginDefault,
+  updateOidcSilentLoginDefault,
+  getCommandHistoryEnabled,
+  updateCommandHistoryEnabled,
   isElectron,
   getUserRoles,
 } from "@/main-axios";
+import {
+  getTailscaleSettings,
+  updateTailscaleSettings,
+  getHostDefaults,
+  updateHostDefaults,
+  type HostDefaults,
+} from "@/api/settings-api";
+import {
+  getAcmeSslSettings,
+  updateAcmeSslSettings,
+  requestAcmeCertificate,
+  type AcmeSettings,
+} from "@/api/acme-ssl-api";
+import {
+  getAdminSSOProviders,
+  updateSSOProvider,
+  deleteSSOProvider,
+} from "@/api/sso-provider-api";
+import {
+  getMetricsHistoryRetention,
+  saveMetricsHistoryRetention,
+} from "@/api/host-metrics-api";
+import type { SSOProvider } from "@/types/index";
 import type { ApiKey, CreatedApiKey, UserRole } from "@/main-axios";
 import type { AdminSection } from "@/types/ui-types";
 import type { Role } from "@/main-axios";
@@ -49,13 +73,18 @@ import { getBasePath } from "@/lib/base-path";
 import {
   AdminDatabaseSection,
   AdminGeneralSettingsSection,
-  AdminOidcSettingsSection,
+  AdminHostDefaultsSection,
+  AdminSSOSection,
+  AdminSSLSection,
 } from "./AdminSettingsSections";
+import { SSOProviderDialog } from "./SSOProviderDialog";
 import { AdminApiKeysSection } from "./AdminApiKeysSection";
+import { AdminAuditLogSection } from "./AdminAuditLogSection";
 import {
   AdminCreateUserDialog,
   AdminEditUserDialog,
   AdminLinkAccountDialog,
+  AdminUnlinkAccountDialog,
 } from "./AdminUserDialogs";
 
 type ApiErrorLike = {
@@ -81,23 +110,21 @@ export function AdminSettingsPanel() {
   const [sessionTimeout, setSessionTimeout] = useState("24");
   const [statusInterval, setStatusInterval] = useState("60");
   const [metricsInterval, setMetricsInterval] = useState("30");
+  const [metricsHistoryRetention, setMetricsHistoryRetention] = useState("7");
   const [guacEnabled, setGuacEnabled] = useState(false);
   const [guacUrl, setGuacUrl] = useState("guacd:4822");
   const [logLevel, setLogLevel] = useState("info");
+  const [tailscaleApiKey, setTailscaleApiKey] = useState("");
+  const [commandHistoryEnabled, setCommandHistoryEnabled] = useState(true);
+  const [hostDefaults, setHostDefaults] = useState<HostDefaults>({});
 
-  // OIDC state
+  // SSO / auto-provision state
   const [oidcAutoProvision, setOidcAutoProvision] = useState(false);
-  const [oidcClientId, setOidcClientId] = useState("");
-  const [oidcClientSecret, setOidcClientSecret] = useState("");
-  const [oidcAuthUrl, setOidcAuthUrl] = useState("");
-  const [oidcIssuerUrl, setOidcIssuerUrl] = useState("");
-  const [oidcTokenUrl, setOidcTokenUrl] = useState("");
-  const [oidcUserIdentifier, setOidcUserIdentifier] = useState("sub");
-  const [oidcDisplayName, setOidcDisplayName] = useState("name");
-  const [oidcScopes, setOidcScopes] = useState("openid email profile");
-  const [oidcUserinfoUrl, setOidcUserinfoUrl] = useState("");
-  const [oidcAllowedUsers, setOidcAllowedUsers] = useState("");
-  const [oidcSaving, setOidcSaving] = useState(false);
+  const [oidcSilentLoginDefault, setOidcSilentLoginDefault] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
+  const [ssoDialogOpen, setSsoDialogOpen] = useState(false);
+  const [ssoDialogProvider, setSsoDialogProvider] =
+    useState<SSOProvider | null>(null);
 
   // Create user dialog
   const [createUserOpen, setCreateUserOpen] = useState(false);
@@ -116,6 +143,14 @@ export function AdminSettingsPanel() {
   // Link account dialog
   const [linkAccountOpen, setLinkAccountOpen] = useState(false);
   const [linkAccountTarget, setLinkAccountTarget] = useState<{
+    id: string;
+    username: string;
+    isOidc: boolean;
+  } | null>(null);
+
+  // Unlink account dialog
+  const [unlinkAccountOpen, setUnlinkAccountOpen] = useState(false);
+  const [unlinkAccountTarget, setUnlinkAccountTarget] = useState<{
     id: string;
     username: string;
   } | null>(null);
@@ -140,6 +175,22 @@ export function AdminSettingsPanel() {
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
 
+  // ACME SSL state
+  const defaultAcmeSettings: AcmeSettings = {
+    enabled: false,
+    domain: "",
+    email: "",
+    challengeType: "http-webroot",
+    cloudflareToken: "",
+    lastIssuedAt: null,
+    certStatus: "none",
+    certExpiresAt: null,
+  };
+  const [acmeSettings, setAcmeSettings] =
+    useState<AcmeSettings>(defaultAcmeSettings);
+  const [cloudflareTokenDraft, setCloudflareTokenDraft] = useState("");
+  const [acmeRequesting, setAcmeRequesting] = useState(false);
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sessions, setSessions] = useState<AdminSession[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -151,7 +202,7 @@ export function AdminSettingsPanel() {
     loadRoles();
     loadApiKeys();
     loadGeneralSettings();
-    loadOidcConfig();
+    loadSSOProviders();
   }, []);
 
   useEffect(() => {
@@ -210,6 +261,9 @@ export function AdminSettingsPanel() {
         level,
         guac,
         oidcProv,
+        oidcSilent,
+        tailscale,
+        cmdHistory,
       ] = await Promise.allSettled([
         getRegistrationAllowed(),
         getPasswordLoginAllowed(),
@@ -219,6 +273,9 @@ export function AdminSettingsPanel() {
         getLogLevel(),
         getGuacamoleSettings(),
         getOidcAutoProvision(),
+        getOidcSilentLoginDefault(),
+        getTailscaleSettings(),
+        getCommandHistoryEnabled(),
       ]);
 
       if (reg.status === "fulfilled") setAllowRegistration(reg.value.allowed);
@@ -226,6 +283,8 @@ export function AdminSettingsPanel() {
         setAllowPasswordLogin(pwLogin.value.allowed);
       if (oidcProv.status === "fulfilled")
         setOidcAutoProvision(oidcProv.value.enabled);
+      if (oidcSilent.status === "fulfilled")
+        setOidcSilentLoginDefault(oidcSilent.value.enabled);
       if (pwReset.status === "fulfilled") setAllowPasswordReset(pwReset.value);
       if (timeout.status === "fulfilled")
         setSessionTimeout(String(timeout.value.timeoutHours));
@@ -233,44 +292,54 @@ export function AdminSettingsPanel() {
         setStatusInterval(String(monitoring.value.statusCheckInterval));
         setMetricsInterval(String(monitoring.value.metricsInterval));
       }
+
+      getMetricsHistoryRetention()
+        .then((days) => setMetricsHistoryRetention(String(days)))
+        .catch(() => {});
       if (level.status === "fulfilled") setLogLevel(level.value.level);
       if (guac.status === "fulfilled") {
         setGuacEnabled(guac.value.enabled);
         setGuacUrl(guac.value.url || "guacd:4822");
       }
+      if (tailscale.status === "fulfilled") {
+        setTailscaleApiKey(tailscale.value.apiKey ?? "");
+      }
+      if (cmdHistory.status === "fulfilled") {
+        setCommandHistoryEnabled(cmdHistory.value.enabled);
+      }
+    } catch {
+      // non-fatal
+    }
+
+    getHostDefaults()
+      .then((d) => setHostDefaults(d))
+      .catch(() => {});
+
+    getAcmeSslSettings()
+      .then((s) => setAcmeSettings(s))
+      .catch(() => {});
+  }
+
+  async function loadSSOProviders() {
+    try {
+      const providers = await getAdminSSOProviders();
+      setSsoProviders(providers);
     } catch {
       // non-fatal
     }
   }
 
-  async function loadOidcConfig() {
-    try {
-      const config = await getAdminOIDCConfig();
-      if (!config) return;
-      setOidcClientId((config.client_id as string) ?? "");
-      setOidcClientSecret((config.client_secret as string) ?? "");
-      setOidcAuthUrl((config.authorization_url as string) ?? "");
-      setOidcIssuerUrl((config.issuer_url as string) ?? "");
-      setOidcTokenUrl((config.token_url as string) ?? "");
-      setOidcUserIdentifier((config.identifier_path as string) ?? "sub");
-      setOidcDisplayName((config.name_path as string) ?? "name");
-      setOidcScopes((config.scopes as string) ?? "openid email profile");
-      setOidcUserinfoUrl((config.userinfo_url as string) ?? "");
-      setOidcAllowedUsers(
-        typeof config.allowed_users === "string"
-          ? (config.allowed_users as string)
-              .split(",")
-              .filter(Boolean)
-              .join("\n")
-          : "",
-      );
-    } catch {
-      // no OIDC configured yet
-    }
-  }
-
   function toggle(id: AdminSection) {
     setOpenSection((prev) => (prev === id ? null : id));
+  }
+
+  async function handleSaveHostDefaults() {
+    try {
+      await updateHostDefaults(hostDefaults);
+      toast.success(t("admin.hostDefaultsSaved"));
+    } catch {
+      toast.error(t("admin.hostDefaultsSaveFailed"));
+    }
   }
 
   async function handleToggleRegistration() {
@@ -289,9 +358,10 @@ export function AdminSettingsPanel() {
     setAllowPasswordLogin(newVal);
     try {
       await updatePasswordLoginAllowed(newVal);
-    } catch {
+    } catch (e) {
       setAllowPasswordLogin(!newVal);
-      toast.error(t("admin.updatePasswordLoginFailed"));
+      const msg = (e as ApiErrorLike).response?.data?.error;
+      toast.error(msg || t("admin.updatePasswordLoginFailed"));
     }
   }
 
@@ -306,6 +376,17 @@ export function AdminSettingsPanel() {
     }
   }
 
+  async function handleToggleOidcSilentLoginDefault() {
+    const newVal = !oidcSilentLoginDefault;
+    setOidcSilentLoginDefault(newVal);
+    try {
+      await updateOidcSilentLoginDefault(newVal);
+    } catch {
+      setOidcSilentLoginDefault(!newVal);
+      toast.error(t("admin.updateOidcSilentLoginDefaultFailed"));
+    }
+  }
+
   async function handleTogglePasswordReset() {
     const newVal = !allowPasswordReset;
     setAllowPasswordReset(newVal);
@@ -314,6 +395,17 @@ export function AdminSettingsPanel() {
     } catch {
       setAllowPasswordReset(!newVal);
       toast.error(t("admin.updatePasswordResetFailed"));
+    }
+  }
+
+  async function handleToggleCommandHistory() {
+    const newVal = !commandHistoryEnabled;
+    setCommandHistoryEnabled(newVal);
+    try {
+      await updateCommandHistoryEnabled(newVal);
+    } catch {
+      setCommandHistoryEnabled(!newVal);
+      toast.error(t("admin.updateCommandHistoryFailed"));
     }
   }
 
@@ -334,15 +426,25 @@ export function AdminSettingsPanel() {
   async function handleSaveMonitoring() {
     const status = parseInt(statusInterval, 10);
     const metrics = parseInt(metricsInterval, 10);
+    const retention = parseInt(metricsHistoryRetention, 10);
     if (isNaN(status) || isNaN(metrics)) {
       toast.error(t("admin.monitoringIntervalInvalid"));
       return;
     }
+    if (!isNaN(retention) && (retention < 1 || retention > 90)) {
+      toast.error(t("admin.metricsHistoryRetentionRange"));
+      return;
+    }
     try {
-      await updateGlobalMonitoringSettings({
-        statusCheckInterval: status,
-        metricsInterval: metrics,
-      });
+      await Promise.all([
+        updateGlobalMonitoringSettings({
+          statusCheckInterval: status,
+          metricsInterval: metrics,
+        }),
+        !isNaN(retention)
+          ? saveMetricsHistoryRetention(retention)
+          : Promise.resolve(),
+      ]);
       toast.success(t("admin.monitoringSaved"));
     } catch {
       toast.error(t("admin.monitoringSaveFailed"));
@@ -369,6 +471,15 @@ export function AdminSettingsPanel() {
     }
   }
 
+  async function handleSaveTailscaleApiKey() {
+    try {
+      await updateTailscaleSettings(tailscaleApiKey);
+      toast.success(t("admin.tailscaleSettingsSaved"));
+    } catch {
+      toast.error(t("admin.tailscaleSettingsSaveFailed"));
+    }
+  }
+
   async function handleSaveLogLevel(level: string) {
     setLogLevel(level);
     try {
@@ -378,48 +489,97 @@ export function AdminSettingsPanel() {
     }
   }
 
-  async function handleSaveOidc() {
-    setOidcSaving(true);
+  function handleAddProvider() {
+    setSsoDialogProvider(null);
+    setSsoDialogOpen(true);
+  }
+
+  function handleEditProvider(provider: SSOProvider) {
+    setSsoDialogProvider(provider);
+    setSsoDialogOpen(true);
+  }
+
+  async function handleDeleteProvider(id: number) {
+    if (!window.confirm(t("admin.ssoDeleteConfirm"))) return;
     try {
-      await updateOIDCConfig({
-        client_id: oidcClientId,
-        client_secret: oidcClientSecret,
-        authorization_url: oidcAuthUrl,
-        issuer_url: oidcIssuerUrl,
-        token_url: oidcTokenUrl,
-        identifier_path: oidcUserIdentifier,
-        name_path: oidcDisplayName,
-        scopes: oidcScopes,
-        userinfo_url: oidcUserinfoUrl || "",
-        allowed_users: oidcAllowedUsers
-          ? oidcAllowedUsers.split("\n").filter(Boolean).join(",")
-          : "",
-      });
-      toast.success(t("admin.oidcSaved"));
-    } catch (e: unknown) {
-      toast.error(apiErrorMessage(e, t("admin.oidcSaveFailed")));
-    } finally {
-      setOidcSaving(false);
+      await deleteSSOProvider(id);
+      setSsoProviders((prev) => prev.filter((p) => p.id !== id));
+      toast.success(t("common.deleted"));
+    } catch (e) {
+      toast.error(apiErrorMessage(e, t("common.deleteFailed")));
     }
   }
 
-  async function handleRemoveOidc() {
+  async function handleToggleProviderEnabled(id: number, enabled: boolean) {
+    const provider = ssoProviders.find((p) => p.id === id);
+    if (!provider) return;
+    setSsoProviders((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, enabled } : p)),
+    );
     try {
-      await disableOIDCConfig();
-      setOidcClientId("");
-      setOidcClientSecret("");
-      setOidcAuthUrl("");
-      setOidcIssuerUrl("");
-      setOidcTokenUrl("");
-      setOidcUserIdentifier("sub");
-      setOidcDisplayName("name");
-      setOidcScopes("openid email profile");
-      setOidcUserinfoUrl("");
-      setOidcAllowedUsers("");
-      toast.success(t("admin.oidcRemoved"));
-    } catch {
-      toast.error(t("admin.oidcRemoveFailed"));
+      await updateSSOProvider(id, { enabled });
+    } catch (e) {
+      setSsoProviders((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, enabled: !enabled } : p)),
+      );
+      toast.error(apiErrorMessage(e, t("common.saveFailed")));
     }
+  }
+
+  async function handleSaveAcmeSettings() {
+    try {
+      const payload: Parameters<typeof updateAcmeSslSettings>[0] = {
+        enabled: acmeSettings.enabled,
+        domain: acmeSettings.domain,
+        email: acmeSettings.email,
+        challengeType: acmeSettings.challengeType,
+        ...(cloudflareTokenDraft && { cloudflareToken: cloudflareTokenDraft }),
+      };
+      const updated = await updateAcmeSslSettings(payload);
+      setAcmeSettings(updated);
+      setCloudflareTokenDraft("");
+      toast.success(t("admin.sslSaved"));
+    } catch {
+      toast.error(t("admin.sslSaveFailed"));
+    }
+  }
+
+  async function handleRequestAcmeCertificate() {
+    if (!acmeSettings.domain || !acmeSettings.email) {
+      toast.error(t("admin.sslRequiresDomain"));
+      return;
+    }
+    setAcmeRequesting(true);
+    try {
+      if (cloudflareTokenDraft) {
+        await updateAcmeSslSettings({
+          domain: acmeSettings.domain,
+          email: acmeSettings.email,
+          challengeType: acmeSettings.challengeType,
+          cloudflareToken: cloudflareTokenDraft,
+        });
+        setCloudflareTokenDraft("");
+      }
+      const result = await requestAcmeCertificate();
+      setAcmeSettings(result);
+      toast.success(t("admin.sslRequestCertSuccess"));
+    } catch (e) {
+      toast.error(apiErrorMessage(e, t("admin.sslRequestCertFailed")));
+    } finally {
+      setAcmeRequesting(false);
+    }
+  }
+
+  function handleProviderSaved(saved: SSOProvider) {
+    setSsoProviders((prev) => {
+      const idx = prev.findIndex((p) => p.id === saved.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = saved;
+        return next;
+      }
+      return [...prev, saved];
+    });
   }
 
   async function handleCreateUser() {
@@ -433,7 +593,7 @@ export function AdminSettingsPanel() {
     }
     setCreateUserLoading(true);
     try {
-      await registerUser(newUsername.trim(), newPassword);
+      await adminCreateUser(newUsername.trim(), newPassword);
       toast.success(t("admin.createUserSuccess", { username: newUsername }));
       setCreateUserOpen(false);
       setNewUsername("");
@@ -674,8 +834,12 @@ export function AdminSettingsPanel() {
         handleTogglePasswordLogin={handleTogglePasswordLogin}
         oidcAutoProvision={oidcAutoProvision}
         handleToggleOidcAutoProvision={handleToggleOidcAutoProvision}
+        oidcSilentLoginDefault={oidcSilentLoginDefault}
+        handleToggleOidcSilentLoginDefault={handleToggleOidcSilentLoginDefault}
         allowPasswordReset={allowPasswordReset}
         handleTogglePasswordReset={handleTogglePasswordReset}
+        commandHistoryEnabled={commandHistoryEnabled}
+        handleToggleCommandHistory={handleToggleCommandHistory}
         sessionTimeout={sessionTimeout}
         setSessionTimeout={setSessionTimeout}
         handleSaveSessionTimeout={handleSaveSessionTimeout}
@@ -683,6 +847,8 @@ export function AdminSettingsPanel() {
         setStatusInterval={setStatusInterval}
         metricsInterval={metricsInterval}
         setMetricsInterval={setMetricsInterval}
+        metricsHistoryRetention={metricsHistoryRetention}
+        setMetricsHistoryRetention={setMetricsHistoryRetention}
         handleSaveMonitoring={handleSaveMonitoring}
         guacEnabled={guacEnabled}
         handleToggleGuacamole={handleToggleGuacamole}
@@ -691,34 +857,26 @@ export function AdminSettingsPanel() {
         handleSaveGuacamole={handleSaveGuacamole}
         logLevel={logLevel}
         handleSaveLogLevel={handleSaveLogLevel}
+        tailscaleApiKey={tailscaleApiKey}
+        setTailscaleApiKey={setTailscaleApiKey}
+        handleSaveTailscaleApiKey={handleSaveTailscaleApiKey}
       />
 
-      <AdminOidcSettingsSection
-        open={openSection === "oidc"}
-        onToggle={() => toggle("oidc")}
-        oidcClientId={oidcClientId}
-        setOidcClientId={setOidcClientId}
-        oidcClientSecret={oidcClientSecret}
-        setOidcClientSecret={setOidcClientSecret}
-        oidcAuthUrl={oidcAuthUrl}
-        setOidcAuthUrl={setOidcAuthUrl}
-        oidcIssuerUrl={oidcIssuerUrl}
-        setOidcIssuerUrl={setOidcIssuerUrl}
-        oidcTokenUrl={oidcTokenUrl}
-        setOidcTokenUrl={setOidcTokenUrl}
-        oidcUserIdentifier={oidcUserIdentifier}
-        setOidcUserIdentifier={setOidcUserIdentifier}
-        oidcDisplayName={oidcDisplayName}
-        setOidcDisplayName={setOidcDisplayName}
-        oidcScopes={oidcScopes}
-        setOidcScopes={setOidcScopes}
-        oidcUserinfoUrl={oidcUserinfoUrl}
-        setOidcUserinfoUrl={setOidcUserinfoUrl}
-        oidcAllowedUsers={oidcAllowedUsers}
-        setOidcAllowedUsers={setOidcAllowedUsers}
-        oidcSaving={oidcSaving}
-        handleRemoveOidc={handleRemoveOidc}
-        handleSaveOidc={handleSaveOidc}
+      <AdminSSOSection
+        open={openSection === "sso"}
+        onToggle={() => toggle("sso")}
+        providers={ssoProviders}
+        onAddProvider={handleAddProvider}
+        onEditProvider={handleEditProvider}
+        onDeleteProvider={handleDeleteProvider}
+        onToggleEnabled={handleToggleProviderEnabled}
+      />
+
+      <SSOProviderDialog
+        open={ssoDialogOpen}
+        onOpenChange={setSsoDialogOpen}
+        provider={ssoDialogProvider}
+        onSaved={handleProviderSaved}
       />
 
       <AdminUsersSection
@@ -732,6 +890,8 @@ export function AdminSettingsPanel() {
         setEditUserOpen={setEditUserOpen}
         setLinkAccountTarget={setLinkAccountTarget}
         setLinkAccountOpen={setLinkAccountOpen}
+        setUnlinkAccountTarget={setUnlinkAccountTarget}
+        setUnlinkAccountOpen={setUnlinkAccountOpen}
       />
 
       <AdminSessionsSection
@@ -759,6 +919,14 @@ export function AdminSettingsPanel() {
         createRoleLoading={createRoleLoading}
       />
 
+      <AdminHostDefaultsSection
+        open={openSection === "host-defaults"}
+        onToggle={() => toggle("host-defaults")}
+        defaults={hostDefaults}
+        setDefaults={setHostDefaults}
+        handleSaveDefaults={handleSaveHostDefaults}
+      />
+
       <AdminDatabaseSection
         open={openSection === "database"}
         onToggle={() => toggle("database")}
@@ -768,6 +936,18 @@ export function AdminSettingsPanel() {
         importLoading={importLoading}
         handleExportDatabase={handleExportDatabase}
         handleImportDatabase={handleImportDatabase}
+      />
+
+      <AdminSSLSection
+        open={openSection === "ssl"}
+        onToggle={() => toggle("ssl")}
+        settings={acmeSettings}
+        setSettings={setAcmeSettings}
+        cloudflareTokenDraft={cloudflareTokenDraft}
+        setCloudflareTokenDraft={setCloudflareTokenDraft}
+        requesting={acmeRequesting}
+        handleSave={handleSaveAcmeSettings}
+        handleRequest={handleRequestAcmeCertificate}
       />
 
       <AdminApiKeysSection
@@ -789,6 +969,12 @@ export function AdminSettingsPanel() {
         users={users}
         handleCreateApiKey={handleCreateApiKey}
         newKeyLoading={newKeyLoading}
+      />
+
+      <AdminAuditLogSection
+        open={openSection === "audit-log"}
+        onToggle={() => toggle("audit-log")}
+        users={users}
       />
 
       <AdminCreateUserDialog
@@ -823,6 +1009,22 @@ export function AdminSettingsPanel() {
         onOpenChange={setLinkAccountOpen}
         linkAccountTarget={linkAccountTarget}
         setUsers={setUsers}
+        users={users}
+      />
+
+      <AdminUnlinkAccountDialog
+        open={unlinkAccountOpen}
+        onOpenChange={setUnlinkAccountOpen}
+        unlinkAccountTarget={unlinkAccountTarget}
+        onSuccess={(userId) =>
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === userId
+                ? { ...u, isOidc: false, passwordHash: undefined }
+                : u,
+            ),
+          )
+        }
       />
     </div>
   );

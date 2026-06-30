@@ -28,7 +28,14 @@
   <img src="https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks&color=F39044&labelColor=1a1a1a" />
   <img src="https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release&color=F39044&labelColor=1a1a1a&v=1" />
   <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720?color=F39044&labelColor=1a1a1a" /></a>
+  <a href="https://donate.termix.site/"><img alt="Donate" src="https://img.shields.io/badge/Donate-Support%20Termix-F39044?style=flat&labelColor=1a1a1a" /></a>
 </p>
+
+<br />
+
+Termix é gratuito e de código aberto. Se o achar útil, considere [doar](https://donate.termix.site/) para ajudar a cobrir os custos de servidor e o tempo de desenvolvimento.
+
+<a href="https://donate.termix.site/"><img src="../repo-images/donation-goal.svg" alt="Monthly donation goal" /></a>
 
 <br />
 
@@ -87,36 +94,64 @@ Gerencie arquivos diretamente em servidores remotos com suporte para visualizar 
 <tr>
 <td width="50%" valign="top">
 
-**Gerenciamento de Docker:**
-Inicie, pare, pause, remova conteineres. Visualize estatisticas de conteineres. Controle conteineres usando o terminal Docker Exec. Nao foi feito para substituir Portainer ou Dockge, mas sim para simplesmente gerenciar seus conteineres em vez de cria-los.
+**Gerenciamento de Docker e Podman:**
+Inicie, pare, pause, remova conteineres. Visualize estatisticas de conteineres. Controle conteineres usando o terminal Docker Exec. Suporta Docker e Podman como ambiente de execucao de conteineres. Nao foi feito para substituir Portainer ou Dockge, mas sim para simplesmente gerenciar seus conteineres em vez de cria-los.
 
 </td>
 <td width="50%" valign="top">
 
 **Gerenciador de Hosts SSH:**
-Salve, organize e gerencie suas conexoes SSH com tags e pastas, e salve facilmente informacoes de login reutilizaveis com a capacidade de automatizar a implantacao de chaves SSH.
+Salve, organize e gerencie suas conexoes SSH com tags e pastas (com personalizacao de pastas e suporte a pastas aninhadas), e salve facilmente informacoes de login reutilizaveis com a capacidade de automatizar a implantacao de chaves SSH.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-**Estatisticas do Servidor:**
-Visualize o uso de CPU, memoria e disco junto com rede, tempo de atividade, informacoes do sistema, firewall, monitor de portas na maioria dos servidores baseados em Linux.
+**Metricas do Host:**
+Visualize o uso de CPU, memoria e disco, rede, tempo de atividade, informacoes do sistema, firewall, monitor de portas, visualizador de logs, usuarios/permissoes, certificados e muito mais na maioria dos servidores baseados em Linux.
 
 </td>
 <td width="50%" valign="top">
 
 **Autenticacao de Usuarios:**
-Gerenciamento seguro de usuarios com controles de administrador e suporte para OIDC (com controle de acesso) e 2FA (TOTP). Visualize sessoes ativas de usuarios em todas as plataformas e revogue permissoes. Vincule suas contas OIDC/Locais entre si.
+Gerenciamento seguro de usuarios com controles de administrador e suporte para OIDC/LDAP/SSO (com controle de acesso) e 2FA (TOTP). Visualize sessoes ativas de usuarios em todas as plataformas e revogue permissoes. Vincule suas contas OIDC/Locais entre si. Visualize o log de auditoria de todas as acoes dos usuarios.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
+**Integracao com Tailscale:**
+Liste dispositivos da sua rede Tailscale para adicioná-los rapidamente como hosts, e conecte-se usando Tailscale SSH como metodo de autenticacao, deixando as ACLs da sua rede gerenciar a autorizacao sem armazenar credenciais.
+
+</td>
+<td width="50%" valign="top">
+
 **RBAC:**
 Crie funcoes e compartilhe hosts entre usuarios/funcoes.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Conexoes Seriais:**
+Conecte-se a dispositivos seriais (roteadores, switches, microcontroladores, etc.) diretamente do navegador ou do aplicativo desktop. Configure taxa de baud, bits de dados, bits de parada e paridade. Usa a Web Serial API em navegadores suportados ou um backend nativo no aplicativo Electron.
+
+</td>
+<td width="50%" valign="top">
+
+**Alertas:**
+Defina regras de alerta baseadas em limites para metricas do host (CPU, memoria, disco, etc.) e receba notificacoes via ntfy ou webhooks quando forem ativadas. Visualize alertas ativos e resolvidos em um historico de registros.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Pagina Inicial:**
+Uma pagina inicial totalmente personalizavel com uma grade de widgets de arrastar e soltar. Adicione widgets para status do host, links de servicos, relogios, notas, feeds RSS, clima, conteineres Docker, graficos de metricas do host, terminais incorporados, iframes e mais.
 
 </td>
 <td width="50%" valign="top">
@@ -170,7 +205,8 @@ Suporte integrado para aproximadamente 30 idiomas (gerenciado pelo [Crowdin](htt
 - **Historico de Comandos** - Autocompletar e visualizar comandos SSH executados anteriormente
 - **Conexao Rapida** - Conecte-se a um servidor sem precisar salvar os dados de conexao
 - **Paleta de Comandos** - Pressione duas vezes a tecla Shift esquerda para acessar rapidamente as conexoes SSH com seu teclado
-- **SSH Rico em Funcionalidades** - Suporta jump hosts, Warpgate, conexoes baseadas em TOTP, SOCKS5, verificacao de chave do host, preenchimento automatico de senhas, [OPKSSH](https://github.com/openpubkey/opkssh), tmux, port knocking, etc.
+- **Integracao com Proxmox** - Adicione automaticamente hosts ao Termix a partir da sua instancia Proxmox
+- **SSH Rico em Funcionalidades** - Suporta jump hosts, Warpgate, conexoes baseadas em TOTP, SOCKS5, verificacao de chave do host, preenchimento automatico de senhas, [OPKSSH](https://github.com/openpubkey/opkssh), tmux, port knocking, registro de terminal, etc.
 
 </details>
 
@@ -252,6 +288,14 @@ networks:
 
 <br />
 
+## Doar
+
+Termix é gratuito e de código aberto. Se o achar útil, considere [doar](https://donate.termix.site/) para ajudar a cobrir os custos de servidor e o tempo de desenvolvimento.
+
+<a href="https://donate.termix.site/"><img src="../repo-images/donation-goal.svg" alt="Monthly donation goal" /></a>
+
+<br />
+
 ## Capturas de Tela
 
 <div align="center">
@@ -294,6 +338,10 @@ networks:
 <td><img src="../repo-images/Image 13.png" alt="Termix Screenshot 13" width="400" /></td>
 <td><img src="../repo-images/Image 14.png" alt="Termix Screenshot 14" width="400" /></td>
 </tr>
+<tr>
+<td><img src="../repo-images/Image 15.png" alt="Termix Screenshot 15" width="400" /></td>
+<td><img src="../repo-images/Image 16.png" alt="Termix Screenshot 16" width="400" /></td>
+</tr>
 </table>
 
 <sub>Alguns videos e imagens podem estar desatualizados ou podem nao mostrar perfeitamente as funcionalidades.</sub>
@@ -304,7 +352,7 @@ networks:
 
 ## Funcionalidades Planejadas
 
-Consulte [Projetos](https://github.com/orgs/Termix-SSH/projects/2) para todas as funcionalidades planejadas. Se voce deseja contribuir, consulte [Contribuir](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md).
+Consulte [Projetos](https://github.com/orgs/Termix-SSH/projects/5) para todas as funcionalidades planejadas. Se voce deseja contribuir, consulte [Contribuir](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md).
 
 <br />
 

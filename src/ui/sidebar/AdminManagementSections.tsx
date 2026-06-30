@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Share2,
   Trash2,
+  Unlink,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -65,9 +66,13 @@ type UsersSectionProps = {
   setEditUserTarget: Dispatch<SetStateAction<AdminUser | null>>;
   setEditUserOpen: Dispatch<SetStateAction<boolean>>;
   setLinkAccountTarget: Dispatch<
-    SetStateAction<{ id: string; username: string } | null>
+    SetStateAction<{ id: string; username: string; isOidc: boolean } | null>
   >;
   setLinkAccountOpen: Dispatch<SetStateAction<boolean>>;
+  setUnlinkAccountTarget: Dispatch<
+    SetStateAction<{ id: string; username: string } | null>
+  >;
+  setUnlinkAccountOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 export function AdminUsersSection({
@@ -81,6 +86,8 @@ export function AdminUsersSection({
   setEditUserOpen,
   setLinkAccountTarget,
   setLinkAccountOpen,
+  setUnlinkAccountTarget,
+  setUnlinkAccountOpen,
 }: UsersSectionProps) {
   const { t } = useTranslation();
 
@@ -160,15 +167,33 @@ export function AdminUsersSection({
                 >
                   <Pencil className="size-3" />
                 </Button>
-                {user.isOidc && (
+                {user.isOidc && user.passwordHash ? (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
+                    title={t("admin.unlinkAccount")}
+                    onClick={() => {
+                      setUnlinkAccountTarget({
+                        id: user.id,
+                        username: user.username,
+                      });
+                      setUnlinkAccountOpen(true);
+                    }}
+                  >
+                    <Unlink className="size-3" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 text-muted-foreground hover:text-foreground"
+                    title={t("admin.linkAccountTitle")}
                     onClick={() => {
                       setLinkAccountTarget({
                         id: user.id,
                         username: user.username,
+                        isOidc: user.isOidc,
                       });
                       setLinkAccountOpen(true);
                     }}
